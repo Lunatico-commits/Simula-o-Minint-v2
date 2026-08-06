@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile, DuelRoom, DuelPlayer, MININTBranch, Question, QuestionCategory, AIExplanationResponse, normalizeCategory, DuelHistoryEntry } from '../types';
 import { db, rtdb } from '../lib/firebase';
 import { 
-  collection, doc, getDoc, setDoc, updateDoc, onSnapshot, query, where, getDocs, limit, serverTimestamp 
+  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs, limit, serverTimestamp 
 } from 'firebase/firestore';
 import {
   ref as rtdbRef, set as rtdbSet, update as rtdbUpdate, onValue as rtdbOnValue, remove as rtdbRemove, get as rtdbGet
@@ -297,20 +297,37 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const q = query(
         collection(db, 'duels'),
         where('status', '==', 'waiting'),
-        limit(20)
+        limit(30)
       );
 
       unsubscribeFirestore = onSnapshot(q, (snapshot) => {
         const firestoreRooms: DuelRoom[] = [];
+        const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+
         snapshot.forEach((docSnap) => {
-          const r = docSnap.data() as DuelRoom;
+          const r = docSnap.data() as any;
           if (r && r.status === 'waiting') {
-            firestoreRooms.push({
-              ...r,
-              id: docSnap.id,
-              code: r.code || r.roomCode || '',
-              roomCode: r.roomCode || r.code || '',
-            });
+            let createdTime = 0;
+            if (typeof r.createdAt === 'number') {
+              createdTime = r.createdAt;
+            } else if (r.createdAt?.toMillis) {
+              createdTime = r.createdAt.toMillis();
+            } else if (r.createdAt?.seconds) {
+              createdTime = r.createdAt.seconds * 1000;
+            } else {
+              createdTime = Date.now();
+            }
+
+            if (createdTime >= twoHoursAgo) {
+              const safeP1 = buildSafePlayer(r.player1 || {});
+              firestoreRooms.push({
+                ...r,
+                id: docSnap.id,
+                code: r.code || r.roomCode || docSnap.id,
+                roomCode: r.roomCode || r.code || docSnap.id,
+                player1: safeP1,
+              });
+            }
           }
         });
         setOpenRooms(firestoreRooms);
@@ -476,30 +493,34 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Cancel or Leave Room
   const handleCancelRoom = (forceConfirm = false) => {
-    if (!forceConfirm && (viewState === 'room' || currentRoom?.status === 'active')) {
+    if (!forceConfirm && currentRoom?.status === 'active') {
       setIsExitModalOpen(true);
       return;
     }
 
     if (currentRoom) {
-      const roomId = currentRoom.id;
-      const roomCode = currentRoom.roomCode;
+      const roomId = currentRoom.id || currentRoom.roomCode;
+      const roomCode = currentRoom.roomCode || currentRoom.code || roomId;
 
-      // Immediately filter out cancelled room from local open rooms array with safety checks
+      // Immediately filter out cancelled room from local open rooms array
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== roomId && r.roomCode !== roomCode));
 
-      if (!currentRoom.player2?.isBot) {
+      if (roomId && !currentRoom.player2?.isBot) {
         try {
           const roomRef = doc(db, 'duels', roomId);
-          updateDoc(roomRef, { status: 'cancelled' }).catch((e) => {
-            console.warn('Erro em segundo plano ao cancelar no Firestore:', e);
+          deleteDoc(roomRef).catch(() => {
+            updateDoc(roomRef, { status: 'abandoned' }).catch((e) => {
+              console.warn('Erro ao atualizar status no Firestore:', e);
+            });
           });
 
-          rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'cancelled' }).catch((e) => {
-            console.warn('Erro ao cancelar sala no RTDB:', e);
+          rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {
+            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'abandoned' }).catch((e) => {
+              console.warn('Erro ao cancelar sala no RTDB:', e);
+            });
           });
         } catch (e) {
-          console.warn('Erro ao cancelar sala no banco de dados:', e);
+          console.warn('Erro ao encerrar sala no banco de dados:', e);
         }
       }
     }
@@ -1444,13 +1465,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setCurrentRoom(updated);
   };
 
-  const isHost = currentRoom?.player1.uid === profile.uid;
+  const isHost = currentRoom?.player1?.uid ? (currentRoom.player1.uid === profile?.uid) : (currentRoom?.hostUid === profile?.uid);
   const myPlayer = isHost ? currentRoom?.player1 : currentRoom?.player2;
   const opponent = isHost ? currentRoom?.player2 : currentRoom?.player1;
-  const currentQ = currentRoom?.questions[currentRoom.currentQuestionIndex];
   const qIndex = currentRoom?.currentQuestionIndex ?? 0;
-  const myAnswer = myPlayer?.answers[qIndex];
-  const opponentAnswer = opponent?.answers[qIndex];
+  const currentQ = currentRoom?.questions && Array.isArray(currentRoom.questions) ? currentRoom.questions[qIndex] : undefined;
+  const myAnswer = myPlayer?.answers ? myPlayer.answers[qIndex] : undefined;
+  const opponentAnswer = opponent?.answers ? opponent.answers[qIndex] : undefined;
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 text-slate-900 dark:text-slate-100">
@@ -1878,8 +1899,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
                 {/* Player 1 (Host Card) */}
                 {(() => {
-                  const p1Branch = MININT_BRANCHES[currentRoom.player1.branch] || MININT_BRANCHES.PNA;
-                  const p1Avatar = getAvatarOption(currentRoom.player1.avatarId, currentRoom.player1.branch, currentRoom.player1.displayName);
+                  const p1 = currentRoom.player1 || buildSafePlayer(profile);
+                  const p1Branch = MININT_BRANCHES[p1?.branch || 'PNA'] || MININT_BRANCHES.PNA;
+                  const p1Avatar = getAvatarOption(p1?.avatarId, p1?.branch, p1?.displayName);
                   return (
                     <div className="bg-slate-50 dark:bg-slate-900/80 border border-amber-500/40 rounded-2xl p-3.5 text-center space-y-2 relative shadow-xs">
                       <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-black uppercase tracking-wider">
@@ -1892,13 +1914,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
                       <div>
                         <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                          {currentRoom.player1.displayName}
+                          {p1.displayName || 'Anfitrião'}
                         </p>
                         <div className="flex items-center justify-center gap-1 mt-1 text-[10px] text-slate-600 dark:text-slate-400">
                           <span className="px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 font-mono font-bold text-slate-800 dark:text-slate-300">
                             {p1Branch.sigla}
                           </span>
-                          <span>• 📍 {currentRoom.player1.province || profile.province || 'Angola'}</span>
+                          <span>• 📍 {p1.province || profile?.province || 'Angola'}</span>
                         </div>
                       </div>
 
@@ -1915,8 +1937,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                   <AnimatePresence mode="wait">
                     {currentRoom.player2 ? (
                       (() => {
-                        const p2Branch = MININT_BRANCHES[currentRoom.player2.branch] || MININT_BRANCHES.PNA;
-                        const p2Avatar = getAvatarOption(currentRoom.player2.avatarId, currentRoom.player2.branch, currentRoom.player2.displayName);
+                        const p2 = currentRoom.player2;
+                        const p2Branch = MININT_BRANCHES[p2?.branch || 'PNA'] || MININT_BRANCHES.PNA;
+                        const p2Avatar = getAvatarOption(p2?.avatarId, p2?.branch, p2?.displayName);
                         return (
                           <motion.div
                             key="player2-connected"
@@ -1953,10 +1976,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                               transition={{ delay: 0.18 }}
                             >
                               <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                                {currentRoom.player2.displayName}
+                                {p2.displayName || 'Oponente'}
                               </p>
                               <p className="text-[10px] text-slate-600 dark:text-slate-400">
-                                📍 {currentRoom.player2.province || 'Angola'}
+                                📍 {p2.province || 'Angola'}
                               </p>
                             </motion.div>
 
@@ -2083,14 +2106,31 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               </div>
 
               {/* Cancel Room Action */}
-              <div className="text-center pt-1">
+              <div className="pt-2 border-t border-slate-200 dark:border-white/10 flex items-center justify-between gap-3">
                 <button
-                  onClick={handleCancelRoom}
-                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                  type="button"
+                  onClick={() => handleCancelRoom(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 text-rose-600 dark:text-rose-400 text-xs font-extrabold transition-all cursor-pointer border border-rose-500/30 flex items-center justify-center gap-2 uppercase shadow-2xs"
                 >
-                  Sair / Cancelar Sala
+                  <LogOut size={15} />
+                  <span>Encerrar / Cancelar Sala</span>
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* ACTIVE DUEL SCREEN WITH MISSING QUESTION FALLBACK */}
+          {currentRoom.status === 'active' && !currentQ && (
+            <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-6 text-center space-y-3">
+              <Loader2 size={24} className="animate-spin text-amber-500 mx-auto" />
+              <p className="text-xs text-slate-300 font-bold">A carregar perguntas do duelo...</p>
+              <button
+                type="button"
+                onClick={() => handleCancelRoom(true)}
+                className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold transition-all"
+              >
+                Cancelar Duelo
+              </button>
             </div>
           )}
 
