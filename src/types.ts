@@ -185,6 +185,7 @@ export interface DuelPlayer {
   branch: MININTBranch;
   avatarId: string;
   province?: string;
+  photoURL?: string;
   isVipSupporter?: boolean;
   isBot?: boolean;
   score: number;

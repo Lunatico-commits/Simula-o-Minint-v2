@@ -55,6 +55,43 @@ export function normalizeRoomCode(input?: string | null): string {
   return `MNT-${noHyphen}`;
 }
 
+const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): DuelPlayer => {
+  return {
+    uid: userProfile?.uid || userProfile?.id || 'anon',
+    displayName: userProfile?.displayName || userProfile?.name || 'Candidato',
+    branch: userProfile?.branch || 'PNA',
+    avatarId: userProfile?.avatarId || 'policia',
+    province: userProfile?.province || 'Luanda',
+    photoURL: userProfile?.photoURL || userProfile?.avatar || '',
+    isVipSupporter: !!(userProfile?.isVipSupporter),
+    score: 0,
+    currentQuestionIndex: 0,
+    answers: {},
+    isReady: true,
+    isConnected: true,
+    ...overrides,
+  };
+};
+
+const sanitizeFirestoreData = <T extends Record<string, any>>(obj: T): T => {
+  if (obj === null || obj === undefined) return null as any;
+  if (typeof obj !== 'object') return obj;
+  if (obj.constructor !== Object && !Array.isArray(obj)) return obj;
+
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeFirestoreData) as any;
+  }
+
+  const clean: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const value = obj[key];
+    if (value !== undefined) {
+      clean[key] = sanitizeFirestoreData(value);
+    }
+  }
+  return clean as T;
+};
+
 interface MultiplayerDuelProps {
   profile: UserProfile;
   initialRoomCode?: string | null;
@@ -629,7 +666,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const newRoom: DuelRoom = {
         id: roomId,
         roomCode: code,
-        hostUid: profile.uid,
+        hostUid: profile?.uid || 'anon',
         status: 'active',
         category: selectedCategory,
         mode: selectedMode,
@@ -637,19 +674,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         currentQuestionIndex: 0,
         questionStartTime: Date.now(),
         timePerQuestion,
-        player1: {
-          uid: profile.uid,
-          displayName: profile.displayName,
-          branch: profile.branch,
-          avatarId: profile.avatarId,
-          province: profile.province,
-          isVipSupporter: profile.isVipSupporter,
-          score: 0,
-          currentQuestionIndex: 0,
-          answers: {},
-          isReady: true,
-          isConnected: true,
-        },
+        player1: buildSafePlayer(profile),
         player2: botPlayer,
         createdAt: Date.now(),
       };
@@ -680,43 +705,33 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const isRelampago = selectedMode === 'relampago';
       const timePerQuestion = isRelampago ? 30 : 20;
 
+      const player1Data = buildSafePlayer(profile);
+
       const newRoom: DuelRoom = {
         id: roomCode,
         code: roomCode,
         roomCode: roomCode,
-        hostId: profile.uid,
-        hostUid: profile.uid,
+        hostId: profile?.uid || 'anon',
+        hostUid: profile?.uid || 'anon',
         status: 'waiting',
-        category: selectedCategory,
-        mode: selectedMode,
+        category: selectedCategory || 'Geral',
+        mode: selectedMode || 'classico',
         questions: duelQuestions,
         currentQuestionIndex: 0,
         questionStartTime: null,
         timePerQuestion,
-        player1: {
-          uid: profile.uid,
-          displayName: profile.displayName,
-          branch: profile.branch,
-          avatarId: profile.avatarId,
-          province: profile.province,
-          isVipSupporter: profile.isVipSupporter,
-          score: 0,
-          currentQuestionIndex: 0,
-          answers: {},
-          isReady: true,
-          isConnected: true,
-        },
+        player1: player1Data,
         createdAt: Date.now(),
       };
 
-      const firestoreDocData = {
+      const firestoreDocData = sanitizeFirestoreData({
         ...newRoom,
         code: roomCode,
         roomCode: roomCode,
         status: 'waiting',
         createdAt: serverTimestamp(),
         player2: null,
-      };
+      });
 
       // 1. Save room document directly to Firestore using roomCode as document ID
       await setDoc(doc(db, 'duels', roomCode), firestoreDocData);
@@ -922,19 +937,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }
 
       // Join as player 2
-      const updatedPlayer2: DuelPlayer = {
-        uid: profile.uid,
-        displayName: profile.displayName,
-        branch: profile.branch,
-        avatarId: profile.avatarId,
-        province: profile.province,
-        isVipSupporter: profile.isVipSupporter,
-        score: 0,
-        currentQuestionIndex: 0,
-        answers: {},
-        isReady: true,
-        isConnected: true,
-      };
+      const updatedPlayer2 = buildSafePlayer(profile);
 
       const updatedRoom: DuelRoom = {
         ...roomData,
@@ -947,11 +950,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       if (targetId) {
         try {
           const roomRef = doc(db, 'duels', targetId);
-          setDoc(roomRef, {
+          setDoc(roomRef, sanitizeFirestoreData({
             player2: updatedPlayer2,
             status: 'active',
             questionStartTime: Date.now(),
-          }, { merge: true }).catch((e) => console.warn('Erro ao atualizar sala no Firestore:', e));
+          }), { merge: true }).catch((e) => console.warn('Erro ao atualizar sala no Firestore:', e));
 
           rtdbUpdate(rtdbRef(rtdb, `duels/${targetId}`), {
             player2: updatedPlayer2,
@@ -1053,7 +1056,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           : (currentRoom.player2 ? { ...currentRoom.player2, answers: newAnswers, score: newScore } : null);
 
         if (updatedPlayerData) {
-          setDoc(roomRef, { [playerKey]: updatedPlayerData }, { merge: true }).catch((e) => console.warn('Erro Firestore resposta:', e));
+          const safeData = sanitizeFirestoreData({ [playerKey]: updatedPlayerData });
+          setDoc(roomRef, safeData, { merge: true }).catch((e) => console.warn('Erro Firestore resposta:', e));
           rtdbUpdate(rtdbRef(rtdb, `duels/${currentRoom.id}/${playerKey}`), updatedPlayerData).catch((e) => console.warn('Erro RTDB resposta:', e));
         }
       } catch (e) {
@@ -1257,19 +1261,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           currentQuestionIndex: 0,
           questionStartTime: Date.now(),
           timePerQuestion: 20,
-          player1: {
-            uid: profile.uid,
-            displayName: profile.displayName,
-            branch: profile.branch,
-            avatarId: profile.avatarId,
-            province: profile.province,
-            isVipSupporter: profile.isVipSupporter,
-            score: 0,
-            currentQuestionIndex: 0,
-            answers: {},
-            isReady: true,
-            isConnected: true,
-          },
+          player1: buildSafePlayer(profile),
           player2: botPlayer,
           createdAt: Date.now(),
         };
@@ -1372,42 +1364,32 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const isRelampago = selectedMode === 'relampago';
       const timePerQuestion = isRelampago ? 30 : 20;
 
+      const player1Data = buildSafePlayer(profile);
+
       const newRoom: DuelRoom = {
         id: roomCode,
         code: roomCode,
         roomCode: roomCode,
-        hostUid: profile.uid,
+        hostUid: profile?.uid || 'anon',
         status: 'waiting',
-        category: selectedCategory,
-        mode: selectedMode,
+        category: selectedCategory || 'Geral',
+        mode: selectedMode || 'classico',
         questions: duelQuestions,
         currentQuestionIndex: 0,
         questionStartTime: null,
         timePerQuestion,
-        player1: {
-          uid: profile.uid,
-          displayName: profile.displayName,
-          branch: profile.branch,
-          avatarId: profile.avatarId,
-          province: profile.province,
-          isVipSupporter: profile.isVipSupporter,
-          score: 0,
-          currentQuestionIndex: 0,
-          answers: {},
-          isReady: true,
-          isConnected: true,
-        },
+        player1: player1Data,
         createdAt: Date.now(),
       };
 
-      const firestoreDocData = {
+      const firestoreDocData = sanitizeFirestoreData({
         ...newRoom,
         code: roomCode,
         roomCode: roomCode,
         status: 'waiting',
         createdAt: serverTimestamp(),
         player2: null,
-      };
+      });
 
       // Mandatory sync to Firestore using roomCode as document ID
       await setDoc(doc(db, 'duels', roomCode), firestoreDocData);
