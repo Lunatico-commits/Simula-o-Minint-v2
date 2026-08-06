@@ -1,0 +1,27 @@
+{
+  "entities": {
+    "Duel": {
+      "title": "Duel Room",
+      "description": "Represents a 1v1 multiplayer duel room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "roomCode": { "type": "string" },
+        "hostId": { "type": "string" },
+        "hostUid": { "type": "string" },
+        "status": { "type": "string" },
+        "category": { "type": "string" },
+        "mode": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["code", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/duels/{duelId}": {
+      "schema": { "$ref": "#/entities/Duel" },
+      "description": "Collection of 1v1 duels"
+    }
+  }
+}

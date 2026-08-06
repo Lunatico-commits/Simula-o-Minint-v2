@@ -1,0 +1,6 @@
+{
+  "name": "Simulados MININT",
+  "description": "Aplicação de preparação para o Concurso Público do Ministério do Interior de Angola com simulados, avatares dos 5 ramos, modo duelo multiplayer em tempo real e explicações fundamentadas com IA.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
