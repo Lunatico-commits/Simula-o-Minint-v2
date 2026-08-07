@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, DuelRoom, DuelPlayer, MININTBranch, Question, QuestionCategory, AIExplanationResponse, normalizeCategory, DuelHistoryEntry } from '../types';
 import { db, rtdb } from '../lib/firebase';
 import { 
@@ -23,13 +23,16 @@ import {
   playDefeatSound, 
   playQuizCompleteSound, 
   playTickSound, 
-  playRelampagoTickSound 
+  playRelampagoTickSound,
+  playRoundStartSound,
+  getSoundEnabled,
+  setSoundEnabled
 } from '../utils/audio';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Swords, Users, Plus, KeyRound, Sparkles, Trophy, CheckCircle2, XCircle, Clock, Shield, ArrowRight, RotateCcw, AlertCircle, Zap,
   Copy, Check, Share2, Radio, UserCheck, MapPin, Loader2, History, Flame, Trash2, Crosshair, RefreshCw, LogOut, LogIn,
-  MessageCircle, Link2, Bot
+  MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
 import { trackMissionProgress } from '../utils/dailyMissions';
@@ -198,6 +201,40 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Exit Confirmation Modal State
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  // Host Room Closed Notification Modal State
+  const [isRoomClosedModalOpen, setIsRoomClosedModalOpen] = useState(false);
+
+  // Keep a reference to currentRoom for auto-cleanup on component unmount
+  const currentRoomRef = useRef<DuelRoom | null>(null);
+  useEffect(() => {
+    currentRoomRef.current = currentRoom;
+  }, [currentRoom]);
+
+  // Auto-cleanup on unmount: if current user is host and room is active or waiting, mark as abandoned
+  useEffect(() => {
+    return () => {
+      const room = currentRoomRef.current;
+      if (room && !room.player2?.isBot) {
+        const isHost = room.hostUid ? (room.hostUid === profile?.uid) : (room.player1?.uid === profile?.uid);
+        if (isHost && (room.status === 'waiting' || room.status === 'active')) {
+          const roomId = room.id || room.roomCode;
+          if (roomId) {
+            try {
+              const roomRef = doc(db, 'duels', roomId);
+              updateDoc(roomRef, { status: 'abandoned' }).catch(() => {
+                deleteDoc(roomRef).catch(() => {});
+              });
+              rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'abandoned' }).catch(() => {
+                rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
+              });
+            } catch (e) {
+              console.warn('Erro ao encerrar sala automaticamente no unmount:', e);
+            }
+          }
+        }
+      }
+    };
+  }, [profile?.uid]);
 
   // Auto-join room if opened via direct invite URL link or push notification
   useEffect(() => {
@@ -205,7 +242,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     if (!targetCode) {
       try {
         const params = new URLSearchParams(window.location.search);
-        targetCode = params.get('code') || params.get('room') || params.get('duelRoom') || params.get('duel') || params.get('sala');
+        targetCode = params.get('join') || params.get('code') || params.get('room') || params.get('duelRoom') || params.get('duel') || params.get('sala');
       } catch (err) {
         console.warn('Erro ao ler parâmetro da URL em MultiplayerDuel:', err);
       }
@@ -248,6 +285,21 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [honorVictoryOpponent, setHonorVictoryOpponent] = useState<DuelPlayer | null>(null);
   const [honorVictoryPts, setHonorVictoryPts] = useState<number>(100);
 
+  // Audio preference state respecting user settings
+  const [isSoundMuted, setIsSoundMuted] = useState(!getSoundEnabled());
+
+  const handleToggleSound = () => {
+    const nextMuted = !isSoundMuted;
+    setIsSoundMuted(nextMuted);
+    setSoundEnabled(!nextMuted);
+    if (!nextMuted) {
+      playRoundStartSound();
+      showToast('Efeitos sonoros ativados 🔊');
+    } else {
+      showToast('Efeitos sonoros silenciados 🔇');
+    }
+  };
+
   const showToast = (msg: string, isError: boolean = false) => {
     setToastNotification({ message: msg, isError });
     setTimeout(() => {
@@ -276,11 +328,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   // Floating Score Particles State
   const [floatingParticles, setFloatingParticles] = useState<{ id: number; text: string }[]>([]);
 
-  // Clear answer feedback and particles on question change or viewState change
+  // Clear answer feedback, particles and play round start sound on question change or viewState change
   useEffect(() => {
     setAnswerFeedback(null);
     setFloatingParticles([]);
-  }, [currentRoom?.currentQuestionIndex, viewState]);
+    if (viewState === 'room' && currentRoom?.status === 'active') {
+      playRoundStartSound();
+    }
+  }, [currentRoom?.currentQuestionIndex, viewState, currentRoom?.status]);
   
   // AI Explanation Modal State
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -366,18 +421,44 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     try {
       const roomRef = doc(db, 'duels', currentRoom.id);
       unsubscribeFirestore = onSnapshot(roomRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const roomData = docSnap.data() as DuelRoom;
-          setCurrentRoom(roomData);
-
-          if (roomData.status === 'active' && viewState !== 'room') {
-            setViewState('room');
-          } else if (roomData.status === 'finished' && viewState !== 'finished') {
-            setViewState('finished');
-            if (processedDuelId !== roomData.id) {
-              setProcessedDuelId(roomData.id);
-              handleDuelFinished(roomData);
+        if (!docSnap.exists()) {
+          // Room deleted by host
+          if (viewState === 'room') {
+            const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
+            if (!isHost) {
+              setIsRoomClosedModalOpen(true);
+            } else {
+              setViewState('lobby');
+              setCurrentRoom(null);
             }
+          }
+          return;
+        }
+
+        const roomData = docSnap.data() as DuelRoom;
+
+        if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
+          if (viewState === 'room') {
+            const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
+            if (!isHost) {
+              setIsRoomClosedModalOpen(true);
+            } else {
+              setViewState('lobby');
+              setCurrentRoom(null);
+            }
+          }
+          return;
+        }
+
+        setCurrentRoom(roomData);
+
+        if (roomData.status === 'active' && viewState !== 'room') {
+          setViewState('room');
+        } else if (roomData.status === 'finished' && viewState !== 'finished') {
+          setViewState('finished');
+          if (processedDuelId !== roomData.id) {
+            setProcessedDuelId(roomData.id);
+            handleDuelFinished(roomData);
           }
         }
       });
@@ -389,18 +470,43 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     try {
       const activeRoomRtdbRef = rtdbRef(rtdb, `duels/${currentRoom.id}`);
       unsubscribeRtdb = rtdbOnValue(activeRoomRtdbRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const roomData = snapshot.val() as DuelRoom;
-          setCurrentRoom(roomData);
-
-          if (roomData.status === 'active' && viewState !== 'room') {
-            setViewState('room');
-          } else if (roomData.status === 'finished' && viewState !== 'finished') {
-            setViewState('finished');
-            if (processedDuelId !== roomData.id) {
-              setProcessedDuelId(roomData.id);
-              handleDuelFinished(roomData);
+        if (!snapshot.exists()) {
+          if (viewState === 'room') {
+            const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
+            if (!isHost) {
+              setIsRoomClosedModalOpen(true);
+            } else {
+              setViewState('lobby');
+              setCurrentRoom(null);
             }
+          }
+          return;
+        }
+
+        const roomData = snapshot.val() as DuelRoom;
+
+        if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
+          if (viewState === 'room') {
+            const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
+            if (!isHost) {
+              setIsRoomClosedModalOpen(true);
+            } else {
+              setViewState('lobby');
+              setCurrentRoom(null);
+            }
+          }
+          return;
+        }
+
+        setCurrentRoom(roomData);
+
+        if (roomData.status === 'active' && viewState !== 'room') {
+          setViewState('room');
+        } else if (roomData.status === 'finished' && viewState !== 'finished') {
+          setViewState('finished');
+          if (processedDuelId !== roomData.id) {
+            setProcessedDuelId(roomData.id);
+            handleDuelFinished(roomData);
           }
         }
       });
@@ -414,7 +520,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         unsubscribeRtdb();
       }
     };
-  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, processedDuelId]);
+  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, processedDuelId, profile?.uid]);
 
   // Helper to advance question or finish duel
   const advanceOrFinishDuel = (updatedRoom: DuelRoom, qIndex: number) => {
@@ -1481,6 +1587,27 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           {/* Hero Banner */}
           <div className="bg-white dark:bg-gradient-to-b dark:from-[#16181D] dark:to-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl p-5 text-center shadow-md dark:shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-50" />
+            
+            {/* Audio Toggle Button */}
+            <button
+              type="button"
+              onClick={handleToggleSound}
+              className="absolute top-3 right-3 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+              title={isSoundMuted ? "Ativar Áudio dos Duelos" : "Desativar Áudio dos Duelos"}
+            >
+              {isSoundMuted ? (
+                <>
+                  <VolumeX size={14} className="text-rose-400" />
+                  <span className="text-[10px] text-slate-400 hidden sm:inline">Mudo</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 size={14} className="text-emerald-400" />
+                  <span className="text-[10px] text-emerald-400 hidden sm:inline">Som ON</span>
+                </>
+              )}
+            </button>
+
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 mb-2 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
               <Swords size={24} />
             </div>
@@ -2181,15 +2308,27 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                         <span>Duelo em Curso</span>
                       </span>
 
-                      <button
-                        type="button"
-                        onClick={() => handleCancelRoom(false)}
-                        className="flex items-center gap-1 text-[10px] font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 rounded-lg transition-colors cursor-pointer shadow-2xs active:scale-95"
-                        title="Abandonar Duelo"
-                      >
-                        <LogOut size={12} />
-                        <span>Desistir</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleToggleSound}
+                          className="flex items-center gap-1 text-[10px] font-bold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-0.5 rounded-lg transition-colors cursor-pointer active:scale-95"
+                          title={isSoundMuted ? "Ativar Áudio dos Duelos" : "Desativar Áudio dos Duelos"}
+                        >
+                          {isSoundMuted ? <VolumeX size={12} className="text-rose-400" /> : <Volume2 size={12} className="text-emerald-400" />}
+                          <span>{isSoundMuted ? "Mudo" : "Som ON"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleCancelRoom(false)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 rounded-lg transition-colors cursor-pointer shadow-2xs active:scale-95"
+                          title="Abandonar Duelo"
+                        >
+                          <LogOut size={12} />
+                          <span>Desistir</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Visual Progress Bar Cronómetro */}
@@ -2522,9 +2661,32 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           ))
         );
 
+        const myAnswersList = Object.values(myPlayer?.answers || {});
+        const oppAnswersList = Object.values(opponent?.answers || {});
+        const totalQ = currentRoom.questions?.length || 5;
+
+        const myCorrectAnswers = myAnswersList.filter((a: any) => Boolean(a?.isCorrect)).length;
+        const myAccuracyPct = Math.min(100, Math.round((myCorrectAnswers / Math.max(1, totalQ)) * 100));
+        const myTotalTime = myAnswersList.reduce<number>((acc, a: any) => acc + (Number(a?.timeSeconds) || 0), 0);
+        const myAvgTime = myAnswersList.length > 0 ? (myTotalTime / myAnswersList.length).toFixed(1) : '0.0';
+
+        const oppCorrectAnswers = oppAnswersList.filter((a: any) => Boolean(a?.isCorrect)).length;
+        const oppAccuracyPct = Math.min(100, Math.round((oppCorrectAnswers / Math.max(1, totalQ)) * 100));
+        const oppTotalTime = oppAnswersList.reduce<number>((acc, a: any) => acc + (Number(a?.timeSeconds) || 0), 0);
+        const oppAvgTime = oppAnswersList.length > 0 ? (oppTotalTime / oppAnswersList.length).toFixed(1) : '0.0';
+
         return (
           <div className="multiplayer-duel-end-screen space-y-4 animate-fadeIn">
-            <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-amber-500/40 rounded-3xl p-6 text-center shadow-xl space-y-4">
+            <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border border-amber-500/40 rounded-3xl p-6 text-center shadow-xl space-y-4 relative overflow-hidden">
+              <button
+                type="button"
+                onClick={handleToggleSound}
+                className="absolute top-4 right-4 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/60 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 z-10"
+                title={isSoundMuted ? "Ativar Áudio dos Duelos" : "Desativar Áudio dos Duelos"}
+              >
+                {isSoundMuted ? <VolumeX size={14} className="text-rose-400" /> : <Volume2 size={14} className="text-emerald-400" />}
+                <span className="text-[10px] text-slate-300 hidden sm:inline">{isSoundMuted ? "Mudo" : "Som ON"}</span>
+              </button>
               
               {/* Icon / Seal Header */}
               {isBotMatch ? (
@@ -2578,16 +2740,54 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 </div>
               )}
 
-            {/* Scoreboard Podia */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-3.5">
-                <p className="text-[10px] text-slate-400">{myPlayer?.displayName}</p>
-                <p className="text-xl font-black text-amber-400 mt-1">{myPlayer?.score} Pts</p>
+            {/* Scoreboard & Performance Metrics */}
+            <div className="bg-slate-950/90 border border-amber-500/30 rounded-2xl p-4 text-left space-y-3 shadow-lg">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <BarChart2 size={14} className="text-amber-400" />
+                  Resumo do Duelo & Desempenho
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 font-mono">{totalQ} Questões</span>
               </div>
 
-              <div className="bg-slate-950/80 border border-blue-500/30 rounded-2xl p-3.5">
-                <p className="text-[10px] text-slate-400">{opponent?.displayName}</p>
-                <p className="text-xl font-black text-blue-400 mt-1">{opponent?.score} Pts</p>
+              <div className="grid grid-cols-2 gap-3 text-center">
+                {/* My Scorecard */}
+                <div className="bg-slate-900/90 border border-amber-500/40 rounded-2xl p-3.5 space-y-2 relative overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span className="text-xs font-extrabold text-amber-300 truncate max-w-[120px]">{myPlayer?.displayName || 'Você'}</span>
+                  </div>
+                  <p className="text-2xl font-black text-amber-400">{myPlayer?.score || 0} <span className="text-xs font-normal text-slate-400">Pts</span></p>
+                  
+                  <div className="pt-2 border-t border-slate-800 space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Target size={11} /> Precisão:</span>
+                      <span className="font-mono font-bold text-emerald-400">{myAccuracyPct}% ({myCorrectAnswers}/{totalQ})</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> Tempo Médio:</span>
+                      <span className="font-mono font-bold text-amber-300">{myAvgTime}s</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Opponent Scorecard */}
+                <div className="bg-slate-900/90 border border-blue-500/40 rounded-2xl p-3.5 space-y-2 relative overflow-hidden">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span className="text-xs font-extrabold text-blue-300 truncate max-w-[120px]">{opponent?.displayName || 'Oponente'}</span>
+                  </div>
+                  <p className="text-2xl font-black text-blue-400">{opponent?.score || 0} <span className="text-xs font-normal text-slate-400">Pts</span></p>
+
+                  <div className="pt-2 border-t border-slate-800 space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Target size={11} /> Precisão:</span>
+                      <span className="font-mono font-bold text-blue-400">{oppAccuracyPct}% ({oppCorrectAnswers}/{totalQ})</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> Tempo Médio:</span>
+                      <span className="font-mono font-bold text-blue-300">{oppAvgTime}s</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2637,24 +2837,74 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             )}
 
             {/* Review Questions with AI */}
-            <div className="text-left pt-2 space-y-2">
-              <h4 className="text-xs font-bold text-slate-300">Rever Questões do Duelo com IA:</h4>
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+            <div className="text-left pt-2 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+                  <BookOpen size={14} className="text-amber-400" />
+                  Revisão das Questões Pós-Duelo (IA)
+                </h4>
+                <span className="text-[10px] text-amber-400/80 font-medium">Clique em qualquer questão para fundamentação</span>
+              </div>
+
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                 {currentRoom.questions.map((q, idx) => {
                   const myAns = myPlayer?.answers[idx];
+                  const isCorrect = myAns?.isCorrect;
+                  const chosenIdx = myAns?.chosenIndex;
+                  const chosenText = chosenIdx !== undefined ? q.options[chosenIdx] : null;
+                  const correctText = q.options[q.correctIndex];
+
                   return (
                     <div
-                      key={q.id}
-                      className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs gap-2"
+                      key={q.id || idx}
+                      onClick={() => handleExplainWithAI(q, chosenIdx ?? 0)}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer group space-y-2 ${
+                        isCorrect
+                          ? 'bg-slate-950/80 border-emerald-500/30 hover:border-emerald-500/60'
+                          : 'bg-slate-950/80 border-rose-500/30 hover:border-rose-500/60'
+                      }`}
                     >
-                      <span className="truncate text-slate-200">{q.question}</span>
-                      <button
-                        onClick={() => handleExplainWithAI(q, myAns?.chosenIndex ?? 0)}
-                        className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[10px] font-bold shrink-0 flex items-center gap-1"
-                      >
-                        <Sparkles size={12} />
-                        <span>IA</span>
-                      </button>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-mono font-bold text-amber-400">
+                            #{idx + 1}
+                          </span>
+                          {isCorrect ? (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-[10px] flex items-center gap-1">
+                              <CheckCircle2 size={11} /> Acertou
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-md bg-rose-500/10 border border-rose-500/30 text-rose-400 font-bold text-[10px] flex items-center gap-1">
+                              <XCircle size={11} /> Errou
+                            </span>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExplainWithAI(q, chosenIdx ?? 0);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold shrink-0 flex items-center gap-1 group-hover:bg-amber-500 group-hover:text-slate-950 transition-all"
+                        >
+                          <Sparkles size={12} />
+                          <span>Ver Explicação IA</span>
+                        </button>
+                      </div>
+
+                      <p className="text-xs font-semibold text-slate-100 leading-snug line-clamp-2">{q.question}</p>
+
+                      <div className="pt-1.5 border-t border-slate-800/80 text-[11px] space-y-0.5 font-medium">
+                        {!isCorrect && chosenText && (
+                          <p className="text-rose-400/90 truncate">
+                            ❌ Sua escolha: <span className="font-semibold">{chosenText}</span>
+                          </p>
+                        )}
+                        <p className="text-emerald-400/90 truncate">
+                          🎯 Gabarito oficial: <span className="font-semibold">{correctText}</span>
+                        </p>
+                      </div>
                     </div>
                   );
                 })}
@@ -2683,6 +2933,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                       opponent.isBot,
                       currentRoom.category
                     );
+                    showToast(`Nova sala criada! Desafio enviado para ${opponent.displayName}.`);
                   } else {
                     handleCreateRoom();
                   }
@@ -2949,6 +3200,51 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         onConfirm={() => handleCancelRoom(true)}
         sessionType="duelo"
       />
+
+      {/* Modal Informativo: Sala Encerrada pelo Anfitrião */}
+      <AnimatePresence>
+        {isRoomClosedModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative overflow-hidden"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-500 flex items-center justify-center mx-auto shadow-inner">
+                <AlertCircle size={28} />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
+                  Sala Encerrada pelo Anfitrião
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  O anfitrião encerrou ou abandonou a sala de duelo. A partida não pode ser continuada.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRoomClosedModalOpen(false);
+                  setViewState('lobby');
+                  setCurrentRoom(null);
+                }}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+              >
+                <LogOut size={16} />
+                <span>Voltar ao Menu Principal</span>
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

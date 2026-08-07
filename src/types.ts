@@ -195,7 +195,7 @@ export interface DuelPlayer {
   isConnected: boolean;
 }
 
-export type DuelStatus = 'waiting' | 'active' | 'finished' | 'cancelled';
+export type DuelStatus = 'waiting' | 'active' | 'finished' | 'cancelled' | 'abandoned';
 
 export interface DuelRoom {
   id: string;

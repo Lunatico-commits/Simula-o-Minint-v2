@@ -6,7 +6,7 @@ import { doc, getDoc, getDocFromCache, setDoc, updateDoc } from 'firebase/firest
 import { Header } from './components/Header';
 import { PracticeQuiz } from './components/PracticeQuiz';
 import { DailyChallenge } from './components/DailyChallenge';
-import { MultiplayerDuel } from './components/MultiplayerDuel';
+import { MultiplayerDuel, normalizeRoomCode } from './components/MultiplayerDuel';
 import { RankingsView } from './components/RankingsView';
 import { AIChatTutor } from './components/AIChatTutor';
 import { ProfileModal } from './components/ProfileModal';
@@ -48,19 +48,40 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'quiz' | 'desafio' | 'duel' | 'rankings' | 'tutor' | 'guide' | 'faq' | 'badges'>('quiz');
   const [quizResetKey, setQuizResetKey] = useState(0);
   const [inviteRoomCode, setInviteRoomCode] = useState<string | null>(null);
+  const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
 
-  // Check URL query parameters for direct 1v1 duel invite links (e.g. ?code=MNT-8421 or ?room=MNT-8421 or ?duelRoom=MNT-8421)
+  // Check URL query parameters or pathname for direct 1v1 duel invite links (e.g. ?join=MNT-8421 or ?duelRoom=MNT-8421 or /duel/MNT-8421)
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      const roomParam = params.get('code') || params.get('room') || params.get('duelRoom') || params.get('duel') || params.get('sala');
+      let roomParam =
+        params.get('join') ||
+        params.get('code') ||
+        params.get('room') ||
+        params.get('duelRoom') ||
+        params.get('duel') ||
+        params.get('sala');
+
+      if (!roomParam && window.location.pathname) {
+        const pathParts = window.location.pathname.split('/').filter(Boolean);
+        const lastPart = pathParts[pathParts.length - 1];
+        if (lastPart && (lastPart.toUpperCase().startsWith('MNT') || lastPart.length >= 4)) {
+          roomParam = lastPart;
+        }
+      }
+
       if (roomParam) {
-        const code = roomParam.trim().toUpperCase();
-        setInviteRoomCode(code);
-        setActiveTab('duel');
-        // Clean up URL parameter from browser history cleanly
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
+        const normalized = normalizeRoomCode(roomParam);
+        if (normalized && normalized.length >= 5) {
+          setPendingRoomCode(normalized);
+          setInviteRoomCode(normalized);
+          setActiveTab('duel');
+        }
+
+        // Clean up URL parameter cleanly from browser history without reloading page
+        const isPathRoute = window.location.pathname.match(/\/(duel|join|room|duels|sala)\//i);
+        const cleanUrl = isPathRoute ? '/' : window.location.pathname;
+        window.history.replaceState({}, '', cleanUrl);
       }
     } catch (err) {
       console.warn('Erro ao ler parâmetro de convite de duelo da URL:', err);
@@ -294,14 +315,57 @@ export default function App() {
     async function initUser() {
       try {
         const activeUid = localStorage.getItem('minint_current_account_uid');
-        const localSaved = activeUid ? getSavedAccountFromLocalStorage(activeUid) : null;
+        let localSaved = activeUid ? getSavedAccountFromLocalStorage(activeUid) : null;
         
-        // If no authenticated session or account saved, prompt login/registration directly
+        // Check if there is a direct duel room parameter in URL or pending state
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlRoomParam = searchParams.get('join') || searchParams.get('code') || searchParams.get('room') || searchParams.get('duelRoom') || searchParams.get('duel') || searchParams.get('sala');
+        const hasRoomParam = !!(pendingRoomCode || inviteRoomCode || urlRoomParam);
+
+        // If no authenticated session or account saved:
         if (!activeUid || !localSaved) {
-          setIsAuthModalOpen(true);
-          setAuthModalInitialView('login_existing');
-          setLoading(false);
-          return;
+          if (hasRoomParam) {
+            // Visitor opened a direct duel link: create a unique guest profile for the visitor
+            const guestUid = `guest_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
+            const guestProfile: UserProfile = {
+              uid: guestUid,
+              displayName: `Candidato Recruta #${Math.floor(1000 + Math.random() * 9000)}`,
+              branch: 'PNA',
+              avatarId: 'pna_1',
+              province: 'Luanda',
+              rankTitle: 'Candidato Recruta',
+              totalXp: 100,
+              level: 1,
+              duelsPlayed: 0,
+              duelsWon: 0,
+              multiplayerDuelsPlayed: 0,
+              multiplayerDuelsWon: 0,
+              quizzesCompleted: 0,
+              correctAnswersCount: 0,
+              totalQuestionsAnswered: 0,
+              categoryStats: {
+                legislacao_minint: { correct: 0, total: 0 },
+                direito_constituicao: { correct: 0, total: 0 },
+                historia_cultura_geral: { correct: 0, total: 0 },
+                portugues_raciocinio: { correct: 0, total: 0 },
+                lingua_portuguesa: { correct: 0, total: 0 },
+                cultura_geral: { correct: 0, total: 0 },
+                direito_penal: { correct: 0, total: 0 },
+                raciocinio_logico: { correct: 0, total: 0 },
+                informatica_basica: { correct: 0, total: 0 },
+              },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            setProfile(guestProfile);
+            saveAccountToLocalStorage(guestProfile);
+            localSaved = guestProfile;
+          } else {
+            setIsAuthModalOpen(true);
+            setAuthModalInitialView('login_existing');
+            setLoading(false);
+            return;
+          }
         }
 
         const authUser = await getOrSignInUser();
@@ -422,6 +486,14 @@ export default function App() {
     };
   }, [profile?.uid, loading]);
 
+  // Whenever visitor profile is ready and pending room code exists from a direct link, trigger duel tab
+  useEffect(() => {
+    if (pendingRoomCode && profile?.uid) {
+      setInviteRoomCode(pendingRoomCode);
+      setActiveTab('duel');
+    }
+  }, [pendingRoomCode, profile?.uid]);
+
   // Account Switching & Creation Handlers
   const handleSelectAccount = async (account: SavedAccount) => {
     setIsLoggedOut(false);
@@ -473,6 +545,11 @@ export default function App() {
       }
     } catch (e) {
       console.warn('Erro ao selecionar conta:', e);
+    } finally {
+      if (pendingRoomCode) {
+        setInviteRoomCode(pendingRoomCode);
+        setActiveTab('duel');
+      }
     }
   };
 
@@ -490,6 +567,11 @@ export default function App() {
       console.warn('Erro ao gravar nova conta no Firestore:', e);
       setProfile(newProfile);
       saveAccountToLocalStorage(newProfile);
+    } finally {
+      if (pendingRoomCode) {
+        setInviteRoomCode(pendingRoomCode);
+        setActiveTab('duel');
+      }
     }
   };
 
