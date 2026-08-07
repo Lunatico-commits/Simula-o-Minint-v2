@@ -13,10 +13,10 @@ async function startServer() {
   app.use(express.json());
 
   // Helper lazy getter for Gemini AI SDK
-  function getGeminiClient(apiVersion: string = 'v1beta') {
+  function getGeminiClient(apiVersion: string = 'v1') {
     const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
     if (!apiKey) {
-      console.error('[Gemini API Critical] GEMINI_API_KEY environment variable is missing or empty.');
+      console.error('[Gemini API Critical] GEMINI_API_KEY / VITE_GEMINI_API_KEY environment variable is missing or empty.');
     }
     return new GoogleGenAI({
       apiKey: apiKey || '',
@@ -29,14 +29,14 @@ async function startServer() {
     });
   }
 
-  // Helper function to call Gemini API with v1beta endpoint
+  // Helper function to call Gemini API with v1 endpoint
   async function generateGeminiContent(ai: GoogleGenAI, contents: any, config?: any) {
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
     let lastError: any = null;
 
     for (const model of modelsToTry) {
       try {
-        const apiVersion = 'v1beta';
+        const apiVersion = 'v1';
         console.log(`[Gemini API] Requisitando modelo: ${model} (API version: ${apiVersion})`);
         const client = getGeminiClient(apiVersion);
         const response = await client.models.generateContent({

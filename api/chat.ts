@@ -33,8 +33,8 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no ambiente do servidor.' });
     }
 
-    const modelName = 'gemini-1.5-flash';
-    const apiVersion = modelName.includes('1.5') ? 'v1' : 'v1beta';
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    const apiVersion = 'v1';
 
     const ai = new GoogleGenAI({
       apiKey,
@@ -77,18 +77,29 @@ DIRETRIZES DE ATUAÇÃO E CONHECIMENTO:
       { role: 'user', parts: [{ text: userQuery }] },
     ];
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents,
-      config: {
-        systemInstruction,
-        temperature: 0.7,
-      },
-    });
+    let lastErr: any = null;
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: {
+            systemInstruction,
+            temperature: 0.7,
+          },
+        });
 
-    const replyText = response.text;
-    if (replyText) {
-      return res.status(200).json({ reply: replyText });
+        if (response && response.text) {
+          return res.status(200).json({ reply: response.text });
+        }
+      } catch (err: any) {
+        lastErr = err;
+        console.warn(`[Vercel API Chat Error] Falha ao tentar modelo '${modelName}':`, err?.message || err);
+      }
+    }
+
+    if (lastErr) {
+      throw lastErr;
     }
 
     throw new Error('O modelo Gemini não retornou texto de resposta.');

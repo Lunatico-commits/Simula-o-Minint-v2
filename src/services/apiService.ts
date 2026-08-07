@@ -40,8 +40,8 @@ export async function askMININTAITutorClientDirect(
     throw new Error('Chave GEMINI_API_KEY / VITE_GEMINI_API_KEY ausente.');
   }
 
-  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash'];
-  const apiVersion = 'v1beta';
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  const apiVersion = 'v1';
 
   const ai = new GoogleGenAI({
     apiKey,
