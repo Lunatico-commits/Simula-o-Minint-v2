@@ -33,7 +33,7 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'GEMINI_API_KEY não configurada no ambiente do servidor.' });
     }
 
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
     const apiVersion = 'v1';
 
     const ai = new GoogleGenAI({
@@ -85,22 +85,39 @@ DIRETRIZES DE RESPOSTA E TOM:
 
     let lastErr: any = null;
     for (const modelName of modelsToTry) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents,
-          config: {
-            systemInstruction,
-            temperature: 0.7,
-          },
-        });
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents,
+            config: {
+              systemInstruction,
+              temperature: 0.7,
+            },
+          });
 
-        if (response && response.text) {
-          return res.status(200).json({ reply: response.text });
+          if (response && response.text) {
+            return res.status(200).json({ reply: response.text });
+          }
+        } catch (err: any) {
+          lastErr = err;
+          const errStr = String(err?.message || err);
+          const isQuota =
+            err?.status === 429 ||
+            errStr.includes('429') ||
+            errStr.includes('RESOURCE_EXHAUSTED') ||
+            errStr.includes('Quota exceeded') ||
+            errStr.includes('quota');
+
+          if (isQuota && attempt === 1) {
+            console.warn(`[Vercel API Chat 429 Quota] Modelo '${modelName}' limite atingido. Aguardando 2s para retry automático...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue;
+          }
+
+          console.warn(`[Vercel API Chat Error] Falha ao tentar modelo '${modelName}' (tentativa ${attempt}):`, err?.message || err);
+          break;
         }
-      } catch (err: any) {
-        lastErr = err;
-        console.warn(`[Vercel API Chat Error] Falha ao tentar modelo '${modelName}':`, err?.message || err);
       }
     }
 

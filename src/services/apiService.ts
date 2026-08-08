@@ -46,7 +46,7 @@ export async function askMININTAITutorClientDirect(
     return '⚠️ Olá, candidato! A chave de API do Gemini (GEMINI_API_KEY ou VITE_GEMINI_API_KEY) não está configurada no ambiente. Por favor, certifique-se de que a chave está configurada nas definições para utilizar todas as funcionalidades do Tutor IA!';
   }
 
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
   const apiVersion = 'v1';
 
   const ai = new GoogleGenAI({
@@ -66,22 +66,39 @@ export async function askMININTAITutorClientDirect(
 
   let lastErr: any = null;
   for (const modelName of modelsToTry) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents,
-        config: {
-          systemInstruction: MININT_SYSTEM_INSTRUCTION,
-          temperature: 0.7,
-        },
-      });
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: {
+            systemInstruction: MININT_SYSTEM_INSTRUCTION,
+            temperature: 0.7,
+          },
+        });
 
-      if (response.text) {
-        return response.text;
+        if (response.text) {
+          return response.text;
+        }
+      } catch (err: any) {
+        lastErr = err;
+        const errStr = String(err?.message || err);
+        const isQuota =
+          err?.status === 429 ||
+          errStr.includes('429') ||
+          errStr.includes('RESOURCE_EXHAUSTED') ||
+          errStr.includes('Quota exceeded') ||
+          errStr.includes('quota');
+
+        if (isQuota && attempt === 1) {
+          console.warn(`[Client Direct Gemini 429 Quota] Modelo '${modelName}' limite atingido. Aguardando 2s para retry automático...`);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        console.warn(`[Client Direct Gemini Error] Falha ao tentar modelo '${modelName}' (tentativa ${attempt}):`, err?.message || err);
+        break;
       }
-    } catch (err: any) {
-      lastErr = err;
-      console.warn(`[Client Direct Gemini Error] Falha ao tentar modelo '${modelName}':`, err?.message || err);
     }
   }
 
@@ -152,8 +169,8 @@ export async function askMININTAITutor(
   userQuery: string,
   history: { role: 'user' | 'model'; parts: string }[] = []
 ): Promise<string> {
-  try {
-    const response = await fetch('/api/chat', {
+  const doFetch = async () => {
+    return await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -163,9 +180,15 @@ export async function askMININTAITutor(
         history,
       }),
     });
+  };
+
+  try {
+    let response = await doFetch();
 
     if (response.status === 429) {
-      return 'O Tutor IA está com excesso de pedidos no momento. Aguarde alguns segundos e tente novamente!';
+      console.warn('[API /api/chat HTTP 429] Limite de pedidos atingido. Aguardando 2 segundos para retry automático...');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      response = await doFetch();
     }
 
     if (response.ok) {
@@ -191,7 +214,8 @@ export async function askMININTAITutor(
         parsedErr.includes('Quota exceeded') ||
         parsedErr.includes('quota')
       ) {
-        return 'O Tutor IA está com excesso de pedidos no momento. Aguarde alguns segundos e tente novamente!';
+        console.warn('[API /api/chat Quota Limit Error] Tentando fallback para chamada direta no cliente com retry...');
+        return await askMININTAITutorClientDirect(userQuery, history);
       }
 
       console.warn(`[API /api/chat HTTP ${response.status}] ${parsedErr || response.statusText}. Tentando chamada direta no cliente com @google/genai...`);
@@ -204,7 +228,7 @@ export async function askMININTAITutor(
       bMsg.includes('RESOURCE_EXHAUSTED') ||
       bMsg.includes('Quota exceeded')
     ) {
-      return 'O Tutor IA está com excesso de pedidos no momento. Aguarde alguns segundos e tente novamente!';
+      return 'O Tutor IA está com um elevado volume de consultas no momento. Por favor, aguarde alguns segundos e tente novamente!';
     }
     console.warn('[API /api/chat Fetch Error] Falha de rota backend. Tentando chamada direta no cliente:', backendError?.message || backendError);
   }
@@ -223,7 +247,7 @@ export async function askMININTAITutor(
       cMsg.includes('Quota exceeded') ||
       cMsg.includes('quota')
     ) {
-      return 'O Tutor IA está com excesso de pedidos no momento. Aguarde alguns segundos e tente novamente!';
+      return 'O Tutor IA está com um elevado volume de consultas no momento. Por favor, aguarde alguns segundos e tente novamente!';
     }
     return `⚠️ Erro na comunicação com o Tutor IA: ${clientError?.message || String(clientError)}. Verifique se a chave GEMINI_API_KEY ou VITE_GEMINI_API_KEY está configurada no projeto.`;
   }

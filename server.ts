@@ -31,32 +31,48 @@ async function startServer() {
 
   // Helper function to call Gemini API with v1 endpoint
   async function generateGeminiContent(ai: GoogleGenAI, contents: any, config?: any) {
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
     let lastError: any = null;
 
     for (const model of modelsToTry) {
-      try {
-        const apiVersion = 'v1';
-        console.log(`[Gemini API] Requisitando modelo: ${model} (API version: ${apiVersion})`);
-        const client = getGeminiClient(apiVersion);
-        const response = await client.models.generateContent({
-          model,
-          contents,
-          config,
-        });
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const apiVersion = 'v1';
+          console.log(`[Gemini API] Requisitando modelo: ${model} (API version: ${apiVersion}, tentativa ${attempt})`);
+          const client = getGeminiClient(apiVersion);
+          const response = await client.models.generateContent({
+            model,
+            contents,
+            config,
+          });
 
-        if (response && response.text) {
-          return response.text;
+          if (response && response.text) {
+            return response.text;
+          }
+        } catch (err: any) {
+          lastError = err;
+          const errStr = String(err?.message || err);
+          const isQuota =
+            err?.status === 429 ||
+            errStr.includes('429') ||
+            errStr.includes('RESOURCE_EXHAUSTED') ||
+            errStr.includes('Quota exceeded') ||
+            errStr.includes('quota');
+
+          console.error(`[Gemini API Error] Erro ao chamar modelo '${model}' (tentativa ${attempt}):`, {
+            message: err?.message || String(err),
+            status: err?.status,
+            statusText: err?.statusText,
+          });
+
+          if (isQuota && attempt === 1) {
+            console.warn(`[Gemini API 429 Quota Exceeded] Modelo '${model}' excedeu cota. Aguardando 2s para retry automático...`);
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            continue; // retry same model
+          }
+
+          break; // move to next model
         }
-      } catch (err: any) {
-        lastError = err;
-        console.error(`[Gemini API Error] Erro ao chamar modelo '${model}':`, {
-          message: err?.message || String(err),
-          status: err?.status,
-          statusText: err?.statusText,
-          errorDetails: err?.errorDetails || err?.details,
-          stack: err?.stack,
-        });
       }
     }
 
