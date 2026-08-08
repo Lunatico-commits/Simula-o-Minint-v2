@@ -46,7 +46,7 @@ export async function askMININTAITutorClientDirect(
     return '⚠️ Olá, candidato! A chave de API do Gemini (GEMINI_API_KEY ou VITE_GEMINI_API_KEY) não está configurada no ambiente. Por favor, certifique-se de que a chave está configurada nas definições para utilizar todas as funcionalidades do Tutor IA!';
   }
 
-  const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+  const modelsToTry = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
   const apiVersion = 'v1';
 
   const ai = new GoogleGenAI({

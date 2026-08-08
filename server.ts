@@ -31,7 +31,7 @@ async function startServer() {
 
   // Helper function to call Gemini API with v1 endpoint
   async function generateGeminiContent(ai: GoogleGenAI, contents: any, config?: any) {
-    const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+    const modelsToTry = ['gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-2.0-flash'];
     let lastError: any = null;
 
     for (const model of modelsToTry) {
