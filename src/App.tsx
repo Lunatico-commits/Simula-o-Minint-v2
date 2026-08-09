@@ -16,6 +16,7 @@ import { NotificationSettingsModal } from './components/NotificationSettingsModa
 import { NotificationBanner } from './components/NotificationBanner';
 import { listenForDuelInvitations, checkAndTriggerDailyStudyReminder } from './utils/notifications';
 import { SupportProjectModal } from './components/SupportProjectModal';
+import { StudyMaterialsView } from './components/StudyMaterialsView';
 import { FaqAndTestimonials } from './components/FaqAndTestimonials';
 import { AdBanner } from './components/AdBanner';
 import { RankUpModal } from './components/RankUpModal';
@@ -45,7 +46,7 @@ import { ShieldCheck, BookOpen, Trophy, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'quiz' | 'desafio' | 'duel' | 'rankings' | 'tutor' | 'guide' | 'faq' | 'badges'>('quiz');
+  const [activeTab, setActiveTab] = useState<'quiz' | 'desafio' | 'duel' | 'rankings' | 'materials' | 'tutor' | 'guide' | 'faq' | 'badges'>('quiz');
   const [quizResetKey, setQuizResetKey] = useState(0);
   const [inviteRoomCode, setInviteRoomCode] = useState<string | null>(null);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
@@ -933,6 +934,10 @@ export default function App() {
                 currentProfile={profile}
                 onPlayDuel={() => requestTabChange('duel')}
               />
+            )}
+
+            {activeTab === 'materials' && (
+              <StudyMaterialsView profile={profile} />
             )}
 
             {activeTab === 'tutor' && (

@@ -3,7 +3,7 @@ import { UserProfile, isAdminUser } from '../types';
 import { MININT_BRANCHES, RANKS_MININT, getAvatarOption } from '../data/branches';
 import { getSoundEnabled, setSoundEnabled, playClickSound } from '../utils/audio';
 import { calculateCurrentStreak } from '../utils/streak';
-import { Lightbulb, Shield, Trophy, User, Wifi, WifiOff, Sparkles, BookOpen, Swords, Sun, Moon, Monitor, ShieldCheck, HelpCircle, Volume2, VolumeX, Flame, Bell, Award, MessageSquareQuote, Sliders } from 'lucide-react';
+import { Lightbulb, Shield, Trophy, User, Wifi, WifiOff, Sparkles, BookOpen, Swords, Sun, Moon, Monitor, ShieldCheck, HelpCircle, Volume2, VolumeX, Flame, Bell, Award, MessageSquareQuote, Sliders, FileText } from 'lucide-react';
 import { motion } from 'motion/react';
 import { BranchIllustration } from './BranchIllustration';
 
@@ -477,6 +477,19 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Trophy size={16} />
           <span className="text-[10px] sm:text-[11px] leading-tight">Rankings</span>
+        </button>
+
+        <button
+          data-tab="materials"
+          onClick={() => setActiveTab('materials')}
+          className={`py-2 px-2.5 sm:px-3 shrink-0 flex flex-col items-center justify-center gap-0.5 transition-all relative cursor-pointer border-b-2 ${
+            activeTab === 'materials'
+              ? 'text-amber-600 dark:text-amber-400 font-bold border-amber-500'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium border-transparent'
+          }`}
+        >
+          <FileText size={16} className="text-amber-500 dark:text-amber-400" />
+          <span className="text-[10px] sm:text-[11px] leading-tight">PDFs de Estudo</span>
         </button>
 
         <button
