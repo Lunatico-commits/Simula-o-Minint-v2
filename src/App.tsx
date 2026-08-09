@@ -306,6 +306,8 @@ export default function App() {
       localStorage.setItem('minint_saved_accounts', JSON.stringify(accounts));
       localStorage.setItem('minint_current_account_uid', accountProfile.uid);
       localStorage.setItem(`minint_user_profile_${accountProfile.uid}`, JSON.stringify(accountProfile));
+      localStorage.setItem('minint_user', JSON.stringify(accountProfile));
+      localStorage.setItem('currentUser', JSON.stringify(accountProfile));
     } catch (e) {
       console.warn('Erro ao guardar conta localmente:', e);
     }

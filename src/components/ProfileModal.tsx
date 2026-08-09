@@ -446,7 +446,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Candidate Name */}
           <div>
             <label className="block text-[11px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold mb-1">
-              Nome do Candidato / Apelido
+              Nome do Utilizador / Candidato
             </label>
             <input
               type="text"
@@ -754,7 +754,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 className="flex-1 py-3 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
               >
                 <UserCheck size={16} />
-                <span>Guardar</span>
+                <span>Guardar Alterações</span>
               </button>
             </div>
           </div>
