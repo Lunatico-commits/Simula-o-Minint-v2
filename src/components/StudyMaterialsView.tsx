@@ -825,6 +825,11 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                 {/* PASSO 3: Sucesso e Download Imadiato */}
                 {paymentStep === 3 && (
                   <div className="space-y-4 text-center py-3">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-xs border border-emerald-500/40">
+                      <CheckCircle2 size={14} />
+                      <span>Estado: Pago</span>
+                    </div>
+
                     <div className="w-14 h-14 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/40">
                       <CheckCircle2 size={32} />
                     </div>
@@ -838,9 +843,14 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                       </p>
                     </div>
 
-                    <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                      <div>Comprovativo enviado para: <strong className="text-slate-200">{studentEmail}</strong></div>
-                      <div>Contacto: <strong className="text-slate-200">{studentPhone}</strong></div>
+                    <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] text-slate-300 space-y-1.5 text-left">
+                      <div className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                        <Check size={14} />
+                        <span>Cópias e Ligação Enviadas por E-mail</span>
+                      </div>
+                      <p className="text-slate-400 text-[10px] leading-normal">
+                        Enviámos uma cópia da ligação de download e o recibo de compra para o seu e-mail: <strong className="text-slate-200">{studentEmail}</strong>.
+                      </p>
                     </div>
 
                     <div className="space-y-2 pt-2">
@@ -850,7 +860,7 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                         className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
                       >
                         <Download size={16} />
-                        <span>Baixar Ficheiro PDF Agora 📥</span>
+                        <span>Baixar PDF Agora 📥</span>
                       </button>
 
                       <button
