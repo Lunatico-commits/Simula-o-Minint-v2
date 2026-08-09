@@ -25,6 +25,7 @@ interface HeaderProps {
   effectiveTheme?: 'dark' | 'light';
   onCycleThemeMode?: () => void;
   onGoHome?: () => void;
+  hasPendingDuelInvite?: boolean;
 }
 
 export const MinintShieldLogo: React.FC<{ size?: number }> = ({ size = 40 }) => (
@@ -102,6 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
   effectiveTheme = 'dark',
   onCycleThemeMode,
   onGoHome,
+  hasPendingDuelInvite = false,
 }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isAudioOn, setIsAudioOn] = useState(() => getSoundEnabled());
@@ -413,21 +415,56 @@ export const Header: React.FC<HeaderProps> = ({
           <span className="text-[10px] sm:text-[11px] leading-tight">Simulados</span>
         </button>
 
-        <button
+        <motion.button
           data-tab="duel"
           onClick={() => setActiveTab('duel')}
+          animate={
+            hasPendingDuelInvite
+              ? {
+                  scale: [1, 1.12, 0.96, 1.08, 1],
+                  rotate: [0, -6, 6, -4, 4, 0],
+                }
+              : {}
+          }
+          transition={
+            hasPendingDuelInvite
+              ? {
+                  duration: 1.2,
+                  repeat: Infinity,
+                  repeatDelay: 0.8,
+                  ease: 'easeInOut',
+                }
+              : undefined
+          }
           className={`py-2 px-2.5 sm:px-3 shrink-0 flex flex-col items-center justify-center gap-0.5 transition-all relative cursor-pointer border-b-2 ${
-            activeTab === 'duel'
+            hasPendingDuelInvite
+              ? 'text-amber-500 dark:text-amber-400 font-black border-amber-500 bg-amber-500/15 dark:bg-amber-500/25 rounded-t-lg shadow-[0_0_15px_rgba(245,158,11,0.35)] ring-1 ring-amber-500/50'
+              : activeTab === 'duel'
               ? 'text-amber-600 dark:text-amber-400 font-bold border-amber-500'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium border-transparent'
           }`}
         >
           <div className="relative">
-            <Swords size={16} />
-            <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+            <Swords
+              size={16}
+              className={hasPendingDuelInvite ? 'text-amber-500 animate-bounce' : ''}
+            />
+            {hasPendingDuelInvite ? (
+              <span className="absolute -top-1.5 -right-1.5 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 text-[8px] font-black text-white items-center justify-center shadow-xs">!</span>
+              </span>
+            ) : (
+              <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+            )}
           </div>
-          <span className="text-[10px] sm:text-[11px] leading-tight">Duelo 1v1</span>
-        </button>
+          <span className="text-[10px] sm:text-[11px] leading-tight flex items-center gap-1">
+            Duelo 1v1
+            {hasPendingDuelInvite && (
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </span>
+        </motion.button>
 
         <button
           data-tab="rankings"

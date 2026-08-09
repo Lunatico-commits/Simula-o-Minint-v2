@@ -873,6 +873,9 @@ export default function App() {
         effectiveTheme={effectiveTheme}
         onCycleThemeMode={cycleThemeMode}
         onGoHome={handleGoHome}
+        hasPendingDuelInvite={Boolean(
+          (activeNotification && activeNotification.type === 'duel') || inviteRoomCode || pendingRoomCode
+        )}
       />
 
       {/* Main Container */}
