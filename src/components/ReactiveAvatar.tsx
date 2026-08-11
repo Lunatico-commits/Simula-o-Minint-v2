@@ -151,35 +151,61 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
   const banner = getReactionBanner();
   const isReacting = activeReaction !== 'idle';
 
+  // Speech Balloon Y-offset calculation based on avatar size to prevent overlapping with level/branch badges or crown
+  const getBalloonYOffset = () => {
+    switch (size) {
+      case 'xs':
+        return -26;
+      case 'sm':
+        return -30;
+      case 'md':
+        return -36;
+      case 'lg':
+        return -44;
+      case 'xl':
+        return -54;
+      case '2xl':
+        return -64;
+      case '3xl':
+        return -74;
+      default:
+        return -36;
+    }
+  };
+
   return (
     <div className={`relative inline-flex items-center justify-center select-none ${className}`}>
-      {/* Click Interactive Message Toast */}
+      {/* Click Interactive Message Toast / Speech Balloon */}
       <AnimatePresence>
         {clickMessage && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.8 }}
-            animate={{ opacity: 1, y: -28, scale: 1 }}
-            exit={{ opacity: 0, y: -38, scale: 0.8 }}
+            initial={{ opacity: 0, y: 0, scale: 0.8 }}
+            animate={{ opacity: 1, y: getBalloonYOffset(), scale: 1 }}
+            exit={{ opacity: 0, y: getBalloonYOffset() - 12, scale: 0.8 }}
             transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-            className="absolute -top-3 z-30 pointer-events-none whitespace-nowrap bg-slate-900/95 text-amber-300 text-[10px] font-black px-2.5 py-1 rounded-full border border-amber-500/50 shadow-xl backdrop-blur-md flex items-center gap-1"
+            className="absolute -top-3 z-50 pointer-events-none whitespace-nowrap bg-slate-900/95 text-amber-300 text-[11px] font-extrabold px-3.5 py-1.5 rounded-full border border-amber-500/60 shadow-2xl backdrop-blur-md flex items-center justify-center gap-1.5 leading-none select-none"
           >
-            <span>{clickMessage}</span>
+            <span className="shrink-0">{clickMessage}</span>
+            {/* Speech Bubble Arrow Tail */}
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-slate-900 border-r border-b border-amber-500/60" />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Floating Reaction Banner Header */}
+      {/* Floating Reaction Banner Header / Speech Balloon */}
       <AnimatePresence>
         {banner && !clickMessage && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.7 }}
-            animate={{ opacity: 1, y: size === 'xs' || size === 'sm' ? -18 : -22, scale: 1 }}
-            exit={{ opacity: 0, y: -28, scale: 0.7 }}
+            initial={{ opacity: 0, y: 0, scale: 0.7 }}
+            animate={{ opacity: 1, y: getBalloonYOffset(), scale: 1 }}
+            exit={{ opacity: 0, y: getBalloonYOffset() - 12, scale: 0.7 }}
             transition={{ type: 'spring', stiffness: 450, damping: 22 }}
-            className={`absolute z-30 pointer-events-none whitespace-nowrap px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider shadow-lg flex items-center gap-1 border border-white/20 ${banner.bg}`}
+            className={`absolute z-50 pointer-events-none whitespace-nowrap px-3.5 py-1.5 rounded-full text-[10px] sm:text-[11px] font-black uppercase tracking-wider shadow-2xl flex items-center justify-center gap-1.5 border border-white/40 backdrop-blur-md leading-none select-none ${banner.bg}`}
           >
-            <banner.icon size={10} className="stroke-[3]" />
-            <span>{banner.text}</span>
+            <banner.icon size={12} className="stroke-[3] shrink-0" />
+            <span className="shrink-0">{banner.text}</span>
+            {/* Speech Bubble Arrow Tail */}
+            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 rotate-45 bg-inherit border-r border-b border-white/30" />
           </motion.div>
         )}
       </AnimatePresence>

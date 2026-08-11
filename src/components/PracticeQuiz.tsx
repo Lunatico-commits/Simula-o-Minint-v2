@@ -917,7 +917,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
             }`}>
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 opacity-60" />
 
-              <div className="flex items-center justify-center mx-auto pt-1">
+              <div className="flex items-center justify-center mx-auto pt-8">
                 <ReactiveAvatar
                   avatarId={profile.avatarId}
                   branch={profile.branch}

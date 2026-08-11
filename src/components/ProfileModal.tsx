@@ -147,8 +147,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         </div>
 
         {/* Compact Highlighted Top Avatar Preview with Compact Reaction Test */}
-        <div className="bg-gradient-to-br from-amber-500/10 via-slate-50 to-amber-500/5 dark:from-amber-500/15 dark:via-[#0F1115] dark:to-[#16181D] border border-amber-500/30 rounded-2xl p-3 mb-3.5 flex flex-col items-center justify-center text-center shadow-md relative overflow-hidden">
-          <div className="relative mb-1 flex items-center justify-center pt-1">
+        <div className="bg-gradient-to-br from-amber-500/10 via-slate-50 to-amber-500/5 dark:from-amber-500/15 dark:via-[#0F1115] dark:to-[#16181D] border border-amber-500/30 rounded-2xl p-3 mb-3.5 flex flex-col items-center justify-center text-center shadow-md relative overflow-visible">
+          <div className="relative mb-1 flex items-center justify-center pt-8">
             <ReactiveAvatar
               avatarId={avatarId}
               branch={branch}
