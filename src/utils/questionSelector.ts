@@ -107,8 +107,16 @@ export function getRandomQuestions(options: GetRandomQuestionsOptions): Question
   let candidatePool = [...fullBank];
 
   if (category && category !== 'todas' && category !== 'misto') {
-    const normCategory = normalizeCategory(category);
-    candidatePool = candidatePool.filter(q => normalizeCategory(q.category) === normCategory);
+    const exactMatches = candidatePool.filter(q => q.category === category);
+    if (exactMatches.length >= count) {
+      candidatePool = exactMatches;
+    } else {
+      const normCategory = normalizeCategory(category);
+      const normMatches = candidatePool.filter(q => normalizeCategory(q.category) === normCategory);
+      if (normMatches.length > 0) {
+        candidatePool = normMatches;
+      }
+    }
   }
 
   if (academicLevel) {

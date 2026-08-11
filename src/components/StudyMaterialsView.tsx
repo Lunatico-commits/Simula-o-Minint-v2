@@ -54,7 +54,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Combo Especial',
     description: 'Pacote definitivo e completo para o Concurso do MININT. Inclui todos os 7 manuais de estudo em PDF (Legislação, Português, Cultura Geral & Informática) + Coletânea Especial de 500 Questões Resolvidas.',
     priceKz: 2500,
-    pages: '7 Livros em PDF • 326 Páginas no Total',
+    pages: '7 Livros em PDF • 135 PÁGINAS NO TOTAL',
     rating: 5.0,
     reviewsCount: 148,
     isCombo: true,
@@ -80,7 +80,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Legislação MININT',
     description: 'Resumo completo e esquematizado do Decreto Presidencial n.º 152/19. Abrange as competências e estruturas da PNA, SIC, SME, SP e SPCB com tabelas comparativas e pontos focais de exames.',
     priceKz: 490,
-    pages: '48 Páginas • Esquematizado',
+    pages: '18 PÁGINAS • Esquematizado',
     rating: 4.9,
     reviewsCount: 92,
     highlights: [
@@ -103,7 +103,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Legislação MININT',
     description: 'Guia de estudo focado nos Direitos, Liberdades e Garantias Fundamentais (Art. 67.º ao 89.º), Organização do Estado, Defesa Nacional e Princípios de Atuação da Segurança Pública.',
     priceKz: 490,
-    pages: '40 Páginas • Foco em Exames',
+    pages: '12 PÁGINAS • Foco em Exames',
     rating: 5.0,
     reviewsCount: 84,
     highlights: [
@@ -126,7 +126,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Legislação MININT',
     description: 'Manual prático sobre Prisão Preventiva, Flagrante Delito, Crimes Contra a Ordem e Segurança Pública, Atribuições do SIC e limites de atuação dos agentes policiais.',
     priceKz: 490,
-    pages: '54 Páginas • Casos Práticos',
+    pages: '18 PÁGINAS • Casos Práticos',
     rating: 4.8,
     reviewsCount: 76,
     highlights: [
@@ -149,7 +149,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Língua Portuguesa',
     description: 'Guia completo com regras de Sintaxe, Concordância Verbal e Nominal, Regência, Pontuação, Crase e aplicação prática do Novo Acordo Ortográfico com questões de provas.',
     priceKz: 490,
-    pages: '62 Páginas • Resumo + Exercícios',
+    pages: '41 PÁGINAS • Resumo + Exercícios',
     rating: 4.9,
     reviewsCount: 110,
     highlights: [
@@ -172,7 +172,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Língua Portuguesa',
     description: 'Técnicas essenciais de interpretação textual, identificação da ideia central, coesão e coerência, além de modelos prontos de relatórios, autos de notícia e correspondência oficial.',
     priceKz: 490,
-    pages: '36 Páginas • Guia de Redação',
+    pages: '12 PÁGINAS • Guia de Redação',
     rating: 4.8,
     reviewsCount: 65,
     highlights: [
@@ -195,7 +195,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Cultura Geral & Informática',
     description: 'Material completo contendo a História de Angola, Símbolos Nacionais, datas históricas cruciais, atualidades socioeconómicas e a Nova Divisão Político-Administrativa (Lei n.º 13/24 - 21 Províncias).',
     priceKz: 490,
-    pages: '52 Páginas • Mapas e Dados',
+    pages: '16 PÁGINAS • Mapas e Dados',
     rating: 5.0,
     reviewsCount: 105,
     highlights: [
@@ -218,7 +218,7 @@ export const STUDY_PDFS: StudyPDFItem[] = [
     category: 'Cultura Geral & Informática',
     description: 'Resumo prático sobre Sistemas Operativos (Windows), Pacote Microsoft Office (Word, Excel e PowerPoint), Conceitos de Redes de Computadores, Internet e Noções de Cibersegurança.',
     priceKz: 490,
-    pages: '44 Páginas • Capturas e Atalhos',
+    pages: '18 PÁGINAS • Capturas e Atalhos',
     rating: 4.9,
     reviewsCount: 78,
     highlights: [

@@ -180,6 +180,31 @@ export const CircularTimerRing: React.FC<CircularTimerRingProps> = ({
   );
 };
 
+export const getCategoryDisplayName = (cat?: string): string => {
+  if (!cat || cat === 'misto' || cat === 'Geral') return 'Misto (Todas as Matérias)';
+  switch (cat) {
+    case 'legislacao_minint':
+      return 'Lei Orgânica do MININT & Estatutos';
+    case 'direito_constituicao':
+      return 'Constituição da República (CRA)';
+    case 'direito_penal':
+      return 'Código Penal & Processo Penal Angolano';
+    case 'lingua_portuguesa':
+      return 'Gramática & Ortografia da Língua Portuguesa';
+    case 'raciocinio_logico':
+      return 'Raciocínio Lógico';
+    case 'portugues_raciocinio':
+      return 'Língua Portuguesa & Raciocínio Lógico';
+    case 'historia_cultura_geral':
+    case 'cultura_geral':
+      return 'Cultura Geral, História & Geografia de Angola';
+    case 'informatica_basica':
+      return 'Informática Básica & TICs para Exames';
+    default:
+      return cat.replace(/_/g, ' ').toUpperCase();
+  }
+};
+
 export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({ 
   profile, 
   initialRoomCode, 
@@ -1295,12 +1320,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
 
     onUpdateStats(correctCount, roomData.questions.length, totalXp, isWin, categoryBreakdown, isMultiplayerReal);
-    const catLabel = roomData.category === 'misto' 
-      ? 'Misto (MININT)' 
-      : roomData.category === 'legislacao_minint' ? 'Legislação MININT'
-      : roomData.category === 'direito_constituicao' ? 'Direito & CRA'
-      : roomData.category === 'historia_cultura_geral' ? 'História e Cultura'
-      : 'Português & Raciocínio';
+    const catLabel = getCategoryDisplayName(roomData.category);
 
     const newHistoryEntry: DuelHistoryEntry = {
       id: roomData.id || `hist_${Date.now()}`,
@@ -1465,9 +1485,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const cat = customCategory || currentRoom?.category || selectedCategory;
     if (code) {
       const inviteUrl = `${window.location.origin}${window.location.pathname}?duelRoom=${code}`;
-      const categoryName = cat === 'misto' 
-        ? 'Todas as Matérias MININT' 
-        : cat.replace('_', ' ').toUpperCase();
+      const categoryName = getCategoryDisplayName(cat);
       const msg = encodeURIComponent(
         `🛡️ *DESAFIO DE DUELO 1V1 — CONCURSO MININT ANGOLA* 🇦🇴\n\nDesafio-te para um duelo 1v1 ao vivo no simulado de preparação!\n\n📚 Matéria: *${categoryName}*\n🔑 Código da Sala: *${code}*\n\n👉 *Clica no link para entrares na minha sala em tempo real:*\n${inviteUrl}\n\nVenha testar os teus conhecimentos e provar quem sabe mais! 🚀`
       );
@@ -1680,21 +1698,51 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             </div>
 
             <div>
-              <label className="block text-[10px] text-slate-600 dark:text-slate-400 font-mono mb-1 font-bold">
-                MATÉRIA DO DUELO
+              <label className="block text-[10px] text-slate-600 dark:text-slate-400 font-mono mb-1 font-bold flex items-center justify-between">
+                <span>MATÉRIA / CATEGORIA DO DUELO</span>
+                <span className="text-[9px] text-amber-500 font-normal font-sans">Filtrar questões do desafio</span>
               </label>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value as any)}
-                className="w-full bg-slate-50 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs font-medium text-slate-900 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                className="w-full bg-slate-50 dark:bg-[#0A0A0A] border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-all cursor-pointer"
               >
-                <option value="misto">Misto (Todas as Matérias MININT)</option>
-                <option value="informatica_basica">Informática Básica</option>
-                <option value="legislacao_minint">Legislação do MININT</option>
-                <option value="direito_constituicao">Direito e Constituição (CRA)</option>
-                <option value="historia_cultura_geral">História e Cultura Geral</option>
-                <option value="portugues_raciocinio">Língua Portuguesa e Raciocínio Lógico</option>
+                <option value="misto">🎯 Misto (Todas as Matérias MININT)</option>
+                <option value="legislacao_minint">📜 Lei Orgânica do MININT & Estatuto Unificado</option>
+                <option value="direito_constituicao">🏛️ Constituição da República de Angola (CRA)</option>
+                <option value="direito_penal">⚖️ Código Penal & Processo Penal Angolano</option>
+                <option value="lingua_portuguesa">✍️ Gramática & Ortografia da Língua Portuguesa</option>
+                <option value="historia_cultura_geral">🇦🇴 Cultura Geral, História & Geografia de Angola</option>
+                <option value="informatica_basica">💻 Informática Básica & TICs para Exames</option>
+                <option value="raciocinio_logico">🧠 Raciocínio Lógico & Mente Policial</option>
+                <option value="portugues_raciocinio">📚 Português & Raciocínio Lógico</option>
               </select>
+
+              {/* Quick-select chips */}
+              <div className="flex items-center gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
+                {[
+                  { id: 'misto', label: '🎯 Misto' },
+                  { id: 'legislacao_minint', label: '📜 Lei Orgânica' },
+                  { id: 'direito_penal', label: '⚖️ Direito Penal' },
+                  { id: 'direito_constituicao', label: '🏛️ CRA' },
+                  { id: 'lingua_portuguesa', label: '✍️ Português' },
+                  { id: 'historia_cultura_geral', label: '🇦🇴 Cultura Geral' },
+                  { id: 'informatica_basica', label: '💻 Informática' },
+                ].map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(chip.id as any)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      selectedCategory === chip.id
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1796,8 +1844,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                         </div>
                         <div>
                           <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{room.player1.displayName}</p>
-                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-semibold flex items-center gap-1.5 mt-0.5">
+                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-semibold flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <span>Código: {room.roomCode}</span>
+                            <span className="px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[9px] font-bold">
+                              {getCategoryDisplayName(room.category)}
+                            </span>
                             {(room.mode === 'relampago' || room.timePerQuestion === 30) && (
                               <span className="px-1.5 py-0.2 rounded bg-rose-500/15 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
                                 <Zap size={10} className="text-amber-400" />
@@ -2225,7 +2276,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-white/5 rounded-xl p-3 flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-400 font-medium">
                 <span className="flex items-center gap-1">
                   <Shield size={12} className="text-amber-500" />
-                  Matéria: <strong className="text-slate-800 dark:text-slate-200 uppercase">{currentRoom.category === 'misto' ? 'Misto MININT' : currentRoom.category.replace('_', ' ')}</strong>
+                  Matéria: <strong className="text-slate-800 dark:text-slate-200 uppercase">{getCategoryDisplayName(currentRoom.category)}</strong>
                 </span>
                 <span className="flex items-center gap-1">
                   <Clock size={12} className="text-amber-500" />
