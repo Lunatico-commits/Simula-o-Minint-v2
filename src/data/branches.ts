@@ -123,18 +123,44 @@ export const getCandidateInitials = (displayName?: string): string => {
   return (first + last).toUpperCase();
 };
 
+export const BASIC_FREE_AVATARS = ['pna_1', 'sic_1', 'sme_1', 'sp_1', 'spcb_1', 'custom_initials'];
+
 export const AVATAR_OPTIONS = [
+  // 1. Basic Free Avatars (1 per branch + custom)
   { id: 'pna_1', branch: 'PNA' as MININTBranch, label: 'Oficial PNA', symbol: '👮‍♂️' },
-  { id: 'pna_2', branch: 'PNA' as MININTBranch, label: 'Escudo Dourado PNA', symbol: '🛡️' },
   { id: 'sic_1', branch: 'SIC' as MININTBranch, label: 'Oficial SIC', symbol: '🕵️‍♂️' },
-  { id: 'sic_2', branch: 'SIC' as MININTBranch, label: 'Crachá Prata SIC', symbol: '🔍' },
   { id: 'sme_1', branch: 'SME' as MININTBranch, label: 'Oficial SME', symbol: '🛂' },
-  { id: 'sme_2', branch: 'SME' as MININTBranch, label: 'Selo Fronteiriço SME', symbol: '🌐' },
   { id: 'sp_1', branch: 'SP' as MININTBranch, label: 'Oficial SP', symbol: '⚖️' },
-  { id: 'sp_2', branch: 'SP' as MININTBranch, label: 'Balança SP', symbol: '🔐' },
   { id: 'spcb_1', branch: 'SPCB' as MININTBranch, label: 'Oficial SPCB', symbol: '🧑‍🚒' },
-  { id: 'spcb_2', branch: 'SPCB' as MININTBranch, label: 'Chama de Protecção', symbol: '🔥' },
   { id: 'custom_initials', branch: 'Personalizado' as any, label: 'Avatar Personalizado', symbol: '👤', isCustomInitials: true },
+
+  // 2. Special & Themed Shop Fardas (Lockable)
+  // PNA
+  { id: 'pna_gala', branch: 'PNA' as MININTBranch, label: 'Farda de Gala PNA (Comando)', symbol: '🦅', isSpecialShopItem: true },
+  { id: 'pna_intervencao', branch: 'PNA' as MININTBranch, label: 'Operativo PIR (Intervenção)', symbol: '🚓', isSpecialShopItem: true },
+  { id: 'pna_transito', branch: 'PNA' as MININTBranch, label: 'Oficial de Trânsito PNA', symbol: '🚦', isSpecialShopItem: true },
+  { id: 'pna_2', branch: 'PNA' as MININTBranch, label: 'Escudo Dourado PNA', symbol: '🛡️', isSpecialShopItem: true },
+
+  // SIC
+  { id: 'sic_tactical', branch: 'SIC' as MININTBranch, label: 'Farda Táctica SIC (Elite)', symbol: '🕶️', isSpecialShopItem: true },
+  { id: 'sic_perito', branch: 'SIC' as MININTBranch, label: 'Perito Criminalística SIC', symbol: '🧬', isSpecialShopItem: true },
+  { id: 'sic_2', branch: 'SIC' as MININTBranch, label: 'Crachá Prata SIC', symbol: '🔍', isSpecialShopItem: true },
+
+  // SME
+  { id: 'sme_frontier', branch: 'SME' as MININTBranch, label: 'Farda Aeroportuária SME', symbol: '🛃', isSpecialShopItem: true },
+  { id: 'sme_2', branch: 'SME' as MININTBranch, label: 'Selo Fronteiriço SME', symbol: '🌐', isSpecialShopItem: true },
+
+  // SP
+  { id: 'sp_honra', branch: 'SP' as MININTBranch, label: 'Farda de Honra SP', symbol: '⛓️', isSpecialShopItem: true },
+  { id: 'sp_2', branch: 'SP' as MININTBranch, label: 'Balança SP', symbol: '🔐', isSpecialShopItem: true },
+
+  // SPCB
+  { id: 'spcb_rescue', branch: 'SPCB' as MININTBranch, label: 'Farda de Resgate SPCB', symbol: '🦺', isSpecialShopItem: true },
+  { id: 'spcb_2', branch: 'SPCB' as MININTBranch, label: 'Chama de Protecção', symbol: '🔥', isSpecialShopItem: true },
+
+  // MININT Geral / Lendários
+  { id: 'minint_instrutor', branch: 'Personalizado' as any, label: 'Instrutor de Academia MININT', symbol: '🎓', isSpecialShopItem: true },
+  { id: 'minint_gala_gold', branch: 'Personalizado' as any, label: 'Farda Dourada Comissário-Geral', symbol: '👑', isSpecialShopItem: true },
 ];
 
 export const getAvatarOption = (avatarId?: string, branch?: MININTBranch, displayName?: string) => {

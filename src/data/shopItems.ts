@@ -1,0 +1,242 @@
+import { MININTBranch } from '../types';
+
+export type ShopCategory = 'fardas' | 'streak' | 'powerups' | 'boosters';
+
+export interface ShopItem {
+  id: string;
+  name: string;
+  category: ShopCategory;
+  cost: number;
+  description: string;
+  symbol: string;
+  branch?: MININTBranch;
+  badgeBg?: string;
+  isPopular?: boolean;
+  isExclusive?: boolean;
+  type: 'avatar_farda' | 'streak_freeze' | 'hint_powerup' | 'xp_booster';
+  amount?: number; // Quantity provided (e.g. 3 power-ups)
+}
+
+export const SHOP_ITEMS: ShopItem[] = [
+  // 1. Fardas & Avatares Especiais dos Órgãos (PNA, SIC, SME, SP, SPCB + Lendários)
+  {
+    id: 'pna_gala',
+    name: 'Farda de Gala PNA (Comando)',
+    category: 'fardas',
+    cost: 120,
+    description: 'Farda Oficial de Gala da Polícia Nacional com insígnias de Comando e águia imperial.',
+    symbol: '🦅',
+    branch: 'PNA',
+    badgeBg: 'from-blue-900 via-blue-950 to-indigo-950',
+    isPopular: true,
+    type: 'avatar_farda',
+  },
+  {
+    id: 'pna_intervencao',
+    name: 'Operativo PIR (Intervenção)',
+    category: 'fardas',
+    cost: 120,
+    description: 'Uniforme da Polícia de Intervenção Rápida para missões tácticas de alta segurança.',
+    symbol: '🚓',
+    branch: 'PNA',
+    badgeBg: 'from-blue-950 via-slate-900 to-black',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'pna_transito',
+    name: 'Oficial de Trânsito PNA',
+    category: 'fardas',
+    cost: 100,
+    description: 'Farda da Polícia de Trânsito e Segurança Rodoviária da Polícia Nacional.',
+    symbol: '🚦',
+    branch: 'PNA',
+    badgeBg: 'from-sky-900 via-blue-950 to-slate-900',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'pna_2',
+    name: 'Escudo Dourado PNA',
+    category: 'fardas',
+    cost: 80,
+    description: 'Emblema Dourado comemorativo da Polícia Nacional de Angola.',
+    symbol: '🛡️',
+    branch: 'PNA',
+    badgeBg: 'from-blue-800 via-indigo-950 to-blue-950',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sic_tactical',
+    name: 'Farda Táctica SIC (Elite)',
+    category: 'fardas',
+    cost: 120,
+    description: 'Uniforme de Investigação Criminal de Elite com óculos tácticos e crachá metálico.',
+    symbol: '🕶️',
+    branch: 'SIC',
+    badgeBg: 'from-slate-800 via-slate-900 to-black',
+    isPopular: true,
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sic_perito',
+    name: 'Perito Criminalística SIC',
+    category: 'fardas',
+    cost: 120,
+    description: 'Traje de Peritagem e Análise Forense do Serviço de Investigação Criminal.',
+    symbol: '🧬',
+    branch: 'SIC',
+    badgeBg: 'from-cyan-950 via-slate-900 to-black',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sic_2',
+    name: 'Crachá Prata SIC',
+    category: 'fardas',
+    cost: 80,
+    description: 'Distintivo metálico prateado de Agente Operativo do SIC.',
+    symbol: '🔍',
+    branch: 'SIC',
+    badgeBg: 'from-slate-700 via-slate-900 to-slate-950',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sme_frontier',
+    name: 'Farda Aeroportuária SME',
+    category: 'fardas',
+    cost: 120,
+    description: 'Uniforme Oficial de Controlo e Segurança de Fronteiras do SME.',
+    symbol: '🛃',
+    branch: 'SME',
+    badgeBg: 'from-emerald-900 via-emerald-950 to-teal-950',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sme_2',
+    name: 'Selo Fronteiriço SME',
+    category: 'fardas',
+    cost: 80,
+    description: 'Emblema Internacional de Segurança e Fiscalização Migratória.',
+    symbol: '🌐',
+    branch: 'SME',
+    badgeBg: 'from-emerald-800 via-emerald-950 to-teal-900',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sp_honra',
+    name: 'Farda de Honra SP',
+    category: 'fardas',
+    cost: 120,
+    description: 'Traje Oficial de Cerimónia e Alto Comando do Serviço Penitenciário.',
+    symbol: '⛓️',
+    branch: 'SP',
+    badgeBg: 'from-rose-900 via-rose-950 to-slate-950',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'sp_2',
+    name: 'Balança de Justiça SP',
+    category: 'fardas',
+    cost: 80,
+    description: 'Insígnia de Reabilitação e Controlo do Serviço Penitenciário.',
+    symbol: '🔐',
+    branch: 'SP',
+    badgeBg: 'from-rose-950 via-stone-900 to-black',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'spcb_rescue',
+    name: 'Farda de Resgate SPCB',
+    category: 'fardas',
+    cost: 120,
+    description: 'Traje de Protecção Civil e Resgate Pesado do Serviço de Bombeiros.',
+    symbol: '🦺',
+    branch: 'SPCB',
+    badgeBg: 'from-red-900 via-amber-950 to-stone-950',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'spcb_2',
+    name: 'Chama de Protecção SPCB',
+    category: 'fardas',
+    cost: 80,
+    description: 'Distintivo de Prontidão e Socorro do Corpo de Bombeiros.',
+    symbol: '🔥',
+    branch: 'SPCB',
+    badgeBg: 'from-red-900 via-amber-900 to-orange-950',
+    type: 'avatar_farda',
+  },
+  {
+    id: 'minint_instrutor',
+    name: 'Instrutor de Academia MININT',
+    category: 'fardas',
+    cost: 150,
+    description: 'Insígnia Especial de Formador e Mestre de Preparação Académica do MININT.',
+    symbol: '🎓',
+    badgeBg: 'from-indigo-900 via-purple-950 to-slate-950',
+    isExclusive: true,
+    type: 'avatar_farda',
+  },
+  {
+    id: 'minint_gala_gold',
+    name: 'Farda Dourada Comissário-Geral',
+    category: 'fardas',
+    cost: 300,
+    description: 'Uniforme Supremo do Ministério do Interior com coroa dourada e brilho lendário.',
+    symbol: '👑',
+    badgeBg: 'from-amber-600 via-yellow-600 to-amber-700',
+    isExclusive: true,
+    type: 'avatar_farda',
+  },
+
+  // 2. Congelamento de Sequência (Streak Freeze)
+  {
+    id: 'streak_freeze',
+    name: 'Congelamento de Sequência (Streak Freeze)',
+    category: 'streak',
+    cost: 100,
+    description: 'Protege a sua ofensiva diária de estudo! Se falhar 1 dia sem estudar, a sua sequência não será zerada.',
+    symbol: '🧊',
+    badgeBg: 'from-sky-500 via-blue-600 to-cyan-700',
+    isPopular: true,
+    type: 'streak_freeze',
+    amount: 1,
+  },
+
+  // 3. Dicas Extra (Power-ups 50:50)
+  {
+    id: 'hint_pack_3',
+    name: 'Pacote 3x Dicas Extra (50:50)',
+    category: 'powerups',
+    cost: 50,
+    description: 'Elimina instantaneamente 2 opções erradas em qualquer questão nos simulados de estudo.',
+    symbol: '⚡',
+    badgeBg: 'from-purple-600 via-indigo-600 to-purple-800',
+    isPopular: true,
+    type: 'hint_powerup',
+    amount: 3,
+  },
+  {
+    id: 'hint_pack_10',
+    name: 'Pacote 10x Dicas Extra (Super Lote)',
+    category: 'powerups',
+    cost: 140,
+    description: 'Pacote económico com 10 dicas 50:50 para dominar os simulados mais exigentes do MININT.',
+    symbol: '🔮',
+    badgeBg: 'from-purple-700 via-purple-900 to-indigo-950',
+    isExclusive: true,
+    type: 'hint_powerup',
+    amount: 10,
+  },
+
+  // 4. Boosters
+  {
+    id: 'duel_xp_boost',
+    name: 'Booster XP Duplo (1 Hora)',
+    category: 'boosters',
+    cost: 80,
+    description: 'Multiplica por 2x todo o XP obtido em simulados e duelos 1v1 durante 60 minutos.',
+    symbol: '🚀',
+    badgeBg: 'from-orange-500 via-amber-600 to-red-600',
+    type: 'xp_booster',
+    amount: 1,
+  },
+];

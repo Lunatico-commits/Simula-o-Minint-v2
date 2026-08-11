@@ -5,6 +5,7 @@ export interface DailyMission {
   target: number;
   current: number;
   xpReward: number;
+  coinsReward: number;
   claimed: boolean;
 }
 
@@ -17,6 +18,7 @@ const INITIAL_MISSIONS: Omit<DailyMission, 'current' | 'claimed'>[] = [
     description: 'Responda a 15 questões nos simulados, desafios ou duelos',
     target: 15,
     xpReward: 100,
+    coinsReward: 25,
   },
   {
     id: 'simulado_1',
@@ -24,6 +26,7 @@ const INITIAL_MISSIONS: Omit<DailyMission, 'current' | 'claimed'>[] = [
     description: 'Finalize pelo menos 1 simulado de treino ou exame',
     target: 1,
     xpReward: 150,
+    coinsReward: 40,
   },
   {
     id: 'duel_win_1',
@@ -31,6 +34,7 @@ const INITIAL_MISSIONS: Omit<DailyMission, 'current' | 'claimed'>[] = [
     description: 'Conquiste 1 vitória num duelo 1v1 ou treino IA',
     target: 1,
     xpReward: 200,
+    coinsReward: 60,
   },
 ];
 
@@ -113,21 +117,23 @@ export function trackMissionProgress(type: 'questions' | 'simulado' | 'duel_win'
   }
 }
 
-export function claimMissionReward(missionId: string): number {
+export function claimMissionReward(missionId: string): { xpReward: number; coinsReward: number } {
   const missions = getDailyMissions();
   let xp = 0;
+  let coins = 0;
 
   const newMissions = missions.map((m) => {
     if (m.id === missionId && m.current >= m.target && !m.claimed) {
       xp = m.xpReward;
+      coins = m.coinsReward || 25;
       return { ...m, claimed: true };
     }
     return m;
   });
 
-  if (xp > 0) {
+  if (xp > 0 || coins > 0) {
     saveDailyMissions(newMissions);
   }
 
-  return xp;
+  return { xpReward: xp, coinsReward: coins };
 }

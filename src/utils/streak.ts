@@ -27,7 +27,7 @@ export function getYesterdayDateString(): string {
  * Evaluates whether the current streak stored in user profile is active or expired.
  * If user's last streak date was before yesterday, streak resets to 0.
  */
-export function calculateCurrentStreak(profile?: Partial<UserProfile> | null): { streak: number; isExpired: boolean } {
+export function calculateCurrentStreak(profile?: Partial<UserProfile> | null): { streak: number; isExpired: boolean; usedStreakFreeze?: boolean } {
   if (!profile) return { streak: 0, isExpired: false };
 
   const lastDate = profile.lastDailyDate;
@@ -44,7 +44,12 @@ export function calculateCurrentStreak(profile?: Partial<UserProfile> | null): {
     return { streak: currentStreak, isExpired: false };
   }
 
-  // Older than yesterday => Missed a day, streak reset to 0!
+  // If user missed days but has a Streak Freeze, save the streak!
+  if (profile.streakFreezeCount && profile.streakFreezeCount > 0) {
+    return { streak: currentStreak, isExpired: false, usedStreakFreeze: true };
+  }
+
+  // Older than yesterday without freeze => Missed a day, streak reset to 0!
   return { streak: 0, isExpired: true };
 }
 
@@ -55,6 +60,7 @@ export function updateStreakOnQuizCompletion(profile: UserProfile): {
   newStreak: number;
   newLastDate: string;
   increased: boolean;
+  consumedFreeze?: boolean;
 } {
   const todayStr = getTodayDateString();
   const yesterdayStr = getYesterdayDateString();
@@ -79,7 +85,17 @@ export function updateStreakOnQuizCompletion(profile: UserProfile): {
     };
   }
 
-  // Missed days or first time study => Start 1-day streak
+  // Missed days - check if saved by Streak Freeze
+  if (profile.streakFreezeCount && profile.streakFreezeCount > 0 && currentStreak > 0) {
+    return {
+      newStreak: currentStreak + 1,
+      newLastDate: todayStr,
+      increased: true,
+      consumedFreeze: true,
+    };
+  }
+
+  // Missed days without freeze => Start 1-day streak
   return {
     newStreak: 1,
     newLastDate: todayStr,

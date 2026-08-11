@@ -17,6 +17,7 @@ import { NotificationBanner } from './components/NotificationBanner';
 import { listenForDuelInvitations, checkAndTriggerDailyStudyReminder } from './utils/notifications';
 import { SupportProjectModal } from './components/SupportProjectModal';
 import { StudyMaterialsView } from './components/StudyMaterialsView';
+import { ShopView } from './components/ShopView';
 import { FaqAndTestimonials } from './components/FaqAndTestimonials';
 import { AdBanner } from './components/AdBanner';
 import { RankUpModal } from './components/RankUpModal';
@@ -30,6 +31,7 @@ import { DailyStudyTip } from './components/DailyStudyTip';
 import { LeagueUpdateModal } from './components/LeagueUpdateModal';
 import { ConfirmExitModal } from './components/ConfirmExitModal';
 import { ShareFAB } from './components/ShareFAB';
+import { ScrollToTop } from './components/ScrollToTop';
 import { Footer } from './components/Footer';
 import { checkUnlockedBadges, Badge } from './data/badges';
 import { RANKS_MININT } from './data/branches';
@@ -46,7 +48,7 @@ import { ShieldCheck, BookOpen, Trophy, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'quiz' | 'desafio' | 'duel' | 'rankings' | 'materials' | 'tutor' | 'guide' | 'faq' | 'badges'>('quiz');
+  const [activeTab, setActiveTab] = useState<'quiz' | 'desafio' | 'duel' | 'rankings' | 'shop' | 'materials' | 'tutor' | 'guide' | 'faq' | 'badges'>('quiz');
   const [quizResetKey, setQuizResetKey] = useState(0);
   const [inviteRoomCode, setInviteRoomCode] = useState<string | null>(null);
   const [pendingRoomCode, setPendingRoomCode] = useState<string | null>(null);
@@ -670,10 +672,12 @@ export default function App() {
     xpGained: number,
     isWin?: boolean,
     categoryBreakdown?: Partial<Record<QuestionCategory, { correct: number; total: number }>>,
-    isMultiplayerReal?: boolean
+    isMultiplayerReal?: boolean,
+    coinsGained?: number
   ) => {
     const oldRank = RANKS_MININT.slice().reverse().find(r => profile.totalXp >= r.minXp) || RANKS_MININT[0];
     const newTotalXp = profile.totalXp + xpGained;
+    const newCoins = (profile.minintCoins || 0) + (coinsGained || 0);
 
     // Recalculate rank
     const currentRank = RANKS_MININT.slice().reverse().find(r => newTotalXp >= r.minXp) || RANKS_MININT[0];
@@ -734,6 +738,7 @@ export default function App() {
     const updated: UserProfile = {
       ...profile,
       totalXp: newTotalXp,
+      minintCoins: newCoins,
       rankTitle: currentRank.title,
       quizzesCompleted: profile.quizzesCompleted + 1,
       correctAnswersCount: profile.correctAnswersCount + scoreCount,
@@ -752,6 +757,7 @@ export default function App() {
       categoryStats: currentStats as any,
       dailyStreak: streakResult.newStreak,
       lastDailyDate: streakResult.newLastDate,
+      streakFreezeCount: streakResult.consumedFreeze ? Math.max(0, (profile.streakFreezeCount || 1) - 1) : profile.streakFreezeCount,
       updatedAt: new Date().toISOString(),
     };
 
@@ -772,6 +778,10 @@ export default function App() {
         const userRef = doc(db, 'users', profile.uid);
         await setDoc(userRef, {
           totalXp: updated.totalXp,
+          minintCoins: updated.minintCoins || 0,
+          streakFreezeCount: updated.streakFreezeCount || 0,
+          extraHintsCount: updated.extraHintsCount || 0,
+          purchasedItems: updated.purchasedItems || [],
           rankTitle: updated.rankTitle,
           quizzesCompleted: updated.quizzesCompleted,
           correctAnswersCount: updated.correctAnswersCount,
@@ -938,6 +948,14 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'shop' && (
+              <ShopView
+                profile={profile}
+                onUpdateProfile={handleSaveProfile}
+                onNavigateTab={(tab) => requestTabChange(tab as any)}
+              />
+            )}
+
             {activeTab === 'materials' && (
               <StudyMaterialsView profile={profile} />
             )}
@@ -978,6 +996,7 @@ export default function App() {
         onClose={() => setIsProfileModalOpen(false)}
         onSaveProfile={handleSaveProfile}
         onLogout={handleLogout}
+        onNavigateTab={(tab) => setActiveTab(tab as any)}
         onOpenAuthModal={() => {
           setAuthModalInitialView('saved_accounts');
           setIsAuthModalOpen(true);
@@ -1105,6 +1124,9 @@ export default function App() {
 
       {/* Floating Share Button (Web Share API / Copy Link) */}
       <ShareFAB />
+
+      {/* Floating Scroll To Top Button */}
+      <ScrollToTop />
 
       {/* Global Navigation Active Session Guard Modal */}
       <ConfirmExitModal

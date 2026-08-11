@@ -3,9 +3,10 @@ import { UserProfile, isAdminUser } from '../types';
 import { MININT_BRANCHES, RANKS_MININT, getAvatarOption } from '../data/branches';
 import { getSoundEnabled, setSoundEnabled, playClickSound } from '../utils/audio';
 import { calculateCurrentStreak } from '../utils/streak';
-import { Lightbulb, Shield, Trophy, User, Wifi, WifiOff, Sparkles, BookOpen, Swords, Sun, Moon, Monitor, ShieldCheck, HelpCircle, Volume2, VolumeX, Flame, Bell, Award, MessageSquareQuote, Sliders, FileText } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Lightbulb, Shield, Trophy, User, Wifi, WifiOff, Sparkles, BookOpen, Swords, Sun, Moon, Monitor, ShieldCheck, HelpCircle, Volume2, VolumeX, Flame, Bell, Award, MessageSquareQuote, Sliders, FileText, Zap, Coins, ShoppingBag, Settings, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { BranchIllustration } from './BranchIllustration';
+import { ReactiveAvatar } from './ReactiveAvatar';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -107,11 +108,23 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isAudioOn, setIsAudioOn] = useState(() => getSoundEnabled());
+  const [isOptionsMenuOpen, setIsOptionsMenuOpen] = useState(false);
+  const optionsMenuRef = useRef<HTMLDivElement>(null);
   const branchInfo = MININT_BRANCHES[profile.branch] || MININT_BRANCHES.PNA;
 
   useEffect(() => {
     setIsAudioOn(getSoundEnabled());
   });
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (optionsMenuRef.current && !optionsMenuRef.current.contains(event.target as Node)) {
+        setIsOptionsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const toggleAudio = () => {
     const nextState = !isAudioOn;
@@ -199,7 +212,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Main Bar */}
-      <div className="w-full max-w-md sm:max-w-7xl mx-auto px-2.5 sm:px-4 py-1.5 sm:py-2.5 flex items-center justify-between gap-1 sm:gap-2">
+      <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between gap-1.5 sm:gap-2">
         {/* Brand & Logo - Clickable to go home/reset simulados */}
         <button
           type="button"
@@ -211,174 +224,235 @@ export const Header: React.FC<HeaderProps> = ({
             }
           }}
           title="Página Inicial de Simulados"
-          className="flex items-center gap-2 cursor-pointer group text-left focus:outline-hidden transition-transform active:scale-95 select-none shrink-0"
+          className="flex items-center gap-1.5 sm:gap-2 cursor-pointer group text-left focus:outline-hidden transition-transform active:scale-95 select-none shrink-0"
         >
-          <MinintShieldLogo size={32} />
+          <MinintShieldLogo size={30} />
 
-          <div>
-            <h1 className="text-sm sm:text-lg tracking-tight flex items-center gap-1 leading-none group-hover:opacity-90">
+          <div className="flex flex-col justify-center">
+            <h1 className="text-xs sm:text-lg tracking-tight flex items-center gap-0.5 sm:gap-1 leading-none group-hover:opacity-90 font-black">
               <span className="text-slate-800 dark:text-white font-extrabold">Simulados</span>
               <span className="bg-gradient-to-r from-amber-500 via-yellow-500 to-red-600 bg-clip-text text-transparent font-black">MININT</span>
             </h1>
-            <p className="hidden sm:flex text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 items-center gap-1 font-mono">
+            <p className="hidden xs:flex text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 items-center gap-1 font-mono leading-none">
               <span className="font-bold text-amber-600 dark:text-amber-400">Oficial {branchInfo.id}</span>
-              <span>•</span>
-              <span className="text-slate-800 dark:text-slate-300 font-sans">{profile.province || 'Luanda'}</span>
+              <span className="hidden sm:inline">• {profile.province || 'Luanda'}</span>
             </p>
           </div>
         </button>
 
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 overflow-x-auto scrollbar-none py-0.5">
-          {/* Admin Panel Button (Exclusive for ADM) */}
-          {isAdminUser(profile) && onOpenAdminPanel && (
-            <button
-              onClick={onOpenAdminPanel}
-              title="Painel de Gestão (ADM)"
-              className="px-2 py-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] flex items-center gap-1 transition-all active:scale-95 cursor-pointer shadow-md shadow-amber-500/20 shrink-0"
-            >
-              <ShieldCheck size={14} className="text-slate-950" />
-              <span className="hidden sm:inline uppercase tracking-wider">Painel ADM</span>
-            </button>
-          )}
-
-          {/* Unified Settings Button (Audio + Push Notifications) */}
+        {/* Intermediate Metrics Pill Container */}
+        <div className="flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/90 p-0.5 sm:p-1 rounded-full border border-slate-200/90 dark:border-slate-700/90 overflow-x-auto scrollbar-none min-w-0 shrink max-w-[110px] xs:max-w-[170px] sm:max-w-none shadow-xs">
+          {/* 1. Ofensiva Streak */}
           <button
-            onClick={() => {
-              playClickSound();
-              if (onOpenSettings) {
-                onOpenSettings();
-              } else if (onOpenAudioSettings) {
-                onOpenAudioSettings();
-              } else if (onOpenNotifications) {
-                onOpenNotifications();
-              }
-            }}
-            title="Configurações (Som, Áudio & Notificações)"
-            aria-label="Abrir Configurações"
-            className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-amber-500 transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1 shrink-0 relative"
-          >
-            <Sliders size={14} className="text-amber-500 dark:text-amber-400" />
-            <span className="hidden sm:inline text-[10px] font-mono font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-              Configurações
-            </span>
-          </button>
-
-          {/* Daily Study Tip Button */}
-          {onOpenDailyStudyTip && (
-            <button
-              onClick={() => {
-                playClickSound();
-                onOpenDailyStudyTip();
-              }}
-              title="Dica Rápida de Estudo do Dia"
-              aria-label="Dica do Dia"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/15 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
-            >
-              <Lightbulb size={14} className="text-amber-500 dark:text-amber-400 animate-pulse" />
-              <span className="hidden sm:inline text-[10px] font-mono font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
-                Dica do Dia
-              </span>
-            </button>
-          )}
-
-          {/* Welcome Tour Button */}
-          {onOpenWelcomeTour && (
-            <button
-              onClick={() => {
-                playClickSound();
-                onOpenWelcomeTour();
-              }}
-              title="Guia & Tour de Boas-Vindas"
-              aria-label="Tour de Boas-Vindas"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-amber-500/10 dark:bg-amber-500/15 hover:bg-amber-500/20 border border-amber-500/30 text-amber-500 transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
-            >
-              <HelpCircle size={14} className="text-amber-500 dark:text-amber-400" />
-              <span className="hidden sm:inline text-[10px] font-mono font-bold uppercase tracking-wider text-amber-600 dark:text-amber-300">
-                Tour
-              </span>
-            </button>
-          )}
-
-          {/* Theme Switcher Button (Compact Icon on Mobile) */}
-          {onCycleThemeMode && (
-            <button
-              onClick={onCycleThemeMode}
-              title={
-                themeMode === 'dark'
-                  ? 'Modo Escuro Ativo'
-                  : themeMode === 'light'
-                  ? 'Modo Claro Ativo'
-                  : 'Modo Automático/Sistema'
-              }
-              aria-label="Alternar tema"
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-amber-500 transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
-            >
-              {themeMode === 'dark' && <Moon size={14} className="text-amber-500 dark:text-amber-400" />}
-              {themeMode === 'light' && <Sun size={14} className="text-amber-500 dark:text-amber-400" />}
-              {themeMode === 'system' && <Monitor size={14} className="text-sky-500 dark:text-sky-400" />}
-              <span className="hidden sm:inline text-[10px] font-mono font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                {themeMode === 'dark' ? 'Escuro' : themeMode === 'light' ? 'Claro' : 'Auto'}
-              </span>
-            </button>
-          )}
-
-          {/* Daily Study Streak Tracker (Ofensiva) */}
-          <button
+            type="button"
             onClick={() => {
               playClickSound();
               onOpenProfile();
             }}
-            title={`Ofensiva de Estudo Diário: ${calculateCurrentStreak(profile).streak} ${calculateCurrentStreak(profile).streak === 1 ? 'dia seguido' : 'dias seguidos'}!`}
-            aria-label="Ofensiva de Estudo Diário"
-            className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-full border transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1 shrink-0 ${
-              calculateCurrentStreak(profile).streak > 0
-                ? 'bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-red-500/10 border-orange-500/40 text-orange-600 dark:text-orange-400'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500'
-            }`}
+            title={`Ofensiva de Estudo Diário: ${calculateCurrentStreak(profile).streak} dias`}
+            aria-label="Ofensiva Diária"
+            className="px-1 py-0.5 sm:px-1.5 rounded-full flex items-center gap-0.5 sm:gap-1 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors shrink-0 text-[10px] sm:text-xs font-mono font-black"
           >
             <Flame
-              size={15}
+              size={13}
               className={
                 calculateCurrentStreak(profile).streak > 0
-                  ? 'text-orange-500 fill-orange-500 animate-pulse drop-shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+                  ? 'text-orange-500 fill-orange-500 animate-pulse drop-shadow-[0_0_6px_rgba(249,115,22,0.6)]'
                   : 'text-slate-400 dark:text-slate-500'
               }
             />
-            <span className="text-[11px] font-mono font-black tracking-tight text-slate-900 dark:text-slate-100">
+            <span className="text-slate-900 dark:text-slate-100 text-[10px] sm:text-[11px]">
               {calculateCurrentStreak(profile).streak}d
             </span>
           </button>
 
-          {/* Weekly Duel League Badge Button */}
+          <span className="w-px h-3 bg-slate-300 dark:bg-slate-700 shrink-0" />
+
+          {/* 2. Duelos Pts */}
           <button
+            type="button"
             onClick={() => {
               playClickSound();
               setActiveTab('rankings');
             }}
-            title={`Sua Liga Actual: ${
-              (profile.duelLeague || 'bronze') === 'ouro'
-                ? 'Liga Ouro 🥇'
-                : (profile.duelLeague || 'bronze') === 'prata'
-                ? 'Liga Prata 🥈'
-                : 'Liga Bronze 🥉'
-            } (${profile.weeklyDuelPoints || 0} Pts esta semana)`}
-            aria-label="Liga de Duelos Semanal"
-            className="p-1 sm:px-2.5 sm:py-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 transition-all active:scale-95 cursor-pointer shadow-xs flex items-center gap-1 shrink-0"
+            title={`Pontos na Liga de Duelos: ${profile.weeklyDuelPoints || 0} Pts`}
+            aria-label="Pontos de Duelo"
+            className="px-1 py-0.5 sm:px-1.5 rounded-full flex items-center gap-0.5 sm:gap-1 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors shrink-0 text-[10px] sm:text-xs font-mono font-black text-amber-600 dark:text-amber-400"
           >
-            <span className="text-xs sm:text-sm">
+            <span className="text-[10px] sm:text-[11px]">
               {(profile.duelLeague || 'bronze') === 'ouro'
                 ? '🥇'
                 : (profile.duelLeague || 'bronze') === 'prata'
                 ? '🥈'
                 : '🥉'}
             </span>
-            <span className="hidden sm:inline text-[10px] font-mono font-black tracking-wider uppercase text-amber-600 dark:text-amber-300">
-              {profile.weeklyDuelPoints || 0} Pts
-            </span>
+            <span className="text-[10px] sm:text-[11px]">{profile.weeklyDuelPoints || 0} Pts</span>
           </button>
 
-          {/* User Profile Avatar Circle Button */}
+          <span className="w-px h-3 bg-slate-300 dark:bg-slate-700 shrink-0" />
+
+          {/* 3. XP Total */}
           <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              onOpenProfile();
+            }}
+            title={`Pontuação XP Total: ${profile.totalXp.toLocaleString()} XP`}
+            aria-label="XP Total"
+            className="px-1 py-0.5 sm:px-1.5 rounded-full flex items-center gap-0.5 sm:gap-1 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors shrink-0 text-[10px] sm:text-xs font-mono font-black text-amber-600 dark:text-amber-300"
+          >
+            <Zap size={12} className="text-amber-400 fill-amber-400 shrink-0" />
+            <span className="text-[10px] sm:text-[11px]">{profile.totalXp.toLocaleString()} XP</span>
+          </button>
+
+          <span className="w-px h-3 bg-slate-300 dark:bg-slate-700 shrink-0" />
+
+          {/* 4. Créditos MININT / Moedas */}
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              setActiveTab('shop');
+            }}
+            title={`Créditos MININT: ${(profile.minintCoins || 0).toLocaleString()} Moedas`}
+            aria-label="Créditos MININT"
+            className="px-1 py-0.5 sm:px-1.5 rounded-full flex items-center gap-0.5 sm:gap-1 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 transition-colors shrink-0 text-[10px] sm:text-xs font-mono font-black text-yellow-600 dark:text-yellow-300"
+          >
+            <Coins size={12} className="text-yellow-400 fill-yellow-400/80 shrink-0" />
+            <span className="text-[10px] sm:text-[11px]">{(profile.minintCoins || 0).toLocaleString()}</span>
+          </button>
+        </div>
+
+        {/* Right Fixed Action Cluster (Always shrink-0) */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Icon-Only Theme Switcher Button */}
+          {onCycleThemeMode && (
+            <button
+              type="button"
+              onClick={onCycleThemeMode}
+              title={
+                themeMode === 'dark'
+                  ? 'Modo Escuro (Clique para alterar)'
+                  : themeMode === 'light'
+                  ? 'Modo Claro (Clique para alterar)'
+                  : 'Modo Sistema (Clique para alterar)'
+              }
+              aria-label="Alternar Tema"
+              className="p-1.5 sm:p-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-amber-500 transition-all active:scale-95 cursor-pointer shadow-xs shrink-0 flex items-center justify-center"
+            >
+              {themeMode === 'dark' && <Moon size={14} className="text-amber-400" />}
+              {themeMode === 'light' && <Sun size={14} className="text-amber-500" />}
+              {themeMode === 'system' && <Monitor size={14} className="text-sky-400" />}
+            </button>
+          )}
+
+          {/* Gear Options Dropdown Menu Button */}
+          <div className="relative shrink-0" ref={optionsMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                playClickSound();
+                setIsOptionsMenuOpen(!isOptionsMenuOpen);
+              }}
+              title="Opções e Configurações"
+              aria-label="Menu de Opções"
+              className={`p-1.5 sm:p-2 rounded-full border transition-all active:scale-95 cursor-pointer shadow-xs flex items-center justify-center ${
+                isOptionsMenuOpen
+                  ? 'bg-amber-500 text-slate-950 border-amber-500 ring-2 ring-amber-500/40'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <Settings size={14} className={isOptionsMenuOpen ? 'animate-spin' : ''} />
+            </button>
+
+            {/* Dropdown Menu Popup */}
+            <AnimatePresence>
+              {isOptionsMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl z-50 p-1.5 space-y-1"
+                >
+                  <div className="px-3 py-1.5 border-b border-slate-100 dark:border-slate-800/60 mb-1">
+                    <p className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                      Opções Rápidas
+                    </p>
+                  </div>
+
+                  {/* Configurações */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOptionsMenuOpen(false);
+                      playClickSound();
+                      if (onOpenSettings) onOpenSettings();
+                      else if (onOpenAudioSettings) onOpenAudioSettings();
+                      else if (onOpenNotifications) onOpenNotifications();
+                    }}
+                    className="w-full px-3 py-2 rounded-xl flex items-center gap-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                  >
+                    <Sliders size={15} className="text-amber-500" />
+                    <span>Configurações & Áudio</span>
+                  </button>
+
+                  {/* Dica do Dia */}
+                  {onOpenDailyStudyTip && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOptionsMenuOpen(false);
+                        playClickSound();
+                        onOpenDailyStudyTip();
+                      }}
+                      className="w-full px-3 py-2 rounded-xl flex items-center gap-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                    >
+                      <Lightbulb size={15} className="text-amber-500 animate-pulse" />
+                      <span>Dica do Dia</span>
+                    </button>
+                  )}
+
+                  {/* Guia & Tour */}
+                  {onOpenWelcomeTour && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOptionsMenuOpen(false);
+                        playClickSound();
+                        onOpenWelcomeTour();
+                      }}
+                      className="w-full px-3 py-2 rounded-xl flex items-center gap-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                    >
+                      <HelpCircle size={15} className="text-amber-500" />
+                      <span>Guia & Tour</span>
+                    </button>
+                  )}
+
+                  {/* Painel ADM */}
+                  {isAdminUser(profile) && onOpenAdminPanel && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOptionsMenuOpen(false);
+                        playClickSound();
+                        onOpenAdminPanel();
+                      }}
+                      className="w-full px-3 py-2 rounded-xl flex items-center gap-2.5 text-xs font-black text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-colors text-left cursor-pointer border border-amber-500/30"
+                    >
+                      <ShieldCheck size={15} className="text-amber-500" />
+                      <span>Painel ADM</span>
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* User Profile Avatar Button */}
+          <button
+            type="button"
             onClick={() => {
               playClickSound();
               onOpenProfile();
@@ -387,9 +461,16 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label="Abrir Perfil"
             className="p-0.5 rounded-full hover:ring-2 hover:ring-amber-500/50 transition-all active:scale-95 cursor-pointer shrink-0"
           >
-            <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${branchInfo.badgeBg} flex items-center justify-center text-slate-100 font-bold border border-amber-500/50 shadow-inner shrink-0 ${userAvatar.isCustomInitials ? 'font-mono font-black text-amber-300 text-[10px] tracking-wider' : 'text-base'}`}>
-              {userAvatar.symbol}
-            </div>
+            <ReactiveAvatar
+              avatarId={profile.avatarId}
+              branch={profile.branch}
+              displayName={profile.displayName}
+              photoURL={profile.photoURL}
+              size="xs"
+              showBranchBadge={true}
+              level={profile.level}
+              isVipSupporter={profile.isVipSupporter}
+            />
           </button>
         </div>
       </div>
@@ -477,6 +558,24 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <Trophy size={16} />
           <span className="text-[10px] sm:text-[11px] leading-tight">Rankings</span>
+        </button>
+
+        <button
+          data-tab="shop"
+          onClick={() => setActiveTab('shop')}
+          className={`py-2 px-2.5 sm:px-3 shrink-0 flex flex-col items-center justify-center gap-0.5 transition-all relative cursor-pointer border-b-2 ${
+            activeTab === 'shop'
+              ? 'text-yellow-600 dark:text-yellow-400 font-bold border-yellow-500'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium border-transparent'
+          }`}
+        >
+          <div className="relative">
+            <ShoppingBag size={16} className="text-yellow-500 fill-yellow-500/20" />
+            <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" />
+          </div>
+          <span className="text-[10px] sm:text-[11px] leading-tight flex items-center gap-1">
+            Loja
+          </span>
         </button>
 
         <button

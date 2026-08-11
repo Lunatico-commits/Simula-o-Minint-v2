@@ -47,7 +47,7 @@ export const ShareFAB: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-16 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2">
+    <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end gap-2">
       <AnimatePresence>
         {copied && (
           <motion.div
@@ -69,7 +69,7 @@ export const ShareFAB: React.FC = () => {
         type="button"
         title="Partilhar Plataforma MININT"
         aria-label="Partilhar Plataforma MININT"
-        className="h-12 w-12 sm:h-13 sm:w-13 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow-xl shadow-amber-500/20 border border-amber-300 flex items-center justify-center cursor-pointer transition-colors relative group"
+        className="h-12 w-12 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black shadow-xl shadow-amber-500/20 border border-amber-300 flex items-center justify-center cursor-pointer transition-colors relative group"
       >
         {copied ? (
           <Check size={22} className="text-slate-950 stroke-[2.5]" />

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { CheckCircle2, Zap, Award, Target, Sparkles, Check, Gift } from 'lucide-react';
+import { CheckCircle2, Zap, Award, Target, Sparkles, Check, Gift, Coins } from 'lucide-react';
 import { DailyMission, getDailyMissions, claimMissionReward } from '../utils/dailyMissions';
 import { fireConfetti } from '../utils/confetti';
 import { playCorrectSound } from '../utils/audio';
 
 interface DailyMissionsProps {
-  onClaimXp: (xpAmount: number) => void;
+  onClaimXp: (xpAmount: number, coinsAmount?: number) => void;
 }
 
 export const DailyMissions: React.FC<DailyMissionsProps> = ({ onClaimXp }) => {
@@ -30,11 +30,11 @@ export const DailyMissions: React.FC<DailyMissionsProps> = ({ onClaimXp }) => {
   }, []);
 
   const handleClaim = (mission: DailyMission) => {
-    const xpReward = claimMissionReward(mission.id);
-    if (xpReward > 0) {
+    const reward = claimMissionReward(mission.id);
+    if (reward.xpReward > 0 || reward.coinsReward > 0) {
       fireConfetti();
       playCorrectSound();
-      onClaimXp(xpReward);
+      onClaimXp(reward.xpReward, reward.coinsReward);
       loadMissions();
     }
   };
@@ -59,7 +59,7 @@ export const DailyMissions: React.FC<DailyMissionsProps> = ({ onClaimXp }) => {
                 ({completedCount}/3)
               </span>
             </h3>
-            <p className="text-[10px] text-slate-400">Renovam todos os dias • Ganhe XP bónus</p>
+            <p className="text-[10px] text-slate-400">Renovam todos os dias • Ganhe XP e Créditos MININT</p>
           </div>
         </div>
 
@@ -89,13 +89,22 @@ export const DailyMissions: React.FC<DailyMissionsProps> = ({ onClaimXp }) => {
             >
               {/* Mission Details & Progress */}
               <div className="min-w-0 flex-1 space-y-1.5">
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                   <span className={`text-xs font-bold truncate ${isClaimed ? 'text-slate-400 line-through' : 'text-slate-200'}`}>
                     {mission.title}
                   </span>
-                  <span className="text-[10px] font-black font-mono text-amber-400 shrink-0 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
-                    +{mission.xpReward} XP
-                  </span>
+                  
+                  {/* Rewards Badges */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] font-black font-mono text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <Zap size={10} className="text-amber-400 fill-amber-400" />
+                      <span>+{mission.xpReward} XP</span>
+                    </span>
+                    <span className="text-[10px] font-black font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                      <Coins size={10} className="text-yellow-400 fill-yellow-400/80" />
+                      <span>+{mission.coinsReward || 25}</span>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Progress Bar */}
@@ -134,7 +143,7 @@ export const DailyMissions: React.FC<DailyMissionsProps> = ({ onClaimXp }) => {
                   <button
                     type="button"
                     onClick={() => handleClaim(mission)}
-                    className="py-1.5 px-3 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-[11px] uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center gap-1 transition-all active:scale-95 cursor-pointer animate-bounce"
+                    className="py-1.5 px-3 rounded-lg bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-[11px] uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center gap-1 transition-all active:scale-95 cursor-pointer animate-bounce"
                   >
                     <Gift size={13} />
                     <span>Resgatar</span>

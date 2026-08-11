@@ -10,6 +10,7 @@ import {
 import { QUESTION_BANK } from '../data/questions';
 import { getRandomQuestions } from '../utils/questionSelector';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
+import { ReactiveAvatar } from './ReactiveAvatar';
 import { explainQuestionWithAI } from '../services/apiService';
 import { AIExplanationModal } from './AIExplanationModal';
 import { MemeGeneratorModal } from './MemeGeneratorModal';
@@ -2362,18 +2363,20 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     <div className="grid grid-cols-3 items-center text-center pt-1 border-t border-slate-800/80">
                       {/* Player 1 / Me */}
                       <div className="flex flex-col items-center">
-                        <motion.div
-                          key={`my-avatar-${myPlayer?.score}`}
-                          initial={{ scale: 1 }}
-                          animate={myPlayer?.score ? { scale: [1, 1.25, 0.9, 1.1, 1], rotate: [0, -10, 10, -5, 0] } : { scale: 1 }}
-                          transition={{ duration: 0.5, ease: 'easeOut' }}
-                          className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-lg shadow-sm relative"
-                        >
-                          {myAvatarOpt.symbol}
-                          {myPlayer?.isVipSupporter && (
-                            <span className="absolute -top-1 -right-1 text-xs" title="Apoiador VIP">🌟</span>
-                          )}
-                        </motion.div>
+                        <ReactiveAvatar
+                          avatarId={myPlayer?.avatarId || profile.avatarId}
+                          branch={myPlayer?.branch || profile.branch}
+                          displayName={myPlayer?.displayName || profile.displayName}
+                          photoURL={myPlayer?.photoURL || profile.photoURL}
+                          size="md"
+                          triggerReaction={myPlayer?.score}
+                          reaction={myAnswered && myPlayer?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle'}
+                          showBranchBadge={true}
+                          showLevelBadge={true}
+                          level={myPlayer?.level || profile.level || 1}
+                          isVipSupporter={myPlayer?.isVipSupporter || profile.isVipSupporter}
+                          interactive={true}
+                        />
                         <p className="text-[11px] font-bold text-slate-200 mt-1 truncate max-w-[90px] flex items-center gap-1">
                           <span>{myPlayer?.displayName}</span>
                         </p>
@@ -2427,18 +2430,20 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
                       {/* Player 2 / Opponent */}
                       <div className="flex flex-col items-center">
-                        <motion.div
-                          key={`opp-avatar-${opponent?.score}`}
-                          initial={{ scale: 1 }}
-                          animate={opponent?.score ? { scale: [1, 1.25, 0.9, 1.1, 1], rotate: [0, 10, -10, 5, 0] } : { scale: 1 }}
-                          transition={{ duration: 0.5, ease: 'easeOut' }}
-                          className="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center text-lg shadow-sm relative"
-                        >
-                          {oppAvatarOpt.symbol}
-                          {opponent?.isVipSupporter && (
-                            <span className="absolute -top-1 -right-1 text-xs" title="Apoiador VIP">🌟</span>
-                          )}
-                        </motion.div>
+                        <ReactiveAvatar
+                          avatarId={opponent?.avatarId}
+                          branch={opponent?.branch}
+                          displayName={opponent?.displayName}
+                          photoURL={opponent?.photoURL}
+                          size="md"
+                          triggerReaction={opponent?.score}
+                          reaction={oppAnswered && opponent?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle'}
+                          showBranchBadge={true}
+                          showLevelBadge={true}
+                          level={opponent?.level || 1}
+                          isVipSupporter={opponent?.isVipSupporter}
+                          interactive={true}
+                        />
                         <p className="text-[11px] font-bold text-slate-200 mt-1 truncate max-w-[90px] flex items-center gap-1">
                           <span>{opponent?.displayName}</span>
                         </p>
@@ -3088,14 +3093,26 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               {/* Top ambient gold glow */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-28 bg-gradient-to-b from-amber-500/25 to-transparent blur-xl pointer-events-none" />
 
-              {/* Animated Trophy Seal */}
+              {/* Winner's Reactive Avatar */}
               <motion.div
                 initial={{ scale: 0, rotate: -180 }}
                 animate={{ scale: 1, rotate: 0 }}
                 transition={{ type: 'spring', damping: 15, stiffness: 200, delay: 0.15 }}
-                className="w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-amber-400 via-amber-500 to-amber-600 border-2 border-amber-300 flex items-center justify-center text-slate-950 shadow-[0_0_35px_rgba(245,158,11,0.5)] mb-4"
+                className="mx-auto flex items-center justify-center mb-4"
               >
-                <Trophy size={42} className="text-slate-950 fill-slate-950" />
+                <ReactiveAvatar
+                  avatarId={profile.avatarId}
+                  branch={profile.branch}
+                  displayName={profile.displayName}
+                  photoURL={profile.photoURL}
+                  size="3xl"
+                  reaction="victory"
+                  showBranchBadge={true}
+                  showLevelBadge={true}
+                  level={profile.level || 1}
+                  isVipSupporter={profile.isVipSupporter}
+                  interactive={true}
+                />
               </motion.div>
 
               {/* Badge label */}
@@ -3136,9 +3153,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                   className="mt-4 p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between text-left"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/40 flex items-center justify-center text-lg">
-                      {getAvatarOption(honorVictoryOpponent.avatarId, honorVictoryOpponent.branch, honorVictoryOpponent.displayName).symbol}
-                    </div>
+                    <ReactiveAvatar
+                      avatarId={honorVictoryOpponent.avatarId}
+                      branch={honorVictoryOpponent.branch}
+                      displayName={honorVictoryOpponent.displayName}
+                      size="sm"
+                      showBranchBadge={true}
+                    />
                     <div>
                       <p className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Oponente Vencido:</p>
                       <p className="text-xs font-black text-slate-100">{honorVictoryOpponent.displayName}</p>

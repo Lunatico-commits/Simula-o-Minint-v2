@@ -12,9 +12,10 @@ import { playCorrectSound, playIncorrectSound, playQuizCompleteSound } from '../
 import { BookOpen, Sparkles, CheckCircle2, XCircle, Clock, Award, ArrowRight, RotateCcw, ShieldAlert, Zap, Layers, Shield, FileText, Globe, Scale, Check, BarChart3, Target, AlertTriangle, Swords, ChevronDown, ChevronUp, Coffee, Star, Volume2, VolumeX, Flame, Trophy, LogOut, Flag, Laptop } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
 import { DailyMissions } from './DailyMissions';
+import { ReactiveAvatar } from './ReactiveAvatar';
 import { trackMissionProgress } from '../utils/dailyMissions';
 import { db } from '../lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 
 interface PracticeQuizProps {
   profile: UserProfile;
@@ -23,7 +24,9 @@ interface PracticeQuizProps {
     totalQuestions: number, 
     xpGained: number, 
     isWin?: boolean, 
-    categoryBreakdown?: Partial<Record<QuestionCategory, { correct: number; total: number }>>
+    categoryBreakdown?: Partial<Record<QuestionCategory, { correct: number; total: number }>>,
+    isMultiplayerReal?: boolean,
+    coinsGained?: number
   ) => void;
   onNavigateTab?: (tab: string) => void;
   onOpenSupportModal?: () => void;
@@ -58,6 +61,9 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
   // Meme Generator Modal State
   const [isMemeModalOpen, setIsMemeModalOpen] = useState(false);
 
+  // Header Insignia Image Loading State
+  const [isHeaderImageLoaded, setIsHeaderImageLoaded] = useState(false);
+
   // Exit Confirmation Modal State
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
 
@@ -68,6 +74,50 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
   const [reportComment, setReportComment] = useState<string>('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [reportSuccessMessage, setReportSuccessMessage] = useState<string | null>(null);
+
+  // Power-up 50:50 Extra Hints State
+  const [eliminatedOptions, setEliminatedOptions] = useState<number[]>([]);
+  const [availableHints, setAvailableHints] = useState<number>(profile.extraHintsCount || 0);
+
+  useEffect(() => {
+    setAvailableHints(profile.extraHintsCount || 0);
+  }, [profile.extraHintsCount]);
+
+  useEffect(() => {
+    setEliminatedOptions([]);
+  }, [currentIndex]);
+
+  const handleUse5050Hint = () => {
+    if (chosenAnswerIndex !== null) return;
+    if (availableHints <= 0) {
+      if (onNavigateTab) onNavigateTab('shop');
+      return;
+    }
+    if (eliminatedOptions.length > 0) return;
+
+    const currentQ = activeQuestions[currentIndex];
+    if (!currentQ) return;
+
+    const wrongIndices = currentQ.options
+      .map((_, idx) => idx)
+      .filter(idx => idx !== currentQ.correctIndex);
+
+    // Pick up to 2 wrong options randomly
+    const shuffled = [...wrongIndices].sort(() => 0.5 - Math.random());
+    const toEliminate = shuffled.slice(0, 2);
+
+    setEliminatedOptions(toEliminate);
+    setAvailableHints(prev => Math.max(0, prev - 1));
+
+    if (profile.uid && profile.uid !== 'guest_user') {
+      try {
+        const userRef = doc(db, 'users', profile.uid);
+        setDoc(userRef, { extraHintsCount: Math.max(0, (profile.extraHintsCount || 1) - 1) }, { merge: true });
+      } catch (e) {
+        console.warn('Erro ao atualizar dicas no Firestore:', e);
+      }
+    }
+  };
 
   const handleOpenReportModal = (question: Question) => {
     setReportingQuestion(question);
@@ -324,37 +374,67 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
       {quizState === 'setup' && (
         <div className="space-y-4 animate-fadeIn">
           {/* Header Banner */}
-          <div className="bg-gradient-to-br from-amber-500/10 via-white to-amber-500/5 dark:from-[#161922] dark:via-[#111319] dark:to-[#1a1710] border border-amber-500/30 dark:border-amber-500/40 rounded-2xl p-5 text-center shadow-lg dark:shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 opacity-90" />
-            <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/15 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="border border-amber-500/40 dark:border-amber-500/40 rounded-2xl p-5 text-center shadow-lg dark:shadow-2xl relative overflow-hidden group bg-slate-900/40 dark:bg-slate-950/60">
+            {/* Subtle Skeleton Loader while image downloads */}
+            {!isHeaderImageLoaded && (
+              <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-amber-400/20 to-amber-500/10 animate-pulse pointer-events-none z-0 rounded-2xl" />
+            )}
 
-            {/* Badges / Tags */}
-            <div className="flex items-center justify-center gap-2 mb-3 flex-wrap">
-              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shadow-2xs">
-                <span>🎯</span>
-                <span>MODO PREPARAÇÃO</span>
-              </span>
-              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-slate-900 dark:text-slate-100 border border-amber-500/30 shadow-2xs">
-                <span>🔥</span>
-                <span>PLATAFORMA NÚMERO 1</span>
-              </span>
+            {/* Background Image Tag with fade-in and fallback */}
+            <img
+              src="https://raw.githubusercontent.com/Lunatico-commits/Simula-o-Minint-v2/main/public/insignias-minint.png"
+              alt="Insígnias MININT"
+              referrerPolicy="no-referrer"
+              onLoad={() => setIsHeaderImageLoaded(true)}
+              className={`absolute inset-0 w-full h-full object-contain pointer-events-none z-0 transition-all duration-700 ease-out group-hover:scale-105 ${
+                isHeaderImageLoaded ? 'opacity-30 scale-100 animate-fadeIn' : 'opacity-0 scale-95'
+              }`}
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.dataset.fallback) {
+                  target.dataset.fallback = 'true';
+                  target.src = '/insignias-minint.png';
+                }
+              }}
+            />
+
+            {/* Clear Overlay Layer */}
+            <div className="absolute inset-0 bg-slate-900/20 dark:bg-slate-950/20 backdrop-blur-[0.5px] pointer-events-none z-0" />
+
+            {/* Top Accent Line */}
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 opacity-90 z-10" />
+            <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/15 rounded-full blur-2xl pointer-events-none z-10" />
+            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl pointer-events-none z-10" />
+
+            {/* Foreground Content in z-10 */}
+            <div className="relative z-10">
+              {/* Badges / Tags */}
+              <div className="flex items-center justify-center gap-2 mb-3 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-400 border border-amber-500/50 shadow-md backdrop-blur-md drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]">
+                  <span>🎯</span>
+                  <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">MODO PREPARAÇÃO</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-300 border border-amber-500/50 shadow-md backdrop-blur-md drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]">
+                  <span>🔥</span>
+                  <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">PLATAFORMA NÚMERO 1</span>
+                </span>
+              </div>
+
+              {/* Icon */}
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-900/85 border border-amber-500/50 text-amber-400 mb-2.5 shadow-[0_0_20px_rgba(245,158,11,0.3)] backdrop-blur-md drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]">
+                <BookOpen size={24} className="stroke-[2.5] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+              </div>
+
+              {/* Main Title */}
+              <h2 className="text-base sm:text-lg font-black text-white uppercase tracking-tight leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_4px_rgba(0,0,0,0.9)]">
+                PREPARA-TE PARA A TUA VAGA NO <span className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">MININT</span>
+              </h2>
+
+              {/* Subtitle */}
+              <p className="text-xs font-semibold text-slate-100 dark:text-slate-100 mt-2 max-w-sm mx-auto leading-relaxed drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_3px_rgba(0,0,0,0.9)] bg-slate-950/70 p-2.5 rounded-xl border border-white/10 backdrop-blur-xs">
+                <strong className="text-amber-400 font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">A disciplina de hoje é a aprovação de amanhã.</strong> Treina com questões atualizadas de Legislação, Português e Cultura Geral e garante o teu futuro!
+              </p>
             </div>
-
-            {/* Icon */}
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-amber-500/15 dark:bg-amber-500/20 border border-amber-500/40 text-amber-600 dark:text-amber-400 mb-2.5 shadow-[0_0_20px_rgba(245,158,11,0.2)]">
-              <BookOpen size={24} className="stroke-[2.5]" />
-            </div>
-
-            {/* Main Title */}
-            <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight leading-snug">
-              PREPARA-TE PARA A TUA VAGA NO <span className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-500 dark:from-amber-400 dark:via-yellow-300 dark:to-amber-500 bg-clip-text text-transparent">MININT</span>
-            </h2>
-
-            {/* Subtitle */}
-            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 mt-2 max-w-sm mx-auto leading-relaxed">
-              <strong className="text-amber-700 dark:text-amber-400 font-bold">A disciplina de hoje é a aprovação de amanhã.</strong> Treina com questões atualizadas de Legislação, Português e Cultura Geral e garante o teu futuro!
-            </p>
           </div>
 
           {/* HIGH TRAFFIC AD SLOT (TOP DASHBOARD) */}
@@ -494,7 +574,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
           </button>
 
           {/* 6. PAINEL DE MISSÕES DIÁRIAS (Abaixo do botão Iniciar Simulado) */}
-          <DailyMissions onClaimXp={(xpAmount) => onUpdateStats(0, 0, xpAmount)} />
+          <DailyMissions onClaimXp={(xpAmount, coinsAmount) => onUpdateStats(0, 0, xpAmount, false, undefined, false, coinsAmount)} />
 
           {/* WhatsApp Community Card */}
           <div className="bg-[#0b141a] dark:bg-[#0b141a] border border-[#25D366]/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl shadow-[#25D366]/10 relative overflow-hidden group">
@@ -625,14 +705,55 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
               {/* Options List */}
               <div className="space-y-2.5 pt-1">
+                {/* Power-up 50:50 Hint Row */}
+                {chosenAnswerIndex === null && (
+                  <div className="flex items-center justify-between gap-2 pb-1">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                      {eliminatedOptions.length > 0
+                        ? '⚡ 2 opções erradas foram eliminadas com a Dica 50:50!'
+                        : 'Selecione uma resposta:'}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={handleUse5050Hint}
+                      disabled={eliminatedOptions.length > 0}
+                      title={
+                        availableHints > 0
+                          ? `Usar 1 Dica 50:50 (Possui ${availableHints} disponíveis)`
+                          : 'Adquirir mais Dicas 50:50 na Loja MININT'
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black font-mono uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer shadow-xs ${
+                        eliminatedOptions.length > 0
+                          ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-300 dark:border-slate-700 cursor-not-allowed'
+                          : availableHints > 0
+                          ? 'bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/40 text-purple-600 dark:text-purple-300 animate-pulse active:scale-95'
+                          : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 active:scale-95'
+                      }`}
+                    >
+                      <Zap size={11} className="fill-purple-400 text-purple-400" />
+                      <span>
+                        {eliminatedOptions.length > 0
+                          ? '50:50 Aplicado'
+                          : availableHints > 0
+                          ? `Dica 50:50 (${availableHints})`
+                          : 'Obter Dicas na Loja'}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
                 {currentQ.options.map((opt, idx) => {
                   const isChosen = chosenAnswerIndex === idx;
                   const isCorrect = idx === currentQ.correctIndex;
                   const hasAnswered = chosenAnswerIndex !== null;
+                  const isEliminated = eliminatedOptions.includes(idx);
 
                   let optionStyle = 'bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/5 text-slate-900 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10';
 
-                  if (hasAnswered) {
+                  if (isEliminated && !hasAnswered) {
+                    optionStyle = 'bg-slate-100/40 dark:bg-slate-900/40 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 line-through opacity-40 cursor-not-allowed';
+                  } else if (hasAnswered) {
                     if (isCorrect) {
                       optionStyle = 'bg-emerald-100 dark:bg-emerald-950/90 border-emerald-500 text-emerald-950 dark:text-emerald-100 font-bold shadow-sm ring-1 ring-emerald-500/30';
                     } else if (isChosen) {
@@ -658,10 +779,10 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                   return (
                     <motion.button
                       key={idx}
-                      whileTap={!hasAnswered ? { scale: 0.98 } : undefined}
+                      whileTap={!hasAnswered && !isEliminated ? { scale: 0.98 } : undefined}
                       animate={animateProp}
                       transition={transitionProp}
-                      disabled={hasAnswered}
+                      disabled={hasAnswered || isEliminated}
                       onClick={() => handleSelectOption(idx)}
                       className={`w-full p-3.5 rounded-xl border text-left text-xs transition-all flex items-center justify-between cursor-pointer ${optionStyle}`}
                     >
@@ -796,12 +917,20 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
             }`}>
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 opacity-60" />
 
-              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-md ${
-                isPassed
-                  ? 'bg-emerald-500 text-slate-950 border border-emerald-400'
-                  : 'bg-rose-500 text-white border border-rose-400'
-              }`}>
-                {isPassed ? <Award size={34} /> : <ShieldAlert size={34} />}
+              <div className="flex items-center justify-center mx-auto pt-1">
+                <ReactiveAvatar
+                  avatarId={profile.avatarId}
+                  branch={profile.branch}
+                  displayName={profile.displayName}
+                  photoURL={profile.photoURL}
+                  size="2xl"
+                  reaction={isPassed ? 'quizComplete' : 'idle'}
+                  showBranchBadge={true}
+                  showLevelBadge={true}
+                  level={profile.level || 1}
+                  isVipSupporter={profile.isVipSupporter}
+                  interactive={true}
+                />
               </div>
 
               <div>
