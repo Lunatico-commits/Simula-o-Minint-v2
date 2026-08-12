@@ -2335,8 +2335,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
               {/* Scoreboard Bar with Dynamic Visual Timer Progress & Avatar Statuses */}
               {(() => {
-                const myAvatarOpt = getAvatarOption(myPlayer?.avatarId || profile.avatarId, myPlayer?.branch || profile.branch, myPlayer?.displayName || profile.displayName);
-                const oppAvatarOpt = getAvatarOption(opponent?.avatarId, opponent?.branch, opponent?.displayName);
                 const totalTime = currentRoom.timePerQuestion || 20;
                 const timerProgress = Math.max(0, Math.min(100, (questionTimer / totalTime) * 100));
                 const isUrgent = questionTimer <= 5;
@@ -2428,6 +2426,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                           isVipSupporter={myPlayer?.isVipSupporter || profile.isVipSupporter}
                           interactive={true}
                         />
+
                         <p className="text-[11px] font-bold text-slate-200 mt-1 truncate max-w-[90px] flex items-center gap-1">
                           <span>{myPlayer?.displayName}</span>
                         </p>
@@ -2495,6 +2494,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                           isVipSupporter={opponent?.isVipSupporter}
                           interactive={true}
                         />
+
                         <p className="text-[11px] font-bold text-slate-200 mt-1 truncate max-w-[90px] flex items-center gap-1">
                           <span>{opponent?.displayName}</span>
                         </p>
@@ -3317,6 +3317,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+
     </div>
   );
 };
