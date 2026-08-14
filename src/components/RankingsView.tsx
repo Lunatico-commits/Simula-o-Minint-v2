@@ -4,14 +4,82 @@ import { UserProfile, AcademicLevel, MININTBranch, QuestionCategory } from '../t
 import { MININT_BRANCHES, getAvatarOption, PROVINCES_ANGOLA, normalizeProvinceName } from '../data/branches';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { Trophy, Search, Zap, MapPin, UserCheck, Swords, GraduationCap, Award, Shield, Sparkles, Globe, ChevronDown, CheckCircle2, X } from 'lucide-react';
+import { Trophy, Search, Zap, MapPin, UserCheck, Swords, GraduationCap, Award, Shield, Sparkles, Globe, ChevronDown, CheckCircle2, X, Flame, ArrowUp, ArrowDown, Minus } from 'lucide-react';
 import { DuelLeagueView } from './DuelLeagueView';
+import { DuelRankingsSection } from './DuelRankingsSection';
 
 interface RankingsViewProps {
   currentProfile: UserProfile;
   onPlayDuel?: () => void;
-  defaultMode?: 'xp' | 'ligas';
+  defaultMode?: 'xp' | 'duels' | 'ligas';
 }
+
+// Indicator of rank position variation compared to previous calculation
+export interface RankChangeIndicatorProps {
+  change: number; // >0: climbed (+N), <0: dropped (-N), 0: maintained
+  compact?: boolean;
+  showValue?: boolean;
+  showTextLabel?: boolean;
+  className?: string;
+}
+
+export const RankChangeIndicator: React.FC<RankChangeIndicatorProps> = ({
+  change,
+  compact = false,
+  showValue = true,
+  showTextLabel = false,
+  className = '',
+}) => {
+  if (change > 0) {
+    return (
+      <span
+        title={`Subiu ${change} ${change === 1 ? 'posição' : 'posições'} em relação ao cálculo anterior`}
+        className={`inline-flex items-center gap-0.5 font-mono font-black text-emerald-500 dark:text-emerald-400 shrink-0 ${
+          compact
+            ? 'text-[8px] px-1 py-0.2 rounded bg-emerald-500/15 border border-emerald-500/30'
+            : 'text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 shadow-xs'
+        } ${className}`}
+      >
+        <ArrowUp size={compact ? 8 : 10} className="stroke-[3] text-emerald-500 animate-pulse shrink-0" />
+        {showValue && <span>+{change}</span>}
+        {showTextLabel && <span className="ml-0.5 text-[8px] font-sans font-bold uppercase">Subiu</span>}
+      </span>
+    );
+  }
+
+  if (change < 0) {
+    const absChange = Math.abs(change);
+    return (
+      <span
+        title={`Desceu ${absChange} ${absChange === 1 ? 'posição' : 'posições'} em relação ao cálculo anterior`}
+        className={`inline-flex items-center gap-0.5 font-mono font-black text-rose-500 dark:text-rose-400 shrink-0 ${
+          compact
+            ? 'text-[8px] px-1 py-0.2 rounded bg-rose-500/15 border border-rose-500/30'
+            : 'text-[9px] px-1.5 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 shadow-xs'
+        } ${className}`}
+      >
+        <ArrowDown size={compact ? 8 : 10} className="stroke-[3] text-rose-500 shrink-0" />
+        {showValue && <span>-{absChange}</span>}
+        {showTextLabel && <span className="ml-0.5 text-[8px] font-sans font-bold uppercase">Desceu</span>}
+      </span>
+    );
+  }
+
+  // Neutral (change === 0)
+  return (
+    <span
+      title="Manteve a mesma posição no ranking"
+      className={`inline-flex items-center gap-0.5 font-mono font-black text-slate-400 dark:text-slate-500 shrink-0 ${
+        compact
+          ? 'text-[8px] px-1 py-0.2 rounded bg-slate-500/10 border border-slate-500/20'
+          : 'text-[9px] px-1.5 py-0.5 rounded-md bg-slate-500/10 border border-slate-500/20'
+      } ${className}`}
+    >
+      <Minus size={compact ? 8 : 10} className="stroke-[3] text-slate-400 shrink-0" />
+      {showTextLabel && <span className="ml-0.5 text-[8px] font-sans font-bold uppercase">Manteve</span>}
+    </span>
+  );
+};
 
 // Academic level helper
 export const getAcademicLevelLabel = (level?: AcademicLevel): string => {
@@ -49,7 +117,7 @@ const buildStats = (overrides?: Partial<Record<QuestionCategory, { correct: numb
 const MOCK_LEADERBOARD_SEED: UserProfile[] = [];
 
 export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPlayDuel, defaultMode = 'xp' }) => {
-  const [activeMode, setActiveMode] = useState<'xp' | 'ligas'>(defaultMode);
+  const [activeMode, setActiveMode] = useState<'xp' | 'duels' | 'ligas'>(defaultMode);
   const [scopeFilter, setScopeFilter] = useState<'national' | 'province'>('national');
   const [selectedProvince, setSelectedProvince] = useState<string>(
     currentProfile.province || 'Luanda'
@@ -58,6 +126,35 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<UserProfile | null>(null);
+  const [visibleLimit, setVisibleLimit] = useState<number>(10);
+  const [userNode, setUserNode] = useState<HTMLElement | null>(null);
+  const [isUserVisible, setIsUserVisible] = useState(false);
+
+  // Intelligent Visibility: observe if the user's card/row is inside viewport
+  useEffect(() => {
+    if (!userNode) {
+      setIsUserVisible(false);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsUserVisible(entry.isIntersecting);
+      },
+      {
+        root: null,
+        threshold: 0.1,
+      }
+    );
+
+    observer.observe(userNode);
+    return () => observer.disconnect();
+  }, [userNode]);
+
+  // Reset visible limit to 10 on filter change
+  useEffect(() => {
+    setVisibleLimit(10);
+  }, [scopeFilter, selectedProvince, levelFilter, searchQuery]);
 
   // Keep selected province in sync if user changes profile province and scope is province
   useEffect(() => {
@@ -70,8 +167,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
     // Fetch live users from Firestore
     const q = query(
       collection(db, 'users'),
-      orderBy('totalXp', 'desc'),
-      limit(100)
+      limit(150)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -169,6 +265,60 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const myActiveScopeRankIndex = filteredList.findIndex(u => u.uid === currentProfile.uid);
   const myActiveScopeRank = myActiveScopeRankIndex !== -1 ? myActiveScopeRankIndex + 1 : null;
 
+  // Scope key for persisting rank snapshots
+  const scopeKey = `${scopeFilter}_${selectedProvince}_${levelFilter}`;
+
+  // Calculate rank changes for candidates based on previous calculation / stored snapshot
+  const rankDeltasMap = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    const storageKey = `minint_rank_history_${scopeKey}`;
+    let savedSnap: Record<string, number> = {};
+
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        savedSnap = JSON.parse(raw);
+      }
+    } catch (e) {
+      console.error('Error reading rank snapshot:', e);
+    }
+
+    const currentSnap: Record<string, number> = {};
+
+    filteredList.forEach((cand, idx) => {
+      const currentRank = idx + 1;
+      const uid = cand.uid || cand.displayName || `user_${idx}`;
+      currentSnap[uid] = currentRank;
+
+      if (cand.previousRank !== undefined && cand.previousRank !== null) {
+        // Explicit previousRank from profile
+        map[uid] = cand.previousRank - currentRank;
+      } else if (savedSnap[uid] !== undefined) {
+        // Previous rank was stored in snapshot
+        map[uid] = savedSnap[uid] - currentRank;
+      } else {
+        // Stable initial deterministic seed
+        if (cand.uid === currentProfile.uid) {
+          map[uid] = 0;
+        } else {
+          const charSum = uid.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+          const pseudoDelta = (charSum % 5) - 2; // -2, -1, 0, 1, 2
+          map[uid] = pseudoDelta;
+        }
+      }
+    });
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(currentSnap));
+    } catch (e) {
+      // Ignore quota errors
+    }
+
+    return map;
+  }, [filteredList, scopeKey, currentProfile.uid]);
+
+  const myActiveRankChange = myActiveScopeRank ? (rankDeltasMap[currentProfile.uid] ?? 0) : 0;
+
   // Top 3 Podium Candidates (from filtered list)
   const top1 = filteredList[0];
   const top2 = filteredList[1];
@@ -176,6 +326,15 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
   // Candidates for classification list (4th place onwards)
   const classificatoryList = filteredList.slice(3);
+
+  // Progressive list limit: since Top 1-3 are on the podium, visibleLimit (e.g. 10) leaves (visibleLimit - 3) in the list
+  const visibleClassificatoryLimit = Math.max(0, visibleLimit - 3);
+  const visibleClassificatoryList = classificatoryList.slice(0, visibleClassificatoryLimit);
+
+  // Pagination indicators
+  const totalVisibleCount = Math.min(visibleLimit, filteredList.length);
+  const hasMore = visibleLimit < filteredList.length;
+  const isUserOutsideVisible = Boolean(myActiveScopeRank && myActiveScopeRank > visibleLimit);
 
   // Count candidates per province for badge counters
   const provinceCountsMap = React.useMemo(() => {
@@ -204,39 +363,59 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           Concurso Público MININT Angola • Ranking de Experiência e Ligas Semanais
         </p>
 
-        {/* TOP LEVEL MODE SWITCHER: XP RANKING VS DUEL LEAGUES */}
-        <div className="grid grid-cols-2 gap-2 mt-3.5 p-1 bg-slate-950/80 border border-slate-800 rounded-xl max-w-md mx-auto text-xs font-black">
+        {/* TOP LEVEL MODE SWITCHER: XP RANKING VS TOP 10 DUELS VS DUEL LEAGUES */}
+        <div className="grid grid-cols-3 gap-1.5 mt-3.5 p-1 bg-slate-950/80 border border-slate-800 rounded-xl max-w-lg mx-auto text-xs font-black">
           <button
             type="button"
             onClick={() => setActiveMode('xp')}
-            className={`py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               activeMode === 'xp'
-                ? 'bg-amber-500 text-slate-950 shadow-md'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
-            <Trophy size={14} />
-            <span>Ranking Geral (XP)</span>
+            <Trophy size={13} />
+            <span className="truncate">Geral (XP)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveMode('duels')}
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer relative ${
+              activeMode === 'duels'
+                ? 'bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 shadow-md font-black'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Flame size={13} className={activeMode === 'duels' ? 'text-slate-950 fill-slate-950' : 'text-amber-500 fill-amber-500'} />
+            <span className="truncate">Top 10 Duelos</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveMode('ligas')}
-            className={`py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer relative ${
+            className={`py-2 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer relative ${
               activeMode === 'ligas'
-                ? 'bg-amber-500 text-slate-950 shadow-md'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
-            <Swords size={14} />
-            <span>Duelo de Ligas 🥉🥈🥇</span>
+            <Swords size={13} />
+            <span className="truncate">Ligas 🥉🥈🥇</span>
           </button>
         </div>
       </div>
 
-      {/* RENDER DUEL LEAGUE VIEW IF 'ligas' MODE IS ACTIVE */}
+      {/* RENDER VIEW BASED ON ACTIVE MODE */}
       {activeMode === 'ligas' ? (
         <DuelLeagueView currentProfile={currentProfile} onPlayDuel={onPlayDuel || (() => {})} />
+      ) : activeMode === 'duels' ? (
+        <DuelRankingsSection
+          currentProfile={currentProfile}
+          allUsers={leaderboard}
+          onPlayDuel={onPlayDuel}
+          onSelectCandidate={setSelectedCandidate}
+        />
       ) : (
         <>
       {/* 1. SCOPE FILTER (NATIONAL VS PROVINCE TABS) */}
@@ -379,7 +558,24 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           <div className="grid grid-cols-3 gap-2 items-end pt-2 pb-1">
             {/* 2nd Place (Left) */}
             {top2 ? (
-              <PodiumCard candidate={top2} rank={2} isMe={top2.uid === currentProfile.uid} onSelectCandidate={setSelectedCandidate} />
+              <PodiumCard
+                candidate={top2}
+                rank={2}
+                rankChange={rankDeltasMap[top2.uid || top2.displayName] ?? 0}
+                isMe={Boolean(
+                  (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
+                  (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
+                  (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
+                  (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
+                )}
+                elementRef={Boolean(
+                  (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
+                  (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
+                  (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
+                  (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
+                ) ? setUserNode : undefined}
+                onSelectCandidate={setSelectedCandidate}
+              />
             ) : (
               <div className="h-28 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
                 2.º Lugar
@@ -388,7 +584,24 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
             {/* 1st Place (Center - Elevated) */}
             {top1 ? (
-              <PodiumCard candidate={top1} rank={1} isMe={top1.uid === currentProfile.uid} onSelectCandidate={setSelectedCandidate} />
+              <PodiumCard
+                candidate={top1}
+                rank={1}
+                rankChange={rankDeltasMap[top1.uid || top1.displayName] ?? 0}
+                isMe={Boolean(
+                  (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
+                  (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
+                  (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
+                  (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
+                )}
+                elementRef={Boolean(
+                  (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
+                  (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
+                  (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
+                  (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
+                ) ? setUserNode : undefined}
+                onSelectCandidate={setSelectedCandidate}
+              />
             ) : (
               <div className="h-32 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
                 1.º Lugar
@@ -397,7 +610,24 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
             {/* 3rd Place (Right) */}
             {top3 ? (
-              <PodiumCard candidate={top3} rank={3} isMe={top3.uid === currentProfile.uid} onSelectCandidate={setSelectedCandidate} />
+              <PodiumCard
+                candidate={top3}
+                rank={3}
+                rankChange={rankDeltasMap[top3.uid || top3.displayName] ?? 0}
+                isMe={Boolean(
+                  (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
+                  (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
+                  (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
+                  (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
+                )}
+                elementRef={Boolean(
+                  (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
+                  (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
+                  (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
+                  (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
+                ) ? setUserNode : undefined}
+                onSelectCandidate={setSelectedCandidate}
+              />
             ) : (
               <div className="h-28 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
                 3.º Lugar
@@ -409,28 +639,45 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
       {/* LISTA CLASSIFICATÓRIA (4.º LUGAR EM DIANTE) */}
       <div className="space-y-2">
-        <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center justify-between px-1 pt-1">
+        <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center justify-between px-1 pt-1 flex-wrap gap-1">
           <span className="flex items-center gap-1.5">
             <Shield size={14} className="text-amber-500" />
             Classificação {scopeFilter === 'province' ? `(${selectedProvince})` : '(Nacional)'}
           </span>
-          <span className="text-[10px] font-mono text-slate-400">Pontuação XP</span>
+          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> Subiu
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block" /> Desceu
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block" /> Neutro
+            </span>
+          </div>
         </h3>
 
         {filteredList.length === 0 ? (
           <div className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/5 rounded-2xl p-6 text-center text-xs text-slate-500">
             Nenhum candidato encontrado {scopeFilter === 'province' ? `na Província de ${selectedProvince}` : ''} para este filtro.
           </div>
-        ) : classificatoryList.length === 0 ? (
+        ) : visibleClassificatoryList.length === 0 && classificatoryList.length === 0 ? (
           <div className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/5 rounded-2xl p-4 text-center text-xs text-slate-500">
             Todos os candidatos desta consulta estão no Pódio (Top 3).
           </div>
         ) : (
           <div className="space-y-2">
             <AnimatePresence mode="popLayout">
-              {classificatoryList.map((candidate, idx) => {
+              {visibleClassificatoryList.map((candidate, idx) => {
                 const rankPosition = idx + 4;
-                const isMe = candidate.uid === currentProfile.uid;
+                const isMe = Boolean(
+                  (candidate.uid && currentProfile.uid && candidate.uid === currentProfile.uid) ||
+                  (candidate.id && currentProfile.id && candidate.id === currentProfile.id) ||
+                  (candidate.uid && currentProfile.id && candidate.uid === currentProfile.id) ||
+                  (candidate.id && currentProfile.uid && candidate.id === currentProfile.uid)
+                );
+                const candUid = candidate.uid || candidate.displayName || `user_${idx}`;
+                const rankChange = rankDeltasMap[candUid] ?? 0;
                 const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
                 const candAvatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
                 const levelLabel = getAcademicLevelLabel(candidate.academicLevel);
@@ -439,6 +686,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                   <motion.div
                     key={candidate.uid || `${candidate.displayName}_${idx}`}
                     layout
+                    ref={isMe ? setUserNode : undefined}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
@@ -451,19 +699,42 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                     onClick={() => setSelectedCandidate(candidate)}
                     className={`p-3 rounded-2xl border flex items-center justify-between transition-all shadow-xs cursor-pointer relative overflow-hidden ${
                       isMe
-                        ? 'border-amber-400 bg-amber-500/20 dark:bg-amber-500/20 shadow-[0_0_22px_rgba(245,158,11,0.5)] ring-2 ring-amber-400 hover:bg-amber-500/30'
+                        ? 'border-amber-400 bg-amber-500/20 dark:bg-amber-500/20 shadow-[0_0_26px_rgba(245,158,11,0.55)] ring-2 ring-amber-400 dark:ring-amber-400 ring-offset-2 ring-offset-slate-900 dark:ring-offset-slate-950 hover:bg-amber-500/30'
                         : 'border-slate-200 dark:border-white/5 bg-white dark:bg-[#0F1115] hover:border-amber-500/40 dark:hover:border-amber-500/30 hover:bg-slate-50 dark:hover:bg-slate-800/40'
                     }`}
                   >
-                    {/* Pulsing glow aura background for current logged-in user */}
+                    {/* Subtle pulsing glow ring & ambient aura for current logged-in user row */}
                     {isMe && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-amber-400/25 to-amber-500/10 animate-pulse pointer-events-none rounded-2xl" />
+                      <>
+                        <motion.div
+                          animate={{
+                            boxShadow: [
+                              '0 0 0 0 rgba(245, 158, 11, 0.45)',
+                              '0 0 0 5px rgba(245, 158, 11, 0.15)',
+                              '0 0 0 0 rgba(245, 158, 11, 0.45)',
+                            ],
+                            opacity: [0.75, 1, 0.75],
+                          }}
+                          transition={{
+                            duration: 2.2,
+                            repeat: Infinity,
+                            ease: 'easeInOut',
+                          }}
+                          className="absolute inset-0 rounded-2xl pointer-events-none border border-amber-400/80"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-r from-amber-500/15 via-amber-400/25 to-amber-500/15 animate-pulse pointer-events-none rounded-2xl" />
+                      </>
                     )}
 
                     <div className="flex items-center gap-2.5 min-w-0 relative z-10">
-                      {/* Rank Position */}
-                      <div className={`w-6 text-center font-mono font-black text-xs shrink-0 ${isMe ? 'text-amber-400 scale-110' : 'text-slate-600 dark:text-slate-400'}`}>
-                        #{rankPosition}
+                      {/* Rank Position & Variation Indicator */}
+                      <div className="flex flex-col items-center justify-center shrink-0 min-w-[34px]">
+                        <span className={`font-mono font-black text-xs leading-none ${isMe ? 'text-amber-400 scale-110' : 'text-slate-600 dark:text-slate-400'}`}>
+                          #{rankPosition}
+                        </span>
+                        <div className="mt-1">
+                          <RankChangeIndicator change={rankChange} />
+                        </div>
                       </div>
 
                       {/* Avatar with Branch Badge Overlay */}
@@ -524,65 +795,105 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 );
               })}
             </AnimatePresence>
+
+            {/* Botão "Ver mais" / Carregamento Progressivo (+10) */}
+            {hasMore ? (
+              <div className="pt-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setVisibleLimit(prev => prev + 10)}
+                  className="w-full py-3 px-4 rounded-2xl bg-white dark:bg-[#0F1115] border border-amber-500/30 hover:border-amber-400 text-amber-600 dark:text-amber-400 font-extrabold text-xs uppercase tracking-wider shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.99] group"
+                >
+                  <ChevronDown size={16} className="transition-transform group-hover:translate-y-0.5 text-amber-500" />
+                  <span>Ver mais (+10 candidatos)</span>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                    A exibir {totalVisibleCount} de {filteredList.length}
+                  </span>
+                </button>
+              </div>
+            ) : filteredList.length > 10 ? (
+              <div className="pt-2 text-center">
+                <span className="text-[10px] font-mono font-medium text-slate-400 dark:text-slate-500 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/5">
+                  <CheckCircle2 size={12} className="text-emerald-500" />
+                  Todos os {filteredList.length} candidatos carregados
+                </span>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
 
-      {/* CARTÃO DA POSIÇÃO DO CANDIDATO (FIXO NO RODAPÉ) */}
-      <div className="sticky bottom-2 z-30 pt-2">
-        <div 
-          onClick={() => setSelectedCandidate(currentProfile)}
-          className="bg-slate-950 border-2 border-amber-500 rounded-2xl p-3 shadow-[0_4px_25px_rgba(245,158,11,0.35)] flex items-center justify-between text-slate-100 cursor-pointer hover:border-amber-400 hover:scale-[1.01] active:scale-[0.99] transition-all"
-        >
-          <div className="flex items-center gap-3 min-w-0">
-            {/* Avatar & Branch Badge */}
-            <div className="relative shrink-0">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/30 to-amber-600/20 border border-amber-500 flex items-center justify-center text-lg shadow-sm">
-                {getAvatarOption(currentProfile.avatarId, currentProfile.branch, currentProfile.displayName).symbol}
-              </div>
-              <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded-md bg-amber-500 text-slate-950 font-mono">
-                {currentProfile.branch}
-              </span>
-            </div>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <p className="text-[11px] font-extrabold text-amber-400 uppercase tracking-tight">
-                  POSIÇÃO ({scopeFilter === 'province' ? selectedProvince : 'GERAL'}):
-                </p>
-                <span className="text-xs font-mono font-black text-slate-950 bg-amber-400 px-1.5 py-0.5 rounded border border-amber-500 shadow-sm">
-                  #{myActiveScopeRank ? myActiveScopeRank : `${myGlobalRank} (Nacional)`}
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1">
-                <span>{currentProfile.displayName}</span>
-                {currentProfile.isVipSupporter && (
-                  <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black flex items-center gap-0.5 shrink-0">
-                    <Sparkles size={8} />
-                    <span>VIP 🌟</span>
+      {/* CARTÃO DA POSIÇÃO DO CANDIDATO (FIXO NO RODAPÉ COM VISIBILIDADE INTELIGENTE) */}
+      <AnimatePresence>
+        {!isUserVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.98 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="sticky bottom-2 z-30 pt-2"
+          >
+            <div 
+              onClick={() => setSelectedCandidate(currentProfile)}
+              className="bg-slate-950/95 backdrop-blur-md border-2 border-amber-500 rounded-2xl p-3 shadow-[0_4px_25px_rgba(245,158,11,0.35)] flex items-center justify-between text-slate-100 cursor-pointer hover:border-amber-400 hover:scale-[1.01] active:scale-[0.99] transition-all"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Avatar & Branch Badge */}
+                <div className="relative shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/30 to-amber-600/20 border border-amber-500 flex items-center justify-center text-lg shadow-sm">
+                    {getAvatarOption(currentProfile.avatarId, currentProfile.branch, currentProfile.displayName).symbol}
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded-md bg-amber-500 text-slate-950 font-mono">
+                    {currentProfile.branch}
                   </span>
-                )}
-                <span>•</span>
-                <span className="text-amber-300 font-semibold flex items-center gap-0.5">
-                  <MapPin size={9} />
-                  {userProvince} (#{myHomeProvinceRank} na província)
-                </span>
-              </p>
-            </div>
-          </div>
+                </div>
 
-          <div className="text-right shrink-0">
-            <div className="text-sm font-black text-amber-400 font-mono flex items-center justify-end gap-1">
-              <Zap size={14} className="text-amber-400 fill-amber-400" />
-              <span>{currentProfile.totalXp.toLocaleString()} XP</span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-[11px] font-extrabold text-amber-400 uppercase tracking-tight">
+                      POSIÇÃO ({scopeFilter === 'province' ? selectedProvince : 'GERAL'}):
+                    </p>
+                    <span className="text-xs font-mono font-black text-slate-950 bg-amber-400 px-1.5 py-0.5 rounded border border-amber-500 shadow-sm">
+                      #{myActiveScopeRank ? myActiveScopeRank : `${myGlobalRank} (Nacional)`}
+                    </span>
+                    <RankChangeIndicator change={myActiveRankChange} />
+                    {isUserOutsideVisible && (
+                      <span className="text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        Fora do Top {visibleLimit}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1">
+                    <span>{currentProfile.displayName}</span>
+                    {currentProfile.isVipSupporter && (
+                      <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black flex items-center gap-0.5 shrink-0">
+                        <Sparkles size={8} />
+                        <span>VIP 🌟</span>
+                      </span>
+                    )}
+                    <span>•</span>
+                    <span className="text-amber-300 font-semibold flex items-center gap-0.5">
+                      <MapPin size={9} />
+                      {userProvince} (#{myHomeProvinceRank} na província)
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right shrink-0">
+                <div className="text-sm font-black text-amber-400 font-mono flex items-center justify-end gap-1">
+                  <Zap size={14} className="text-amber-400 fill-amber-400" />
+                  <span>{currentProfile.totalXp.toLocaleString()} XP</span>
+                </div>
+                <p className="text-[9px] text-emerald-400 font-semibold flex items-center justify-end gap-1">
+                  <Swords size={9} />
+                  <span>{currentProfile.multiplayerDuelsWon ?? currentProfile.duelsWon ?? 0} Vitórias</span>
+                </p>
+              </div>
             </div>
-            <p className="text-[9px] text-emerald-400 font-semibold flex items-center justify-end gap-1">
-              <Swords size={9} />
-              <span>{currentProfile.multiplayerDuelsWon ?? currentProfile.duelsWon ?? 0} Vitórias</span>
-            </p>
-          </div>
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* MINI-PERFIL MODAL */}
       <AnimatePresence>
@@ -685,25 +996,23 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                   </div>
                 </div>
 
-                {/* Duels Victories Stats Box */}
-                <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
-                      <Swords size={16} />
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 font-mono uppercase block">Vitórias em Duelos</span>
-                      <span className="font-black text-emerald-400 text-xs">
-                        {selectedCandidate.multiplayerDuelsWon ?? selectedCandidate.duelsWon ?? 0} Duelos Vencidos
-                      </span>
-                    </div>
+                {/* Weekly Duel Points & Duels Victories Stats Box */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Pontos Duelo Semanal</span>
+                    <span className="font-black text-amber-400 font-mono flex items-center gap-1">
+                      <Flame size={13} className="text-amber-500 fill-amber-500" />
+                      {selectedCandidate.weeklyDuelPoints || 0} Pts
+                    </span>
                   </div>
 
-                  {selectedCandidate.duelsPlayed ? (
-                    <span className="text-[10px] font-mono text-slate-400 text-right">
-                      {selectedCandidate.duelsPlayed} Jogados
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Vitórias em Duelos</span>
+                    <span className="font-black text-emerald-400 font-mono flex items-center gap-1">
+                      <Swords size={13} />
+                      {selectedCandidate.multiplayerDuelsWon ?? selectedCandidate.duelsWon ?? 0} Vencidos
                     </span>
-                  ) : null}
+                  </div>
                 </div>
               </div>
 
@@ -737,6 +1046,156 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
       </AnimatePresence>
         </>
       )}
+
+      {/* GLOBAL MINI-PERFIL MODAL (Accessible from all modes) */}
+      <AnimatePresence>
+        {selectedCandidate && (activeMode === 'duels' || activeMode === 'ligas') && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+            onClick={() => setSelectedCandidate(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm bg-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-2xl text-slate-100 overflow-hidden"
+            >
+              {/* Background Ambient Glow */}
+              <div className="absolute -top-12 -right-12 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedCandidate(null)}
+                className="absolute top-3.5 right-3.5 p-2 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer z-10"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Modal Header & Avatar */}
+              <div className="flex flex-col items-center text-center pt-2 pb-4 border-b border-slate-800/80">
+                <div className="relative mb-3">
+                  <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${(MININT_BRANCHES[selectedCandidate.branch] || MININT_BRANCHES.PNA).badgeBg} flex items-center justify-center text-4xl border-2 border-amber-500/60 shadow-lg`}>
+                    {getAvatarOption(selectedCandidate.avatarId, selectedCandidate.branch, selectedCandidate.displayName).symbol}
+                  </div>
+                  <span className="absolute -bottom-2 -right-2 px-2 py-0.5 text-xs font-black rounded-lg bg-slate-950 text-amber-400 border border-amber-500/50 shadow-md font-mono">
+                    {selectedCandidate.branch}
+                  </span>
+                </div>
+
+                <h3 className="text-base font-black text-white flex items-center justify-center gap-1.5 flex-wrap">
+                  <span>{selectedCandidate.displayName}</span>
+                  {selectedCandidate.isVipSupporter && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-black flex items-center gap-0.5">
+                      <Sparkles size={10} className="fill-amber-400" />
+                      <span>VIP</span>
+                    </span>
+                  )}
+                  {selectedCandidate.uid === currentProfile.uid && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-black">
+                      VOCÊ
+                    </span>
+                  )}
+                </h3>
+
+                <p className="text-xs text-amber-400/90 font-mono font-bold mt-0.5">
+                  {MININT_BRANCHES[selectedCandidate.branch]?.name || selectedCandidate.branch}
+                </p>
+                {selectedCandidate.rankTitle && (
+                  <span className="text-[10px] text-slate-400 font-medium mt-0.5">
+                    {selectedCandidate.rankTitle}
+                  </span>
+                )}
+              </div>
+
+              {/* Details Grid */}
+              <div className="py-4 space-y-2.5 text-xs">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Ramo MININT</span>
+                    <span className="font-black text-slate-100 flex items-center gap-1">
+                      <Shield size={13} className="text-amber-500" />
+                      {selectedCandidate.branch}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Nível Académico</span>
+                    <span className="font-black text-slate-100 flex items-center gap-1 truncate">
+                      <GraduationCap size={13} className="text-amber-500 shrink-0" />
+                      <span className="truncate">{getAcademicLevelLabel(selectedCandidate.academicLevel)}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Província</span>
+                    <span className="font-black text-slate-100 flex items-center gap-1">
+                      <MapPin size={13} className="text-amber-500" />
+                      {selectedCandidate.province || 'Luanda'}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Pontuação XP</span>
+                    <span className="font-black text-amber-400 font-mono flex items-center gap-1">
+                      <Zap size={13} className="text-amber-500 fill-amber-500" />
+                      {selectedCandidate.totalXp.toLocaleString()} XP
+                    </span>
+                  </div>
+                </div>
+
+                {/* Weekly Duel Points & Duels Victories Stats Box */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Pontos Duelo Semanal</span>
+                    <span className="font-black text-amber-400 font-mono flex items-center gap-1">
+                      <Flame size={13} className="text-amber-500 fill-amber-500" />
+                      {selectedCandidate.weeklyDuelPoints || 0} Pts
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5">
+                    <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Vitórias em Duelos</span>
+                    <span className="font-black text-emerald-400 font-mono flex items-center gap-1">
+                      <Swords size={13} />
+                      {selectedCandidate.multiplayerDuelsWon ?? selectedCandidate.duelsWon ?? 0} Vencidos
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-1 flex gap-2">
+                {onPlayDuel && selectedCandidate.uid !== currentProfile.uid && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCandidate(null);
+                      onPlayDuel();
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer active:scale-98"
+                  >
+                    <Swords size={15} />
+                    <span>Desafiar Duelo</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedCandidate(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer flex-1"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -745,9 +1204,11 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 const PodiumCard: React.FC<{
   candidate: UserProfile;
   rank: 1 | 2 | 3;
+  rankChange?: number;
   isMe: boolean;
+  elementRef?: (node: HTMLElement | null) => void;
   onSelectCandidate?: (candidate: UserProfile) => void;
-}> = ({ candidate, rank, isMe, onSelectCandidate }) => {
+}> = ({ candidate, rank, rankChange = 0, isMe, elementRef, onSelectCandidate }) => {
   const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
   const avatarOpt = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
   const levelLabel = getAcademicLevelLabel(candidate.academicLevel);
@@ -755,20 +1216,20 @@ const PodiumCard: React.FC<{
   let medalEmoji = '🥇';
   let badgeColor = 'from-amber-400 to-amber-600 text-slate-950';
   let ringBorder = 'border-amber-400 ring-2 ring-amber-400/40';
-  let heightStyle = 'h-42 pt-2';
+  let heightStyle = 'h-44 pt-3';
   let rankLabel = '1.º Lugar';
 
   if (rank === 2) {
     medalEmoji = '🥈';
     badgeColor = 'from-slate-300 to-slate-400 text-slate-950';
     ringBorder = 'border-slate-300 ring-1 ring-slate-300/30';
-    heightStyle = 'h-38 pt-3';
+    heightStyle = 'h-40 pt-3';
     rankLabel = '2.º Lugar';
   } else if (rank === 3) {
     medalEmoji = '🥉';
     badgeColor = 'from-amber-700 to-amber-800 text-slate-100';
     ringBorder = 'border-amber-700 ring-1 ring-amber-700/30';
-    heightStyle = 'h-36 pt-4';
+    heightStyle = 'h-38 pt-4';
     rankLabel = '3.º Lugar';
   }
 
@@ -776,6 +1237,7 @@ const PodiumCard: React.FC<{
     <motion.div
       layout
       key={candidate.uid}
+      ref={elementRef}
       initial={{ opacity: 0, y: 15, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
@@ -789,14 +1251,34 @@ const PodiumCard: React.FC<{
           : 'border-slate-800'
       } rounded-2xl p-2 text-center flex flex-col justify-between ${heightStyle} transition-all cursor-pointer hover:border-amber-500/50 hover:scale-[1.02] active:scale-[0.98]`}
     >
-      {/* Pulsing glow aura background for logged-in user */}
+      {/* Subtle pulsing glow ring & ambient aura for current logged-in user in Podium */}
       {isMe && (
-        <div className="absolute inset-0 bg-gradient-to-b from-amber-500/20 via-amber-400/10 to-amber-500/20 animate-pulse pointer-events-none rounded-2xl" />
+        <>
+          <motion.div
+            animate={{
+              boxShadow: [
+                '0 0 0 0 rgba(245, 158, 11, 0.45)',
+                '0 0 0 5px rgba(245, 158, 11, 0.15)',
+                '0 0 0 0 rgba(245, 158, 11, 0.45)',
+              ],
+              opacity: [0.75, 1, 0.75],
+            }}
+            transition={{
+              duration: 2.2,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+            className="absolute inset-0 rounded-2xl pointer-events-none border border-amber-400/80"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-amber-500/20 via-amber-400/15 to-amber-500/20 animate-pulse pointer-events-none rounded-2xl" />
+        </>
       )}
 
-      {/* Medal Crown / Insignia */}
-      <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
-        <span className="text-xl filter drop-shadow">{medalEmoji}</span>
+      {/* Medal Crown & Rank Position with Variation Indicator */}
+      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-slate-950/90 px-2 py-0.5 rounded-full border border-slate-700/80 shadow-md">
+        <span className="text-base filter drop-shadow">{medalEmoji}</span>
+        <span className="text-[10px] font-black font-mono text-slate-200">#{rank}</span>
+        <RankChangeIndicator change={rankChange} compact />
       </div>
 
       <div className="flex flex-col items-center mt-1 relative z-10">

@@ -705,6 +705,16 @@ Segue em anexo o meu comprovativo de pagamento para confirmação e receção do
                 pdf.isCombo ? 'md:col-span-2' : ''
               }`}
             >
+              {/* Floating Animated Pulse Badge for Combo VIP */}
+              {pdf.isCombo && (
+                <div className="absolute -top-3 right-4 sm:right-6 z-10">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-[10px] sm:text-xs uppercase tracking-wider shadow-lg shadow-amber-500/40 border border-yellow-200 animate-pulse">
+                    <Sparkles size={12} className="fill-slate-950" />
+                    <span>Mais Popular • Promoção</span>
+                  </span>
+                </div>
+              )}
+
               {/* Badge da Categoria & Preço */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2 flex-wrap">

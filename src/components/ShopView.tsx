@@ -18,7 +18,9 @@ import {
   CheckCircle2, 
   ArrowRight, 
   Crown,
-  Info
+  Info,
+  BookOpen,
+  Star
 } from 'lucide-react';
 import { UserProfile } from '../types';
 import { SHOP_ITEMS, ShopItem, ShopCategory } from '../data/shopItems';
@@ -122,6 +124,20 @@ export const ShopView: React.FC<ShopViewProps> = ({
       type: 'success',
     });
     setTimeout(() => setFeedbackMessage(null), 3000);
+  };
+
+  const handleBuyComboViaWhatsApp = () => {
+    playClickSound();
+    const message = `Olá! Gostaria de adquirir o PDF *💎 COMBO VIP: Todos os 7 PDFs + Simulados Bónus* no valor de *2.500 Kz*.
+
+💳 *Dados de Pagamento:*
+- IBAN: AO06 0058 0000 06173873101 38
+- Express: 939 606 343
+- Titular: António Edson Lima Pimentel
+
+Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
+    const whatsappUrl = `https://wa.me/244939606343?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
 
   const filteredItems = SHOP_ITEMS.filter((item) => {
@@ -246,6 +262,72 @@ export const ShopView: React.FC<ShopViewProps> = ({
         </div>
       </div>
 
+      {/* Featured Promo Card: Combo VIP Study Pack */}
+      <div className="relative rounded-2xl bg-gradient-to-br from-amber-500/15 via-slate-900 to-amber-950/40 border-2 border-amber-500/80 p-4 sm:p-5 text-slate-100 shadow-[0_0_25px_rgba(245,158,11,0.2)] overflow-visible">
+        {/* Visible Floating Animated Pulse Badge: Mais Popular / Promoção */}
+        <div className="absolute -top-3 right-4 sm:right-6 z-20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-[10px] sm:text-xs uppercase tracking-wider shadow-lg shadow-amber-500/40 border border-yellow-200 animate-pulse">
+            <Sparkles size={13} className="fill-slate-950" />
+            <span>Mais Popular • Promoção</span>
+          </span>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2 flex-wrap pt-0.5">
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] uppercase tracking-wider">
+                💎 Pacote Oficial de Estudos
+              </span>
+              <span className="text-[11px] text-amber-300 font-bold flex items-center gap-1">
+                <Star size={13} className="fill-amber-400 text-amber-400" />
+                <span>5.0 (148 avaliações)</span>
+              </span>
+            </div>
+
+            <h3 className="text-base sm:text-lg font-black text-white tracking-tight leading-snug">
+              Combo VIP: Todos os 7 PDFs + 500 Questões Resolvidas
+            </h3>
+            <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+              Material completo para o Concurso MININT (PNA, SIC, SME, SP e SPCB). Inclui Legislação Orgânica, Português, Cultura Geral, Informática e Gabaritos Comentados.
+            </p>
+
+            <div className="flex items-center gap-3 pt-1 text-xs flex-wrap">
+              <div className="flex items-center gap-2 text-slate-200 font-bold">
+                <span className="text-slate-400 line-through text-[11px]">3.900 Kz</span>
+                <span className="text-base sm:text-lg font-black text-amber-400 font-mono">2.500 Kz</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/20 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold">
+                  Economize 1.400 Kz
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-row sm:flex-col items-center gap-2 w-full md:w-auto shrink-0">
+            {onNavigateTab && (
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  onNavigateTab('materials');
+                }}
+                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer"
+              >
+                <BookOpen size={15} />
+                <span>Ver Combo VIP</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleBuyComboViaWhatsApp}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+            >
+              <ShoppingBag size={14} />
+              <span>Comprar no WhatsApp</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Category Tabs Scrollbar */}
       <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
         {[
@@ -298,7 +380,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
               <div className="flex items-center justify-between gap-1 mb-2">
                 <div className="flex items-center gap-1">
                   {item.isPopular && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-600 dark:text-amber-400 font-mono text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
+                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-600 dark:text-amber-400 font-mono text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5 animate-pulse">
                       <Sparkles size={9} />
                       <span>Popular</span>
                     </span>

@@ -15,7 +15,7 @@ import { explainQuestionWithAI } from '../services/apiService';
 import { AIExplanationModal } from './AIExplanationModal';
 import { MemeGeneratorModal } from './MemeGeneratorModal';
 import { sendDuelInvitationNotification } from '../utils/notifications';
-import { fireConfetti, fireHonorVictoryConfetti } from '../utils/confetti';
+import { fireConfetti, fireHonorVictoryConfetti, fireDuelVictoryFullScreenConfetti } from '../utils/confetti';
 import { LEAGUES_CONFIG, DuelLeague } from '../utils/league';
 import { 
   playCorrectSound, 
@@ -205,6 +205,42 @@ export const getCategoryDisplayName = (cat?: string): string => {
   }
 };
 
+/**
+ * Calculates current consecutive correct answers streak for a player.
+ */
+export const computeConsecutiveStreak = (answers?: Record<number, { isCorrect: boolean }>): number => {
+  if (!answers) return 0;
+  let streak = 0;
+  const indices = Object.keys(answers).map(Number).sort((a, b) => a - b);
+  for (const idx of indices) {
+    if (answers[idx]?.isCorrect) {
+      streak += 1;
+    } else {
+      streak = 0;
+    }
+  }
+  return streak;
+};
+
+/**
+ * Calculates maximum consecutive correct answers streak achieved in a duel.
+ */
+export const calculateMaxStreak = (answers?: Record<number, { isCorrect: boolean }>): number => {
+  if (!answers) return 0;
+  let currentStreak = 0;
+  let maxStreak = 0;
+  const indices = Object.keys(answers).map(Number).sort((a, b) => a - b);
+  for (const idx of indices) {
+    if (answers[idx]?.isCorrect) {
+      currentStreak += 1;
+      if (currentStreak > maxStreak) maxStreak = currentStreak;
+    } else {
+      currentStreak = 0;
+    }
+  }
+  return maxStreak;
+};
+
 export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({ 
   profile, 
   initialRoomCode, 
@@ -353,6 +389,18 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Floating Score Particles State
   const [floatingParticles, setFloatingParticles] = useState<{ id: number; text: string }[]>([]);
+
+  // Consecutive Correct Answers Streak State (Combo Counter)
+  const [consecutiveCorrectStreak, setConsecutiveCorrectStreak] = useState<number>(0);
+  const [showComboSparkleAnimation, setShowComboSparkleAnimation] = useState<boolean>(false);
+
+  // Reset streak when leaving or when room resets to waiting/lobby
+  useEffect(() => {
+    if (viewState !== 'room' || currentRoom?.status === 'waiting' || currentRoom?.status === 'countdown') {
+      setConsecutiveCorrectStreak(0);
+      setShowComboSparkleAnimation(false);
+    }
+  }, [viewState, currentRoom?.status]);
 
   // Clear answer feedback, particles and play round start sound on question change or viewState change
   useEffect(() => {
@@ -1075,7 +1123,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         currentStatus === 'full' || 
         currentStatus === 'active' || 
         currentStatus === 'finished' || 
-        currentStatus === 'closed';
+        currentStatus === 'closed' ||
+        currentStatus === 'abandoned' ||
+        currentStatus === 'cancelled';
 
       const isWaiting = currentStatus === 'waiting' || currentStatus === 'open';
       const participantCount = (roomData.player1 ? 1 : 0) + (roomData.player2 ? 1 : 0);
@@ -1144,17 +1194,39 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const currentQ = currentRoom.questions[qIndex];
     const isCorrect = chosenOptionIndex === currentQ.correctIndex;
 
+    const previousStreak = consecutiveCorrectStreak;
+    let newStreak = 0;
+    let comboBonus = 0;
+
+    if (isCorrect) {
+      newStreak = previousStreak + 1;
+      setConsecutiveCorrectStreak(newStreak);
+
+      if (newStreak >= 3) {
+        comboBonus = 30; // Bonus score for 3+ consecutive correct answers streak
+        setShowComboSparkleAnimation(true);
+        fireConfetti();
+      }
+    } else {
+      newStreak = 0;
+      setConsecutiveCorrectStreak(0);
+      setShowComboSparkleAnimation(false);
+    }
+
     const timeBonus = Math.max(10, questionTimer * 5);
-    const ptsEarned = isCorrect ? (100 + timeBonus) : 0;
+    const ptsEarned = isCorrect ? (100 + timeBonus + comboBonus) : 0;
 
     if (isCorrect) {
       playCorrectSound();
       setAnswerFeedback('correct');
       const particleId = Date.now();
-      setFloatingParticles((prev) => [...prev, { id: particleId, text: `+${ptsEarned} Pts` }]);
+      const particleText = newStreak >= 3
+        ? `🔥 COMBO ${newStreak}x! +${ptsEarned} Pts (${comboBonus > 0 ? `+${comboBonus} Bónus` : ''})`
+        : `+${ptsEarned} Pts`;
+      setFloatingParticles((prev) => [...prev, { id: particleId, text: particleText }]);
       setTimeout(() => {
         setFloatingParticles((prev) => prev.filter((p) => p.id !== particleId));
-      }, 1300);
+      }, 1600);
     } else {
       playIncorrectSound();
       setAnswerFeedback('incorrect');
@@ -1276,14 +1348,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       resultType = 'win';
       playVictorySound();
       trackMissionProgress('duel_win', 1);
+      // Trigger full-screen celebratory confetti animation with custom particles
+      fireDuelVictoryFullScreenConfetti();
       if (isMultiplayerReal) {
-        fireHonorVictoryConfetti();
         const pts = 20 + (correctCount * 15) + 50;
         setHonorVictoryPts(pts);
         setHonorVictoryOpponent(opponent);
         setShowHonorVictoryOverlay(true);
-      } else {
-        fireConfetti();
       }
     } else if (isDraw) {
       baseXp = 20;
@@ -2349,14 +2420,29 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 const myAnswered = myPlayer?.answers && myPlayer.answers[qIndex] !== undefined;
                 const oppAnswered = opponent?.answers && opponent.answers[qIndex] !== undefined;
 
+                const myStreak = Math.max(consecutiveCorrectStreak, computeConsecutiveStreak(myPlayer?.answers));
+                const oppStreak = computeConsecutiveStreak(opponent?.answers);
+
                 return (
                   <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-3.5 space-y-3 shadow-lg relative overflow-hidden">
                     {/* Top Action Header */}
                     <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                      <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                        <Swords size={12} />
-                        <span>Duelo em Curso</span>
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
+                          <Swords size={12} />
+                          <span>Duelo em Curso</span>
+                        </span>
+                        {myStreak >= 2 && (
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border ${
+                            myStreak >= 3
+                              ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white border-yellow-300 shadow-[0_0_12px_rgba(245,158,11,0.8)] animate-pulse'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          }`}>
+                            <Flame size={10} className={myStreak >= 3 ? 'fill-yellow-300 text-yellow-300' : 'text-amber-400'} />
+                            <span>Combo: {myStreak}x</span>
+                          </span>
+                        )}
+                      </div>
 
                       <div className="flex items-center gap-2">
                         <button
@@ -2412,20 +2498,51 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     <div className="grid grid-cols-3 items-center text-center pt-1 border-t border-slate-800/80">
                       {/* Player 1 / Me */}
                       <div className="flex flex-col items-center">
-                        <ReactiveAvatar
-                          avatarId={myPlayer?.avatarId || profile.avatarId}
-                          branch={myPlayer?.branch || profile.branch}
-                          displayName={myPlayer?.displayName || profile.displayName}
-                          photoURL={myPlayer?.photoURL || profile.photoURL}
-                          size="md"
-                          triggerReaction={myPlayer?.score}
-                          reaction={myAnswered && myPlayer?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle'}
-                          showBranchBadge={true}
-                          showLevelBadge={true}
-                          level={myPlayer?.level || profile.level || 1}
-                          isVipSupporter={myPlayer?.isVipSupporter || profile.isVipSupporter}
-                          interactive={true}
-                        />
+                        <div className="relative flex items-center justify-center">
+                          {/* Special Visual Glowing Fire & Energy Aura on 3+ Streak */}
+                          {myStreak >= 3 && (
+                            <>
+                              {/* Radiant Pulsing Aura */}
+                              <motion.div
+                                animate={{ scale: [1, 1.25, 1], opacity: [0.75, 1, 0.75] }}
+                                transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+                                className="absolute -inset-3 rounded-full bg-gradient-to-r from-amber-400 via-rose-500 to-yellow-300 blur-md pointer-events-none z-0"
+                              />
+                              {/* Rotating Radiant Sparks Ring */}
+                              <motion.div
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 4.5, repeat: Infinity, ease: 'linear' }}
+                                className="absolute -inset-3.5 rounded-full border-2 border-dashed border-yellow-300 pointer-events-none z-0 opacity-90"
+                              />
+                              {/* Floating Glowing Combo Badge */}
+                              <motion.div
+                                initial={{ scale: 0, y: 5 }}
+                                animate={{ scale: 1, y: 0 }}
+                                className="absolute -top-3.5 -right-2.5 z-30 flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 via-rose-600 to-amber-500 text-white font-black font-mono text-[9px] uppercase tracking-wider shadow-[0_0_15px_rgba(245,158,11,0.9)] border border-yellow-200 animate-bounce"
+                              >
+                                <Flame size={11} className="fill-yellow-300 text-yellow-300 animate-pulse" />
+                                <span>{myStreak}x COMBO</span>
+                              </motion.div>
+                            </>
+                          )}
+
+                          <div className="relative z-10">
+                            <ReactiveAvatar
+                              avatarId={myPlayer?.avatarId || profile.avatarId}
+                              branch={myPlayer?.branch || profile.branch}
+                              displayName={myPlayer?.displayName || profile.displayName}
+                              photoURL={myPlayer?.photoURL || profile.photoURL}
+                              size="md"
+                              triggerReaction={myStreak >= 3 ? 'celebrate' : myPlayer?.score}
+                              reaction={myStreak >= 3 ? 'celebrate' : (myAnswered && myPlayer?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle')}
+                              showBranchBadge={true}
+                              showLevelBadge={true}
+                              level={myPlayer?.level || profile.level || 1}
+                              isVipSupporter={myPlayer?.isVipSupporter || profile.isVipSupporter}
+                              interactive={true}
+                            />
+                          </div>
+                        </div>
 
                         <p className="text-[11px] font-bold text-slate-200 mt-1 truncate max-w-[90px] flex items-center gap-1">
                           <span>{myPlayer?.displayName}</span>
@@ -2480,20 +2597,48 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
                       {/* Player 2 / Opponent */}
                       <div className="flex flex-col items-center">
-                        <ReactiveAvatar
-                          avatarId={opponent?.avatarId}
-                          branch={opponent?.branch}
-                          displayName={opponent?.displayName}
-                          photoURL={opponent?.photoURL}
-                          size="md"
-                          triggerReaction={opponent?.score}
-                          reaction={oppAnswered && opponent?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle'}
-                          showBranchBadge={true}
-                          showLevelBadge={true}
-                          level={opponent?.level || 1}
-                          isVipSupporter={opponent?.isVipSupporter}
-                          interactive={true}
-                        />
+                        <div className="relative flex items-center justify-center">
+                          {/* Special Visual Aura for Opponent on 3+ Streak */}
+                          {oppStreak >= 3 && (
+                            <>
+                              <motion.div
+                                animate={{ scale: [1, 1.25, 1], opacity: [0.75, 1, 0.75] }}
+                                transition={{ duration: 1.3, repeat: Infinity, ease: 'easeInOut' }}
+                                className="absolute -inset-3 rounded-full bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-400 blur-md pointer-events-none z-0"
+                              />
+                              <motion.div
+                                animate={{ rotate: -360 }}
+                                transition={{ duration: 4.5, repeat: Infinity, ease: 'linear' }}
+                                className="absolute -inset-3.5 rounded-full border-2 border-dashed border-cyan-300 pointer-events-none z-0 opacity-90"
+                              />
+                              <motion.div
+                                initial={{ scale: 0, y: 5 }}
+                                animate={{ scale: 1, y: 0 }}
+                                className="absolute -top-3.5 -right-2.5 z-30 flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white font-black font-mono text-[9px] uppercase tracking-wider shadow-[0_0_15px_rgba(6,182,212,0.9)] border border-cyan-200 animate-bounce"
+                              >
+                                <Zap size={11} className="fill-yellow-300 text-yellow-300 animate-pulse" />
+                                <span>{oppStreak}x COMBO</span>
+                              </motion.div>
+                            </>
+                          )}
+
+                          <div className="relative z-10">
+                            <ReactiveAvatar
+                              avatarId={opponent?.avatarId}
+                              branch={opponent?.branch}
+                              displayName={opponent?.displayName}
+                              photoURL={opponent?.photoURL}
+                              size="md"
+                              triggerReaction={oppStreak >= 3 ? 'celebrate' : opponent?.score}
+                              reaction={oppStreak >= 3 ? 'celebrate' : (oppAnswered && opponent?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle')}
+                              showBranchBadge={true}
+                              showLevelBadge={true}
+                              level={opponent?.level || 1}
+                              isVipSupporter={opponent?.isVipSupporter}
+                              interactive={true}
+                            />
+                          </div>
+                        </div>
 
                         <p className="text-[11px] font-bold text-slate-200 mt-1 truncate max-w-[90px] flex items-center gap-1">
                           <span>{opponent?.displayName}</span>
@@ -2562,6 +2707,44 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 );
               })()}
 
+              {/* Visual Combat Bonus Banner when 3+ Consecutive Correct Answers */}
+              {(() => {
+                const myStreak = Math.max(consecutiveCorrectStreak, computeConsecutiveStreak(myPlayer?.answers));
+                if (myStreak < 3) return null;
+
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    className="px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500/25 via-rose-500/25 to-yellow-500/20 border-2 border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.4)] flex items-center justify-between gap-2 relative overflow-hidden"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 flex items-center justify-center text-slate-950 font-black shadow-md shrink-0 animate-pulse">
+                        <Flame size={18} className="fill-slate-950 text-slate-950" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1">
+                            <span>🔥 MODO FÚRIA ATIVADO • COMBO {myStreak}x!</span>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-rose-500/40 text-rose-200 font-mono text-[9px] font-extrabold border border-rose-400/40">
+                            BÓNUS DE COMBATE
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 leading-tight mt-0.5">
+                          Avatar em chamas douradas! Cada acerto concede bónus visual e +30 Pts extras no duelo.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-slate-950/90 border border-amber-400 px-2.5 py-1.5 rounded-xl shrink-0 font-mono font-black text-amber-400 text-xs shadow-inner">
+                      <Zap size={13} className="text-yellow-300 fill-yellow-300 animate-bounce" />
+                      <span>+30 Bónus</span>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
               {/* Question Card with Screen Shake, Animated Transition & Visual Glow */}
               <AnimatePresence mode="wait">
                 <motion.div
@@ -2581,6 +2764,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                       ? 'border-emerald-500/80 shadow-[0_0_35px_rgba(16,185,129,0.35)] ring-2 ring-emerald-500/40'
                       : answerFeedback === 'incorrect'
                       ? 'border-rose-500/80 shadow-[0_0_35px_rgba(244,63,94,0.35)] ring-2 ring-rose-500/40'
+                      : (Math.max(consecutiveCorrectStreak, computeConsecutiveStreak(myPlayer?.answers)) >= 3)
+                      ? 'border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.35)] ring-2 ring-amber-400/50'
                       : 'border-amber-500/30'
                   }`}
                 >
@@ -2627,11 +2812,20 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                   )}
                 </AnimatePresence>
 
-                <div className="flex items-center justify-between text-[11px] text-amber-400 font-semibold">
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                <div className="flex items-center justify-between text-[11px] text-amber-400 font-semibold gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 truncate">
                     {currentQ.categoryName}
                   </span>
-                  <span>DUELO MININT</span>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {Math.max(consecutiveCorrectStreak, computeConsecutiveStreak(myPlayer?.answers)) >= 3 && (
+                      <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-slate-950 font-black text-[9px] uppercase tracking-wider flex items-center gap-1 shadow-md animate-pulse">
+                        <Flame size={10} className="fill-slate-950" />
+                        <span>Combo {Math.max(consecutiveCorrectStreak, computeConsecutiveStreak(myPlayer?.answers))}x Ativo</span>
+                      </span>
+                    )}
+                    <span>DUELO MININT</span>
+                  </div>
                 </div>
 
                 <h3 className="text-sm font-bold text-slate-100 leading-relaxed">
@@ -2725,11 +2919,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         const myAccuracyPct = Math.min(100, Math.round((myCorrectAnswers / Math.max(1, totalQ)) * 100));
         const myTotalTime = myAnswersList.reduce<number>((acc, a: any) => acc + (Number(a?.timeSeconds) || 0), 0);
         const myAvgTime = myAnswersList.length > 0 ? (myTotalTime / myAnswersList.length).toFixed(1) : '0.0';
+        const myMaxStreak = calculateMaxStreak(myPlayer?.answers);
 
         const oppCorrectAnswers = oppAnswersList.filter((a: any) => Boolean(a?.isCorrect)).length;
         const oppAccuracyPct = Math.min(100, Math.round((oppCorrectAnswers / Math.max(1, totalQ)) * 100));
         const oppTotalTime = oppAnswersList.reduce<number>((acc, a: any) => acc + (Number(a?.timeSeconds) || 0), 0);
         const oppAvgTime = oppAnswersList.length > 0 ? (oppTotalTime / oppAnswersList.length).toFixed(1) : '0.0';
+        const oppMaxStreak = calculateMaxStreak(opponent?.answers);
 
         return (
           <div className="multiplayer-duel-end-screen space-y-4 animate-fadeIn">
@@ -2746,11 +2942,29 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               
               {/* Icon / Seal Header */}
               {isBotMatch ? (
-                <div className="w-16 h-16 rounded-2xl bg-cyan-500/20 border-2 border-cyan-400/60 flex items-center justify-center text-cyan-300 mx-auto shadow-lg shadow-cyan-500/20 animate-pulse">
+                <div 
+                  onClick={() => {
+                    if (currentRoom.winnerUid === profile.uid) {
+                      fireDuelVictoryFullScreenConfetti();
+                      playVictorySound();
+                    }
+                  }}
+                  className={`w-16 h-16 rounded-2xl bg-cyan-500/20 border-2 border-cyan-400/60 flex items-center justify-center text-cyan-300 mx-auto shadow-lg shadow-cyan-500/20 ${currentRoom.winnerUid === profile.uid ? 'cursor-pointer hover:scale-105 active:scale-95 transition-transform' : 'animate-pulse'}`}
+                  title={currentRoom.winnerUid === profile.uid ? "Clique para celebrar a vitória com confetes! 🎉" : undefined}
+                >
                   <Bot size={36} />
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mx-auto">
+                <div 
+                  onClick={() => {
+                    if (currentRoom.winnerUid === profile.uid) {
+                      fireDuelVictoryFullScreenConfetti();
+                      playVictorySound();
+                    }
+                  }}
+                  className={`w-16 h-16 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 mx-auto ${currentRoom.winnerUid === profile.uid ? 'cursor-pointer hover:scale-105 active:scale-95 transition-transform shadow-lg shadow-amber-500/20' : ''}`}
+                  title={currentRoom.winnerUid === profile.uid ? "Clique para celebrar a vitória com confetes! 🎉" : undefined}
+                >
                   <Trophy size={36} />
                 </div>
               )}
@@ -2823,6 +3037,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                       <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> Tempo Médio:</span>
                       <span className="font-mono font-bold text-amber-300">{myAvgTime}s</span>
                     </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Flame size={11} className={myMaxStreak >= 3 ? 'text-amber-400 fill-amber-400' : 'text-slate-400'} /> Maior Combo:</span>
+                      <span className={`font-mono font-bold ${myMaxStreak >= 3 ? 'text-amber-300 font-black' : 'text-slate-300'}`}>
+                        {myMaxStreak}x {myMaxStreak >= 3 ? '🔥' : ''}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -2841,6 +3061,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     <div className="flex justify-between items-center text-slate-300">
                       <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> Tempo Médio:</span>
                       <span className="font-mono font-bold text-blue-300">{oppAvgTime}s</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Flame size={11} className={oppMaxStreak >= 3 ? 'text-cyan-400 fill-cyan-400' : 'text-slate-400'} /> Maior Combo:</span>
+                      <span className={`font-mono font-bold ${oppMaxStreak >= 3 ? 'text-cyan-300 font-black' : 'text-slate-300'}`}>
+                        {oppMaxStreak}x {oppMaxStreak >= 3 ? '⚡' : ''}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -3273,31 +3499,31 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         sessionType="duelo"
       />
 
-      {/* Modal Informativo: Sala Encerrada pelo Anfitrião */}
+      {/* Modal Informativo: Sala Encerrada */}
       <AnimatePresence>
         {isRoomClosedModalOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative overflow-hidden"
+              initial={{ scale: 0.9, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 15 }}
+              className="bg-white dark:bg-slate-900 border-2 border-rose-500/40 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative overflow-hidden"
             >
               <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-500 flex items-center justify-center mx-auto shadow-inner">
                 <AlertCircle size={28} />
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <h3 className="text-base font-black text-slate-900 dark:text-slate-100">
-                  Sala Encerrada pelo Anfitrião
+                  Sala Encerrada
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  O anfitrião encerrou ou abandonou a sala de duelo. A partida não pode ser continuada.
+                  O anfitrião encerrou ou abandonou a sala de espera do duelo. A partida foi cancelada.
                 </p>
               </div>
 
@@ -3311,7 +3537,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
               >
                 <LogOut size={16} />
-                <span>Voltar ao Menu Principal</span>
+                <span>Retornar ao Menu Principal</span>
               </button>
             </motion.div>
           </motion.div>

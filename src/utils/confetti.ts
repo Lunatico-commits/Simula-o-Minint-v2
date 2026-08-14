@@ -77,17 +77,42 @@ export function fireRankUpConfetti() {
  * Custom full-screen celebratory confetti sequence for PvP "Vitória de Honra" duels!
  */
 export function fireHonorVictoryConfetti() {
+  fireDuelVictoryFullScreenConfetti();
+}
+
+/**
+ * Fullscreen multi-wave celebratory confetti animation with custom shapes (stars, circles, squares),
+ * gold/amber MININT victory palette, and multi-angle cannons for Duel victories.
+ */
+export function fireDuelVictoryFullScreenConfetti() {
   try {
-    // Initial multi-burst from center and sides
+    const victoryColors = [
+      '#f59e0b', // Amber / Gold
+      '#fbbf24', // Yellow Gold
+      '#fef08a', // Light Yellow Gold
+      '#10b981', // Emerald Green (Angolan / Merit)
+      '#3b82f6', // MININT Police Blue
+      '#8b5cf6', // Honor Purple
+      '#ec4899', // Crimson / Rose
+      '#ffffff', // Pure White Sparkle
+      '#06b6d4', // Cyan Energy
+    ];
+
+    // 1. Initial explosive center starburst with high spread and custom shapes
     safeConfetti({
-      particleCount: 160,
-      spread: 120,
-      origin: { y: 0.45 },
-      colors: ['#f59e0b', '#fbbf24', '#fef08a', '#10b981', '#3b82f6', '#ec4899', '#ffffff'],
+      particleCount: 180,
+      spread: 140,
+      startVelocity: 45,
+      origin: { x: 0.5, y: 0.4 },
+      colors: victoryColors,
+      shapes: ['star', 'circle', 'square'],
+      scalar: 1.2,
+      zIndex: 99999,
       disableForReducedMotion: true,
     });
 
-    const duration = 3 * 1000;
+    // 2. Continuous multi-wave cannon sequence (Left & Right dual fire + Center top rain)
+    const duration = 3.8 * 1000;
     const animationEnd = Date.now() + duration;
 
     const interval: ReturnType<typeof setInterval> = setInterval(function () {
@@ -97,30 +122,58 @@ export function fireHonorVictoryConfetti() {
         return clearInterval(interval);
       }
 
-      const particleCount = 45 * (timeLeft / duration);
+      const progress = timeLeft / duration;
+      const particleCount = Math.max(15, Math.floor(55 * progress));
 
-      // Left side streamer
+      // Left corner cannon firing upward across the screen
       safeConfetti({
         particleCount,
         angle: 60,
-        spread: 60,
-        origin: { x: 0.08, y: 0.65 },
-        colors: ['#f59e0b', '#fbbf24', '#10b981', '#ffffff'],
+        spread: 65,
+        startVelocity: 55,
+        origin: { x: 0.02, y: 0.8 },
+        colors: ['#f59e0b', '#fbbf24', '#fef08a', '#10b981', '#ffffff'],
+        shapes: ['star', 'circle', 'square'],
+        scalar: 1.1,
+        zIndex: 99999,
         disableForReducedMotion: true,
       });
 
-      // Right side streamer
+      // Right corner cannon firing upward across the screen
       safeConfetti({
         particleCount,
         angle: 120,
-        spread: 60,
-        origin: { x: 0.92, y: 0.65 },
-        colors: ['#f59e0b', '#fbbf24', '#10b981', '#ffffff'],
+        spread: 65,
+        startVelocity: 55,
+        origin: { x: 0.98, y: 0.8 },
+        colors: ['#3b82f6', '#06b6d4', '#fbbf24', '#ec4899', '#ffffff'],
+        shapes: ['star', 'circle', 'square'],
+        scalar: 1.1,
+        zIndex: 99999,
         disableForReducedMotion: true,
       });
-    }, 280);
+
+      // Top shower cascade for full-screen coverage
+      if (Math.random() > 0.4) {
+        safeConfetti({
+          particleCount: 20,
+          angle: 90,
+          spread: 120,
+          startVelocity: 25,
+          origin: { x: Math.random() * 0.8 + 0.1, y: 0 },
+          colors: victoryColors,
+          shapes: ['circle', 'square', 'star'],
+          gravity: 0.9,
+          drift: (Math.random() - 0.5) * 1.5,
+          scalar: 0.95,
+          zIndex: 99999,
+          disableForReducedMotion: true,
+        });
+      }
+    }, 240);
   } catch (err) {
-    console.error('Erro ao disparar confetes da Vitória de Honra:', err);
+    console.error('Erro ao disparar confetes de vitória em tela cheia:', err);
   }
 }
+
 

@@ -99,6 +99,7 @@ export interface UserProfile {
   academicLevel?: AcademicLevel;
   rankTitle: string;
   totalXp: number;
+  previousRank?: number;
   minintCoins?: number;
   streakFreezeCount?: number;
   extraHintsCount?: number;
