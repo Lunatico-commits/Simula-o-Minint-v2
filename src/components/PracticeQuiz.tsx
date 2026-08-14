@@ -380,22 +380,16 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
               <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-amber-400/20 to-amber-500/10 animate-pulse pointer-events-none z-0 rounded-2xl" />
             )}
 
-            {/* Background Image Tag with fade-in and fallback */}
+            {/* Background Image Tag with fade-in */}
             <img
-              src="https://raw.githubusercontent.com/Lunatico-commits/Simula-o-Minint-v2/main/public/insignias-minint.png"
+              src="https://raw.githubusercontent.com/Lunatico-commits/Simula-o-Minint-v2/refs/heads/main/src/assets/images/insignias_minint.webp"
               alt="Insígnias MININT"
+              loading="eager"
               referrerPolicy="no-referrer"
               onLoad={() => setIsHeaderImageLoaded(true)}
-              className={`absolute inset-0 w-full h-full object-contain pointer-events-none z-0 transition-all duration-700 ease-out group-hover:scale-105 ${
+              className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-0 transition-all duration-700 ease-out group-hover:scale-105 ${
                 isHeaderImageLoaded ? 'opacity-30 scale-100 animate-fadeIn' : 'opacity-0 scale-95'
               }`}
-              onError={(e) => {
-                const target = e.currentTarget;
-                if (!target.dataset.fallback) {
-                  target.dataset.fallback = 'true';
-                  target.src = '/insignias-minint.png';
-                }
-              }}
             />
 
             {/* Clear Overlay Layer */}

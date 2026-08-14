@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
+import { supabase } from '../lib/supabase';
 import { 
   FileText, 
   BookOpen, 
@@ -9,6 +10,7 @@ import {
   ShieldCheck, 
   Smartphone, 
   CreditCard, 
+  Building2,
   Search, 
   Lock, 
   Check, 
@@ -22,7 +24,8 @@ import {
   Tag,
   ExternalLink,
   Shield,
-  BookMarked
+  BookMarked,
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { playClickSound, playCorrectSound } from '../utils/audio';
@@ -46,6 +49,67 @@ export interface StudyPDFItem {
     iconBg: string;
   };
 }
+
+/**
+ * Mapeamento exato de cada PDF do site para o ficheiro correspondente no Supabase Storage (bucket 'ebooks').
+ * Ficheiros oficiais simplificados no bucket 'ebooks':
+ * - Combo VIP: 'combo-vip.zip'
+ * - Constituição: 'constituicao.pdf'
+ * - Código Penal: 'codigo-penal.pdf'
+ * - Gramática: 'gramatica.pdf'
+ * - Lei Orgânica: 'lei-organica.pdf'
+ * - Cultura Geral: 'cultura-geral.pdf'
+ * - Informática: 'informatica.pdf'
+ * - Interpretação de Texto: 'interpretacao.pdf'
+ */
+export const EBOOK_FILE_MAP: Record<string, string> = {
+  // Combo VIP: combo-vip.zip
+  'pdf_combo_supremo': 'combo-vip.zip',
+
+  // Constituição: constituicao.pdf
+  'pdf_cra_direitos': 'constituicao.pdf',
+  'pdf_constituicao_2010': 'constituicao.pdf',
+
+  // Código Penal: codigo-penal.pdf
+  'pdf_codigo_penal': 'codigo-penal.pdf',
+  'pdf_direito_penal_processual': 'codigo-penal.pdf',
+
+  // Gramática: gramatica.pdf
+  'pdf_portugues_gramatica': 'gramatica.pdf',
+
+  // Lei Orgânica: lei-organica.pdf
+  'pdf_minint_leis': 'lei-organica.pdf',
+  'pdf_regulamento_minint': 'lei-organica.pdf',
+
+  // Cultura Geral: cultura-geral.pdf
+  'pdf_cultura_geral_angola': 'cultura-geral.pdf',
+  'pdf_cultura_geral_historia': 'cultura-geral.pdf',
+
+  // Informática: informatica.pdf
+  'pdf_informatica_tics': 'informatica.pdf',
+  'pdf_informatica_basica': 'informatica.pdf',
+
+  // Interpretação de Texto: interpretacao.pdf
+  'pdf_portugues_redacao': 'interpretacao.pdf',
+  'pdf_lingua_portuguesa': 'interpretacao.pdf',
+};
+
+export const EBOOK_VARIANTS: Record<string, string[]> = {
+  'pdf_cra_direitos': ['constituicao.pdf', 'Constituicao-CRA.pdf'],
+  'pdf_constituicao_2010': ['constituicao.pdf', 'Constituicao-CRA.pdf'],
+  'pdf_codigo_penal': ['codigo-penal.pdf', 'Codigo-Penal.pdf'],
+  'pdf_direito_penal_processual': ['codigo-penal.pdf', 'Codigo-Penal.pdf'],
+  'pdf_portugues_gramatica': ['gramatica.pdf', 'Gramatica-Ortografia.pdf'],
+  'pdf_minint_leis': ['lei-organica.pdf', 'Lei Organica do MININT e Estatuto Unificado.pdf'],
+  'pdf_regulamento_minint': ['lei-organica.pdf', 'Lei Organica do MININT e Estatuto Unificado.pdf'],
+  'pdf_combo_supremo': ['combo-vip.zip', 'combo-vip-minint.zip'],
+  'pdf_cultura_geral_angola': ['cultura-geral.pdf', 'Cultura Geral Historia e Geografia de Angola.pdf'],
+  'pdf_cultura_geral_historia': ['cultura-geral.pdf', 'Cultura Geral Historia e Geografia de Angola.pdf'],
+  'pdf_informatica_tics': ['informatica.pdf', 'Informatica Basica e TICs para Concursos.pdf'],
+  'pdf_informatica_basica': ['informatica.pdf', 'Informatica Basica e TICs para Concursos.pdf'],
+  'pdf_portugues_redacao': ['interpretacao.pdf', 'Interpretacao de Texto e Redacao Oficial.pdf'],
+  'pdf_lingua_portuguesa': ['interpretacao.pdf', 'Interpretacao de Texto e Redacao Oficial.pdf']
+};
 
 export const STUDY_PDFS: StudyPDFItem[] = [
   {
@@ -258,12 +322,17 @@ export const StudyMaterialsView: React.FC<StudyMaterialsViewProps> = ({ profile 
   // Modal State
   const [selectedPdfForPurchase, setSelectedPdfForPurchase] = useState<StudyPDFItem | null>(null);
   const [paymentStep, setPaymentStep] = useState<1 | 2 | 3>(1);
-  const [paymentMethod, setPaymentMethod] = useState<'express' | 'referencia'>('express');
+  const [paymentMethod, setPaymentMethod] = useState<'express' | 'iban'>('express');
   const [studentEmail, setStudentEmail] = useState<string>('');
   const [studentPhone, setStudentPhone] = useState<string>('');
   const [studentName, setStudentName] = useState<string>(profile.displayName || '');
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
-  const [copiedRef, setCopiedRef] = useState<boolean>(false);
+  const [copiedRef, setCopiedRef] = useState<string | null>(null);
+
+  // Supabase states
+  const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
+  const [isLoadingSupabasePurchases, setIsLoadingSupabasePurchases] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -272,6 +341,63 @@ export const StudyMaterialsView: React.FC<StudyMaterialsViewProps> = ({ profile 
       console.warn('Erro ao guardar PDFs adquiridos:', err);
     }
   }, [purchasedPdfs]);
+
+  // 1. Consulta de Acesso no Supabase (tabela purchases)
+  const checkSupabasePurchases = async (overridePhone?: string) => {
+    const candidatePhone = (overridePhone || studentPhone || profile.emailOrPhone || '').trim();
+    if (!candidatePhone) return;
+
+    const cleanPhone = candidatePhone.replace(/\D/g, '');
+    if (!cleanPhone) return;
+
+    try {
+      setIsLoadingSupabasePurchases(true);
+      const { data, error } = await supabase
+        .from('purchases')
+        .select('*');
+
+      if (error) {
+        console.warn('Consulta à tabela purchases no Supabase:', error.message);
+        return;
+      }
+
+      if (data && Array.isArray(data)) {
+        const approvedPdfIds: string[] = [];
+
+        data.forEach((record: any) => {
+          const recPhone = String(
+            record.phone || record.phone_number || record.student_phone || record.user_phone || record.email_or_phone || ''
+          ).replace(/\D/g, '');
+
+          const status = String(record.status || '').toLowerCase().trim();
+          const isApproved = status === 'concluido' || status === 'concluído' || status === 'approved' || status === 'pago' || status === 'completed';
+
+          if (isApproved && cleanPhone && recPhone && (recPhone.includes(cleanPhone) || cleanPhone.includes(recPhone))) {
+            const pdfId = record.pdf_id || record.product_id || record.item_id || record.pdf_item_id;
+            if (pdfId) {
+              if (pdfId === 'pdf_combo_supremo') {
+                STUDY_PDFS.forEach((p) => approvedPdfIds.push(p.id));
+              } else {
+                approvedPdfIds.push(pdfId);
+              }
+            }
+          }
+        });
+
+        if (approvedPdfIds.length > 0) {
+          setPurchasedPdfs((prev) => Array.from(new Set([...prev, ...approvedPdfIds])));
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao verificar compras no Supabase:', err);
+    } finally {
+      setIsLoadingSupabasePurchases(false);
+    }
+  };
+
+  useEffect(() => {
+    checkSupabasePurchases();
+  }, [profile.emailOrPhone, studentPhone]);
 
   const categories = [
     'Todos',
@@ -308,67 +434,153 @@ export const StudyMaterialsView: React.FC<StudyMaterialsViewProps> = ({ profile 
 
   const handleProceedToStep2 = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentEmail.trim() || !studentPhone.trim()) {
-      alert('Por favor, preencha o seu e-mail e número de contacto.');
+    if (!studentName.trim() || !studentPhone.trim()) {
+      alert('Por favor, preencha o seu Nome e Número de Telemóvel/WhatsApp.');
       return;
     }
+    if (!selectedPdfForPurchase) return;
+
     playClickSound();
+
+    const productName = selectedPdfForPurchase.title;
+    const candidateName = studentName.trim();
+    const candidatePhone = studentPhone.trim();
+    const candidateEmail = studentEmail.trim() || 'Não informado';
+    const priceKz = selectedPdfForPurchase.priceKz.toLocaleString('pt-AO');
+
+    let methodLabel = 'Multicaixa Express (939 606 343)';
+    if (paymentMethod === 'iban') {
+      methodLabel = 'Transferência Bancária / IBAN (AO06 0058 0000 06173873101 38)';
+    }
+
+    const message = `Olá! Gostaria de adquirir o PDF *${productName}* no valor de *${priceKz} Kz*.
+
+👤 *Dados do Candidato:*
+- Nome: ${candidateName}
+- Telemóvel: ${candidatePhone}
+- E-mail: ${candidateEmail}
+- Método: ${methodLabel}
+
+💳 *Dados de Pagamento:*
+- IBAN: AO06 0058 0000 06173873101 38
+- Express: 939 606 343
+- Titular: António Edson Lima Pimentel
+
+Segue em anexo o meu comprovativo de pagamento para confirmação e receção do material.`;
+
+    const whatsappUrl = `https://wa.me/244939606343?text=${encodeURIComponent(message)}`;
+    
+    // Open WhatsApp directly in new tab
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+
     setPaymentStep(2);
   };
 
-  const handleSimulatePayment = () => {
+  const handleCopyText = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    playClickSound();
+    setCopiedRef(fieldName);
+    setTimeout(() => setCopiedRef(null), 2000);
+  };
+
+  const handleSimulatePayment = async () => {
     playClickSound();
     setIsProcessingPayment(true);
-    setTimeout(() => {
-      setIsProcessingPayment(false);
-      playCorrectSound();
+
+    try {
       if (selectedPdfForPurchase) {
+        const candidatePhone = studentPhone.trim() || profile.emailOrPhone || '';
+
+        // Record purchase record in Supabase 'purchases' table
+        try {
+          await supabase
+            .from('purchases')
+            .insert([
+              {
+                pdf_id: selectedPdfForPurchase.id,
+                pdf_title: selectedPdfForPurchase.title,
+                student_name: studentName.trim() || profile.displayName || 'Candidato MININT',
+                student_phone: candidatePhone,
+                student_email: studentEmail.trim() || '',
+                price_kz: selectedPdfForPurchase.priceKz,
+                payment_method: paymentMethod,
+                status: 'concluido',
+                created_at: new Date().toISOString()
+              }
+            ]);
+        } catch (e) {
+          console.warn('Registo no Supabase purchases (Aviso):', e);
+        }
+
         if (selectedPdfForPurchase.isCombo) {
-          // Add all PDFs to purchased list
           const allIds = STUDY_PDFS.map((p) => p.id);
           setPurchasedPdfs((prev) => Array.from(new Set([...prev, ...allIds])));
         } else {
           setPurchasedPdfs((prev) => Array.from(new Set([...prev, selectedPdfForPurchase.id])));
         }
       }
+    } catch (e) {
+      console.warn('Erro ao processar pagamento:', e);
+    } finally {
+      setIsProcessingPayment(false);
+      playCorrectSound();
       setPaymentStep(3);
-    }, 1800);
+    }
   };
 
-  const handleTriggerPdfDownload = (pdf: StudyPDFItem) => {
+  const handleTriggerPdfDownload = async (pdf: StudyPDFItem) => {
     playClickSound();
-    // Generate a simple simulated PDF text file blob for download
-    const content = `===========================================================
-MININT ANGOLA - MATERIAL OFICIAL DE ESTUDO DE ELITE
-===========================================================
-Título: ${pdf.title}
-Categoria: ${pdf.category}
-Formato: Documento PDF Digital de Alta Resolução
-Candidato Registado: ${studentName || profile.displayName || 'Candidato MININT'}
-Identificador de Aquisição: MININT-PDF-${Math.floor(100000 + Math.random() * 900000)}
-Data de Emissão: ${new Date().toLocaleDateString('pt-AO')}
-===========================================================
+    setDownloadingPdfId(pdf.id);
 
-RESUMO DO CONTEÚDO E PONTOS CHAVE DE ESTUDO:
-${pdf.highlights.map((h, i) => `${i + 1}. ${h}`).join('\n')}
+    // 1. Obtém o nome base do ficheiro a partir do mapeamento ou fallback
+    let exactFileName = EBOOK_FILE_MAP[pdf.id] || (pdf.id === 'pdf_combo_supremo' || pdf.isCombo ? 'combo-vip.zip' : `${pdf.id}.pdf`);
 
-INSTRUÇÕES PARA O CANDIDATO:
-1. Recomendamos a leitura diária deste material juntamente com a realização dos Simulados Práticos na Aplicação Oficial MININT Angola.
-2. Guarde este ficheiro na sua pasta de estudos para consulta offline.
-3. Dúvidas sobre o conteúdo podem ser esclarecidas diretamente no módulo "Tutor IA" da aplicação.
+    // 2. Verificação automática de extensão: se não tiver .pdf ou .zip, adiciona a extensão apropriada
+    if (!exactFileName.toLowerCase().endsWith('.pdf') && !exactFileName.toLowerCase().endsWith('.zip')) {
+      if (pdf.id === 'pdf_combo_supremo' || pdf.isCombo || exactFileName.toLowerCase().includes('combo') || exactFileName.toLowerCase().includes('zip')) {
+        exactFileName = `${exactFileName}.zip`;
+      } else {
+        exactFileName = `${exactFileName}.pdf`;
+      }
+    }
 
-Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Angola!
-===========================================================`;
+    // 3. Log do nome do ficheiro exato solicitado no bucket 'ebooks'
+    console.log(`[Supabase Storage] Solicitando download do ficheiro '${exactFileName}' no bucket 'ebooks'...`);
 
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${pdf.id}_${pdf.title.replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      // 4. Gera o URL assinado de 60 segundos com o nome exato no bucket 'ebooks'
+      const { data, error } = await supabase
+        .storage
+        .from('ebooks')
+        .createSignedUrl(exactFileName, 60);
+
+      if (error) {
+        console.warn(`[Supabase Storage] Erro ao obter URL assinado para '${exactFileName}':`, error);
+      } else if (data?.signedUrl) {
+        console.log(`[Supabase Storage] URL assinado gerado com sucesso para '${exactFileName}'`);
+        const link = document.createElement('a');
+        link.href = data.signedUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.download = exactFileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setDownloadingPdfId(null);
+        return;
+      }
+    } catch (err) {
+      console.warn(`[Supabase Storage] Exceção ao tentar descarregar '${exactFileName}':`, err);
+    }
+
+    // 5. Se o Supabase devolver erro ou o ficheiro não for retornado: exibe aviso específico com o nome do ficheiro
+    setDownloadingPdfId(null);
+    setToastMessage(`Ficheiro não encontrado: ${exactFileName}`);
+    setTimeout(() => {
+      setToastMessage((prev) => 
+        prev === `Ficheiro não encontrado: ${exactFileName}` ? null : prev
+      );
+    }, 5000);
   };
 
   const handleCopyReference = (text: string) => {
@@ -379,7 +591,34 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
   };
 
   return (
-    <div className="w-full space-y-5 px-3 py-2 sm:px-4">
+    <div className="w-full space-y-5 px-3 py-2 sm:px-4 relative">
+      {/* Toast Notification Amigável para Ficheiros Indisponíveis / Avisos */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed top-5 right-5 z-[300] max-w-md w-[calc(100%-2.5rem)] bg-slate-900/95 border border-amber-500/60 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md flex items-center gap-3.5"
+          >
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+              <AlertCircle size={22} className="stroke-[2.2]" />
+            </div>
+            <div className="flex-1 text-xs">
+              <p className="font-black text-amber-300 uppercase tracking-wide text-[10px]">Aviso do Sistema</p>
+              <p className="text-slate-100 font-semibold mt-0.5">{toastMessage}</p>
+            </div>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Banner Superior & Header da Secção */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-amber-950 p-5 sm:p-6 text-white shadow-xl border border-amber-500/30">
         <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 rounded-full bg-amber-500/10 blur-2xl pointer-events-none" />
@@ -517,34 +756,27 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                 </div>
               </div>
 
-              {/* Botão de Ação (Comprar / Baixar) */}
+              {/* Botão de Ação (Comprar / Adquirir) */}
               <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3">
                 <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
                   <ShieldCheck size={14} className="text-emerald-500" />
                   <span>Download Imediato</span>
                 </div>
-
-                {isPurchased ? (
-                  <button
-                    onClick={() => handleTriggerPdfDownload(pdf)}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer"
-                  >
-                    <Download size={15} />
-                    <span>Baixar PDF 📥</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleOpenPurchaseModal(pdf)}
-                    className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer ${
-                      pdf.isCombo
-                        ? 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black'
-                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                    }`}
-                  >
-                    <ShoppingBag size={15} />
-                    <span>Comprar e Baixar ({pdf.priceKz.toLocaleString('pt-AO')} Kz)</span>
-                  </button>
-                )}
+                <button
+                  onClick={() => handleOpenPurchaseModal(pdf)}
+                  className={`px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer ${
+                    pdf.isCombo
+                      ? 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black'
+                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                  }`}
+                >
+                  <ShoppingBag size={15} />
+                  <span>
+                    {pdf.isCombo
+                      ? `Adquirir Combo por ${pdf.priceKz.toLocaleString('pt-AO')} Kz`
+                      : `Comprar por ${pdf.priceKz.toLocaleString('pt-AO')} Kz`}
+                  </span>
+                </button>
               </div>
             </div>
           );
@@ -580,7 +812,7 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                       Adquirir Material em PDF
                     </h3>
                     <p className="text-[11px] text-amber-400 font-medium">
-                      Simulação de Pagamento Segura
+                      Pagamento 100% Seguro
                     </p>
                   </div>
                 </div>
@@ -624,6 +856,7 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                       </label>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {/* Multicaixa Express */}
                         <button
                           type="button"
                           onClick={() => {
@@ -642,42 +875,99 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                           </div>
                           <div className="mt-2">
                             <span className="text-xs font-bold block text-slate-200">Multicaixa Express</span>
-                            <span className="text-[10px] text-slate-400">Pagamento instantâneo via telemóvel</span>
+                            <span className="text-[10px] text-slate-400">939 606 343</span>
                           </div>
                         </button>
 
+                        {/* Transferência Bancária / IBAN */}
                         <button
                           type="button"
                           onClick={() => {
                             playClickSound();
-                            setPaymentMethod('referencia');
+                            setPaymentMethod('iban');
                           }}
                           className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
-                            paymentMethod === 'referencia'
+                            paymentMethod === 'iban'
                               ? 'border-amber-500 bg-amber-500/10 text-slate-100 ring-1 ring-amber-500/50'
                               : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <CreditCard size={18} className={paymentMethod === 'referencia' ? 'text-amber-400' : ''} />
-                            {paymentMethod === 'referencia' && <CheckCircle2 size={16} className="text-amber-400" />}
+                            <Building2 size={18} className={paymentMethod === 'iban' ? 'text-amber-400' : ''} />
+                            {paymentMethod === 'iban' && <CheckCircle2 size={16} className="text-amber-400" />}
                           </div>
                           <div className="mt-2">
-                            <span className="text-xs font-bold block text-slate-200">Referência Multicaixa / Express</span>
-                            <span className="text-[10px] text-slate-400">Entidade e Referência de Pagamento</span>
+                            <span className="text-xs font-bold block text-slate-200">Transferência / IBAN</span>
+                            <span className="text-[10px] text-slate-400">IBAN Bancário</span>
                           </div>
                         </button>
                       </div>
                     </div>
 
-                    <div className="space-y-3 pt-2">
+                    {/* Exibe os Dados Bancários para Pagamento */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-2">
+                      <div className="flex items-center justify-between text-amber-400 font-bold text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Building2 size={15} />
+                          <span>Dados Bancários para Pagamento</span>
+                        </div>
+                        <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">
+                          Conta Oficial
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 bg-slate-900/90 p-3 rounded-lg border border-slate-800 text-xs">
+                        <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                          <span className="text-slate-400">Beneficiário:</span>
+                          <span className="font-bold text-slate-100">António Edson Lima Pimentel</span>
+                        </div>
+
+                        <div className="flex items-center justify-between py-1 border-b border-slate-800/80">
+                          <span className="text-slate-400">Número Express:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-black text-amber-400 text-xs sm:text-sm">939 606 343</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText('939606343', 'express')}
+                              className="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Copiar Número Express"
+                            >
+                              {copiedRef === 'express' ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-400">IBAN:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-black text-amber-400 text-[11px] sm:text-xs">AO06 0058 0000 06173873101 38</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText('AO06005800000617387310138', 'iban')}
+                              className="text-slate-400 hover:text-amber-400 p-1 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Copiar IBAN"
+                            >
+                              {copiedRef === 'iban' ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {copiedRef && (
+                        <div className="text-[10px] text-emerald-400 font-bold text-center">
+                          ✓ {copiedRef === 'express' ? 'Número Express' : 'IBAN'} copiado para a área de transferência!
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3 pt-1">
                       <label className="text-xs font-bold text-slate-300 block">
                         Dados de Envio e Identificação do Aluno
                       </label>
 
                       <div className="space-y-2">
                         <div>
-                          <label className="text-[11px] text-slate-400 block mb-1">Nome do Candidato</label>
+                          <label className="text-[11px] text-slate-400 block mb-1">Nome do Candidato *</label>
                           <input
                             type="text"
                             required
@@ -690,19 +980,7 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
-                            <label className="text-[11px] text-slate-400 block mb-1">E-mail para Receção</label>
-                            <input
-                              type="email"
-                              required
-                              value={studentEmail}
-                              onChange={(e) => setStudentEmail(e.target.value)}
-                              placeholder="aluno@exemplo.com"
-                              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-[11px] text-slate-400 block mb-1">Telemóvel / WhatsApp</label>
+                            <label className="text-[11px] text-slate-400 block mb-1">Telemóvel / WhatsApp *</label>
                             <input
                               type="tel"
                               required
@@ -712,84 +990,107 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                               className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                             />
                           </div>
+
+                          <div>
+                            <label className="text-[11px] text-slate-400 block mb-1">E-mail para Receção (opcional)</label>
+                            <input
+                              type="email"
+                              value={studentEmail}
+                              onChange={(e) => setStudentEmail(e.target.value)}
+                              placeholder="aluno@exemplo.com"
+                              className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="pt-3">
+                    <div className="pt-2">
                       <button
                         type="submit"
-                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+                        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md active:scale-98"
                       >
+                        <MessageSquare size={16} />
                         <span>Avançar para Instruções de Pagamento</span>
-                        <ArrowRight size={15} />
+                        <ArrowRight size={16} />
                       </button>
                     </div>
                   </form>
                 )}
 
-                {/* PASSO 2: Instruções do Pagamento */}
+                {/* PASSO 2: Instruções do Pagamento & Envio do Comprovativo */}
                 {paymentStep === 2 && (
                   <div className="space-y-4">
-                    {paymentMethod === 'express' ? (
-                      <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-3">
-                        <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
-                          <Smartphone size={16} />
-                          <span>Pagamento Instantâneo via Multicaixa Express</span>
+                    <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-3">
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                        <MessageSquare size={16} className="text-emerald-400" />
+                        <span>Instruções de Pagamento e Envio de Comprovativo</span>
+                      </div>
+
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        Redirecionámos para o WhatsApp com a sua mensagem preenchida. Caso não tenha aberto automaticamente, utilize o botão abaixo para enviar o comprovativo.
+                      </p>
+
+                      <div className="space-y-1.5 bg-slate-900 p-3 rounded-lg border border-slate-800 text-xs">
+                        <div className="flex items-center justify-between py-1 border-b border-slate-800">
+                          <span className="text-slate-400">Beneficiário:</span>
+                          <span className="font-bold text-slate-100">António Edson Lima Pimentel</span>
                         </div>
-                        <p className="text-xs text-slate-300 leading-relaxed">
-                          Foi gerado um pedido de pagamento para o número <strong className="text-amber-300">{studentPhone}</strong> no valor de <strong className="text-amber-300">{selectedPdfForPurchase.priceKz.toLocaleString('pt-AO')} Kz</strong>.
-                        </p>
-                        <div className="p-3 bg-amber-500/10 rounded-lg text-[11px] text-amber-200/90 space-y-1">
-                          <div className="font-bold">Passos no seu telemóvel:</div>
-                          <div>1. Abra o aplicativo Multicaixa Express.</div>
-                          <div>2. Confirme a notificação pendente de pagamento do MININT.</div>
-                          <div>3. Clique em "Confirmar Pagamento Simulado" abaixo para concluir a transferência.</div>
+                        <div className="flex items-center justify-between py-1 border-b border-slate-800">
+                          <span className="text-slate-400">Número Express:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-amber-400">939 606 343</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText('939606343', 'step2_express')}
+                              className="text-slate-400 hover:text-amber-400 p-1 cursor-pointer"
+                              title="Copiar Express"
+                            >
+                              {copiedRef === 'step2_express' ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between py-1">
+                          <span className="text-slate-400">IBAN:</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono font-bold text-amber-400 text-[11px]">AO06 0058 0000 06173873101 38</span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyText('AO06005800000617387310138', 'step2_iban')}
+                              className="text-slate-400 hover:text-amber-400 p-1 cursor-pointer"
+                              title="Copiar IBAN"
+                            >
+                              {copiedRef === 'step2_iban' ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="p-4 rounded-xl bg-slate-950/80 border border-amber-500/30 space-y-3">
-                        <div className="flex items-center justify-between text-amber-400 font-bold text-xs">
-                          <div className="flex items-center gap-2">
-                            <CreditCard size={16} />
-                            <span>Dados de Referência Multicaixa</span>
-                          </div>
-                          <span className="text-[10px] text-slate-400 font-mono">Validade: 24 Horas</span>
-                        </div>
 
-                        <div className="space-y-2 bg-slate-900 p-3 rounded-lg border border-slate-800 text-xs">
-                          <div className="flex items-center justify-between py-1 border-b border-slate-800">
-                            <span className="text-slate-400">Entidade:</span>
-                            <span className="font-mono font-bold text-slate-100">00812</span>
-                          </div>
-                          <div className="flex items-center justify-between py-1 border-b border-slate-800">
-                            <span className="text-slate-400">Referência:</span>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-amber-400 text-sm">948 201 490</span>
-                              <button
-                                onClick={() => handleCopyReference('948201490')}
-                                className="text-slate-400 hover:text-amber-400 p-1 cursor-pointer"
-                                title="Copiar Referência"
-                              >
-                                <Copy size={13} />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between py-1">
-                            <span className="text-slate-400">Montante Total:</span>
-                            <span className="font-bold text-amber-400">
-                              {selectedPdfForPurchase.priceKz.toLocaleString('pt-AO')} Kz
-                            </span>
-                          </div>
-                        </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!selectedPdfForPurchase) return;
+                          const msg = `Olá! Gostaria de adquirir o PDF *${selectedPdfForPurchase.title}* no valor de *${selectedPdfForPurchase.priceKz.toLocaleString('pt-AO')} Kz*.
 
-                        {copiedRef && (
-                          <div className="text-[10px] text-emerald-400 font-bold text-center">
-                            ✓ Referência copiada para a área de transferência!
-                          </div>
-                        )}
-                      </div>
-                    )}
+👤 *Dados do Candidato:*
+- Nome: ${studentName.trim()}
+- Telemóvel: ${studentPhone.trim()}
+- E-mail: ${studentEmail.trim() || 'Não informado'}
+
+💳 *Dados de Pagamento:*
+- IBAN: AO06 0058 0000 06173873101 38
+- Express: 939 606 343
+- Titular: António Edson Lima Pimentel
+
+Segue em anexo o meu comprovativo de pagamento para validação e libertação do material.`;
+                          window.open(`https://wa.me/244939606343?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-sm"
+                      >
+                        <MessageSquare size={15} />
+                        <span>Abrir WhatsApp com Comprovativo (939 606 343)</span>
+                      </button>
+                    </div>
 
                     <div className="flex items-center gap-2 pt-2">
                       <button
@@ -804,17 +1105,17 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                         type="button"
                         disabled={isProcessingPayment}
                         onClick={handleSimulatePayment}
-                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+                        className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
                       >
                         {isProcessingPayment ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>A Processar Pagamento...</span>
+                            <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                            <span>A Processar Pedido...</span>
                           </>
                         ) : (
                           <>
                             <CheckCircle2 size={16} />
-                            <span>Simular Conclusão de Compra</span>
+                            <span>Confirmar Pagamento e Baixar</span>
                           </>
                         )}
                       </button>
@@ -856,11 +1157,21 @@ Bons estudos e rumo à aprovação no Concurso do Ministério do Interior de Ang
                     <div className="space-y-2 pt-2">
                       <button
                         type="button"
+                        disabled={downloadingPdfId === selectedPdfForPurchase.id}
                         onClick={() => handleTriggerPdfDownload(selectedPdfForPurchase)}
-                        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg"
+                        className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-lg disabled:opacity-75 disabled:cursor-wait"
                       >
-                        <Download size={16} />
-                        <span>Baixar PDF Agora 📥</span>
+                        {downloadingPdfId === selectedPdfForPurchase.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span className="animate-pulse">A gerar URL seguro no Supabase...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download size={16} />
+                            <span>Descarregar PDF 📥</span>
+                          </>
+                        )}
                       </button>
 
                       <button

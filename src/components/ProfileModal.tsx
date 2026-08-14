@@ -743,9 +743,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 type="button"
                 onClick={() => {
                   playClickSound();
-                  onClose();
-                  if (onLogout) {
-                    onLogout();
+                  if (window.confirm('Tens a certeza que queres finalizar a sessão activa?')) {
+                    if (onLogout) {
+                      onLogout();
+                    }
+                    onClose();
                   }
                 }}
                 className="py-2.5 px-3 text-xs font-black rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider shrink-0"
