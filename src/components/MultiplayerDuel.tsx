@@ -33,7 +33,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Swords, Users, Plus, KeyRound, Sparkles, Trophy, CheckCircle2, XCircle, Clock, Shield, ArrowRight, RotateCcw, AlertCircle, Zap,
   Copy, Check, Share2, Radio, UserCheck, MapPin, Loader2, History, Flame, Trash2, Crosshair, RefreshCw, LogOut, LogIn,
-  MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX, WifiOff, UserX
+  MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX, WifiOff, UserX, Hourglass, Scale
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
 import { trackMissionProgress } from '../utils/dailyMissions';
@@ -311,6 +311,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             forfeitedBy: profile?.uid,
             forfeitReason: 'opponent_left',
             isForfeit: true,
+            rewardClaimed: true,
+            [`rewardClaimedBy/${opponentUid}`]: true,
           }).catch(() => {});
         } catch (e) {}
       }
@@ -334,6 +336,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               forfeitedBy: profile?.uid,
               forfeitReason: 'opponent_left',
               isForfeit: true,
+              rewardClaimed: true,
+              rewardClaimedBy: { [opponentUid]: true },
             }, { merge: true }).catch(() => {});
 
             rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
@@ -342,6 +346,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               forfeitedBy: profile?.uid,
               forfeitReason: 'opponent_left',
               isForfeit: true,
+              rewardClaimed: true,
+              [`rewardClaimedBy/${opponentUid}`]: true,
             }).catch(() => {});
           } catch (e) {
             console.warn('Erro ao finalizar duelo por abandono no unmount:', e);
@@ -357,6 +363,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           }
         }
       }
+      // Reset any active modal overlays on unmount to prevent ghost loops
+      setShowHonorVictoryOverlay(false);
+      setIsExitModalOpen(false);
+      setIsRoomClosedModalOpen(false);
+      currentRoomRef.current = null;
     };
   }, [profile?.uid]);
 
@@ -539,6 +550,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   const [processedDuelId, setProcessedDuelId] = useState<string | null>(null);
   const processedTimeoutRef = useRef<string>('');
+  const claimedRewardsRef = useRef<Set<string>>(new Set());
 
   const [xpBreakdown, setXpBreakdown] = useState<{
     baseXp: number;
@@ -570,6 +582,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     reason: 'opponent_left' | 'inactivity' | 'timeout' = 'opponent_left'
   ) => {
     const isBot = room.player2?.isBot;
+    const roomId = room.id || room.roomCode;
+    const updatedClaimedBy = {
+      ...(room.rewardClaimedBy || {}),
+      [winnerUid]: true,
+    };
+
     const finishedRoom: DuelRoom = {
       ...room,
       status: 'finished',
@@ -577,6 +595,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       forfeitedBy: forfeitedByUid,
       forfeitReason: reason,
       isForfeit: true,
+      rewardClaimed: true,
+      rewardClaimedBy: updatedClaimedBy,
     };
 
     setCurrentRoom(finishedRoom);
@@ -587,25 +607,29 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       handleDuelFinished(finishedRoom);
     }
 
-    if (!isBot) {
+    if (!isBot && roomId) {
       try {
-        const roomRef = doc(db, 'duels', room.id);
+        const roomRef = doc(db, 'duels', roomId);
         setDoc(roomRef, sanitizeFirestoreData({
           status: 'finished',
           winnerUid,
           forfeitedBy: forfeitedByUid,
           forfeitReason: reason,
           isForfeit: true,
+          rewardClaimed: true,
+          rewardClaimedBy: updatedClaimedBy,
           player1: sanitizeFirestoreData(finishedRoom.player1),
           player2: finishedRoom.player2 ? sanitizeFirestoreData(finishedRoom.player2) : null,
         }), { merge: true }).catch((e) => console.warn('Erro ao salvar vitória por desistência no Firestore:', e));
 
-        rtdbUpdate(rtdbRef(rtdb, `duels/${room.id}`), {
+        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
           status: 'finished',
           winnerUid,
           forfeitedBy: forfeitedByUid,
           forfeitReason: reason,
           isForfeit: true,
+          rewardClaimed: true,
+          [`rewardClaimedBy/${winnerUid}`]: true,
           player1: finishedRoom.player1,
           player2: finishedRoom.player2 || null,
         }).catch((e) => console.warn('Erro ao salvar vitória por desistência no RTDB:', e));
@@ -790,17 +814,48 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }
     } else {
       // Finish Duel
-      const p1FinalScore = updatedRoom.player1.score;
+      const p1FinalScore = updatedRoom.player1.score || 0;
       const p2FinalScore = updatedRoom.player2?.score || 0;
 
+      // Calculate total accumulated time spent by each player
+      const timeLimit = updatedRoom.timePerQuestion || (updatedRoom.mode === 'relampago' ? 30 : 20);
+      const p1TotalTime = Object.values(updatedRoom.player1.answers || {}).reduce(
+        (acc, a) => acc + (typeof a?.timeSeconds === 'number' ? a.timeSeconds : timeLimit),
+        0
+      );
+      const p2TotalTime = Object.values(updatedRoom.player2?.answers || {}).reduce(
+        (acc, a) => acc + (typeof a?.timeSeconds === 'number' ? a.timeSeconds : timeLimit),
+        0
+      );
+
       let winner: string = 'draw';
-      if (p1FinalScore > p2FinalScore) winner = updatedRoom.player1.uid;
-      else if (p2FinalScore > p1FinalScore) winner = updatedRoom.player2?.uid || 'draw';
+      if (p1FinalScore > p2FinalScore) {
+        winner = updatedRoom.player1.uid;
+      } else if (p2FinalScore > p1FinalScore) {
+        winner = updatedRoom.player2?.uid || 'draw';
+      } else {
+        // Tied Score -> Tiebreaker by Lowest Total Accumulated Time
+        if (p1TotalTime < p2TotalTime) {
+          winner = updatedRoom.player1.uid;
+        } else if (p2TotalTime < p1TotalTime) {
+          winner = updatedRoom.player2?.uid || 'draw';
+        } else {
+          // Both score AND total time are strictly identical -> EMPATE formal
+          winner = 'draw';
+        }
+      }
+
+      const updatedClaimedBy = {
+        ...(updatedRoom.rewardClaimedBy || {}),
+        [profile.uid]: true,
+      };
 
       const finishedRoom: DuelRoom = {
         ...updatedRoom,
         status: 'finished',
         winnerUid: winner,
+        rewardClaimed: true,
+        rewardClaimedBy: updatedClaimedBy,
       };
 
       setCurrentRoom(finishedRoom);
@@ -817,6 +872,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           setDoc(roomRef, sanitizeFirestoreData({
             status: 'finished',
             winnerUid: winner,
+            rewardClaimed: true,
+            rewardClaimedBy: updatedClaimedBy,
             player1: sanitizeFirestoreData(updatedRoom.player1),
             player2: updatedRoom.player2 ? sanitizeFirestoreData(updatedRoom.player2) : null,
           }), { merge: true }).catch((e) => console.warn('Erro ao finalizar duelo no Firestore:', e));
@@ -824,6 +881,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), {
             status: 'finished',
             winnerUid: winner,
+            rewardClaimed: true,
+            [`rewardClaimedBy/${profile.uid}`]: true,
             player1: updatedRoom.player1,
             player2: updatedRoom.player2 || null,
           }).catch((e) => console.warn('Erro ao finalizar duelo no RTDB:', e));
@@ -1464,8 +1523,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const qIndex = currentRoom.currentQuestionIndex;
     if (player.answers && player.answers[qIndex] !== undefined) return; // Already answered
 
+    // If time is up, prevent late answer registration: treat as timeout (-1)
+    if (chosenOptionIndex >= 0 && questionTimer <= 0) {
+      chosenOptionIndex = -1;
+    }
+
     const currentQ = currentRoom.questions[qIndex];
-    const isCorrect = chosenOptionIndex === currentQ.correctIndex;
+    const isTimeout = chosenOptionIndex === -1;
+    const isCorrect = !isTimeout && chosenOptionIndex === currentQ.correctIndex;
 
     const previousStreak = consecutiveCorrectStreak;
     let newStreak = 0;
@@ -1486,7 +1551,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setShowComboSparkleAnimation(false);
     }
 
-    const timeBonus = Math.max(10, questionTimer * 5);
+    const timeBonus = isTimeout ? 0 : Math.max(10, questionTimer * 5);
     const ptsEarned = isCorrect ? (100 + timeBonus + comboBonus) : 0;
 
     if (isCorrect) {
@@ -1506,13 +1571,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
 
     const totalTime = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
+    const timeSpent = isTimeout ? totalTime : Math.max(0, totalTime - questionTimer);
     trackMissionProgress('questions', 1);
     const newAnswers = {
       ...player.answers,
       [qIndex]: {
         chosenIndex: chosenOptionIndex,
         isCorrect,
-        timeSeconds: Math.max(0, totalTime - questionTimer),
+        timeSeconds: timeSpent,
       },
     };
 
@@ -1578,6 +1644,18 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const isHost = roomData.player1.uid === profile.uid;
     const myPlayer = isHost ? roomData.player1 : roomData.player2;
     const opponent = isHost ? roomData.player2 : roomData.player1;
+    const roomId = roomData.id || roomData.roomCode || `duel_${Date.now()}`;
+
+    // Verify if reward has ALREADY been claimed for this user/duel
+    const isRewardClaimedInRoom = Boolean(
+      roomData.rewardClaimed ||
+      (roomData.rewardClaimedBy && roomData.rewardClaimedBy[profile.uid])
+    );
+    const isRewardClaimedLocally = Boolean(
+      claimedRewardsRef.current.has(roomId) ||
+      (roomId && localStorage.getItem(`minint_claimed_duel_${roomId}_${profile.uid}`) === 'true')
+    );
+    const isAlreadyClaimed = isRewardClaimedInRoom || isRewardClaimedLocally;
 
     // Check if opponent is bot or AI tutor
     const isOpponentBot = !opponent ||
@@ -1613,28 +1691,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       });
     }
 
-    // Base XP: Vitória (+50 XP), Empate (+20 XP), Derrota (+5 XP bónus de participação)
+    // Base XP: Vitória (+50 XP), Empate (+25 XP - metade da vitória), Derrota (+5 XP bónus de participação)
     let baseXp = 5;
     let resultType: 'win' | 'draw' | 'loss' = 'loss';
     if (isWin) {
       baseXp = 50;
       resultType = 'win';
-      playVictorySound();
-      trackMissionProgress('duel_win', 1);
-      // Trigger full-screen celebratory confetti animation with custom particles
-      fireDuelVictoryFullScreenConfetti();
-      if (isMultiplayerReal) {
-        const pts = 20 + (correctCount * 15) + 50;
-        setHonorVictoryPts(pts);
-        setHonorVictoryOpponent(opponent);
-        setShowHonorVictoryOverlay(true);
-      }
     } else if (isDraw) {
-      baseXp = 20;
+      baseXp = 25;
       resultType = 'draw';
-      playQuizCompleteSound();
     } else {
-      playDefeatSound();
+      resultType = 'loss';
     }
 
     const totalXp = baseXp + speedBonusXp;
@@ -1663,7 +1730,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       });
     }
 
-    onUpdateStats(correctCount, roomData.questions.length, totalXp, isWin, categoryBreakdown, isMultiplayerReal);
     const catLabel = getCategoryDisplayName(roomData.category);
 
     const newHistoryEntry: DuelHistoryEntry = {
@@ -1705,6 +1771,60 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }
       return updated;
     });
+
+    // CRITICAL: If reward was ALREADY claimed, stop here and NEVER duplicate XP, stats, or modals
+    if (isAlreadyClaimed) {
+      return;
+    }
+
+    // Mark reward as claimed immediately in local reference & localStorage
+    claimedRewardsRef.current.add(roomId);
+    try {
+      localStorage.setItem(`minint_claimed_duel_${roomId}_${profile.uid}`, 'true');
+    } catch (e) {}
+
+    // Persist rewardClaimed flag to Firestore and Realtime Database
+    if (roomId && !isOpponentBot) {
+      try {
+        const updatedClaimedBy = {
+          ...(roomData.rewardClaimedBy || {}),
+          [profile.uid]: true,
+        };
+        const roomRef = doc(db, 'duels', roomId);
+        setDoc(roomRef, sanitizeFirestoreData({
+          rewardClaimed: true,
+          rewardClaimedBy: updatedClaimedBy,
+        }), { merge: true }).catch((e) => console.warn('Erro ao persistir rewardClaimed no Firestore:', e));
+
+        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
+          rewardClaimed: true,
+          [`rewardClaimedBy/${profile.uid}`]: true,
+        }).catch((e) => console.warn('Erro ao persistir rewardClaimed no RTDB:', e));
+      } catch (e) {
+        console.warn('Erro ao sincronizar rewardClaimed:', e);
+      }
+    }
+
+    // Award XP, ranking stats, and achievements ONLY ONCE
+    onUpdateStats(correctCount, roomData.questions.length, totalXp, isWin, categoryBreakdown, isMultiplayerReal);
+
+    // Audio effects and victory celebration triggers (executed strictly once)
+    if (isWin) {
+      playVictorySound();
+      trackMissionProgress('duel_win', 1);
+      // Trigger full-screen celebratory confetti animation with custom particles
+      fireDuelVictoryFullScreenConfetti();
+      if (isMultiplayerReal) {
+        const pts = 20 + (correctCount * 15) + 50;
+        setHonorVictoryPts(pts);
+        setHonorVictoryOpponent(opponent);
+        setShowHonorVictoryOverlay(true);
+      }
+    } else if (isDraw) {
+      playQuizCompleteSound();
+    } else {
+      playDefeatSound();
+    }
   };
 
   // Re-challenge / Rematch Against Opponent (Vingança)
@@ -3116,30 +3236,40 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 <div className="space-y-2 pt-1">
                   {currentQ.options.map((opt, idx) => {
                     const hasMyAnswer = myAnswer !== undefined;
+                    const isTimedOut = questionTimer <= 0;
+                    const isOptionDisabled = hasMyAnswer || isTimedOut;
                     const isMyChoice = myAnswer?.chosenIndex === idx;
                     const isCorrect = idx === currentQ.correctIndex;
 
-                    let btnStyle = 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700';
+                    let btnStyle = 'bg-slate-950/80 border-slate-800 text-slate-300 hover:border-slate-700 active:scale-[0.99] cursor-pointer';
 
-                    if (hasMyAnswer) {
+                    if (isOptionDisabled && !hasMyAnswer) {
+                      btnStyle = 'bg-slate-950/40 border-slate-800/40 text-slate-500 opacity-60 cursor-not-allowed';
+                    } else if (hasMyAnswer) {
                       if (isCorrect) {
-                        btnStyle = 'bg-emerald-950/80 border-emerald-500 text-emerald-200 font-semibold';
+                        btnStyle = 'bg-emerald-950/80 border-emerald-500 text-emerald-200 font-semibold cursor-default';
                       } else if (isMyChoice) {
-                        btnStyle = 'bg-rose-950/80 border-rose-500 text-rose-200 font-semibold';
+                        btnStyle = 'bg-rose-950/80 border-rose-500 text-rose-200 font-semibold cursor-default';
                       } else {
-                        btnStyle = 'bg-slate-950/40 border-slate-800/40 text-slate-500 opacity-60';
+                        btnStyle = 'bg-slate-950/40 border-slate-800/40 text-slate-500 opacity-60 cursor-default';
                       }
                     }
 
                     return (
                       <button
                         key={idx}
-                        disabled={hasMyAnswer}
+                        disabled={isOptionDisabled}
                         onClick={() => handleAnswerQuestion(idx)}
                         className={`w-full p-3.5 rounded-2xl border text-left text-xs transition-all flex items-center justify-between ${btnStyle}`}
                       >
                         <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded-lg bg-slate-800/80 border border-slate-700/80 flex items-center justify-center font-bold text-[11px] text-amber-400 shrink-0">
+                          <span className={`w-6 h-6 rounded-lg border flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                            hasMyAnswer && isCorrect
+                              ? 'bg-emerald-800/80 border-emerald-600 text-emerald-200'
+                              : hasMyAnswer && isMyChoice
+                              ? 'bg-rose-800/80 border-rose-600 text-rose-200'
+                              : 'bg-slate-800/80 border-slate-700/80 text-amber-400'
+                          }`}>
                             {String.fromCharCode(65 + idx)}
                           </span>
                           <span className="leading-snug">{opt}</span>
@@ -3151,6 +3281,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     );
                   })}
                 </div>
+
+                {/* Timeout Notice Banner if time ran out without answer */}
+                {questionTimer <= 0 && myAnswer === undefined && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-300 text-xs font-bold flex items-center justify-between animate-pulse">
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-rose-400 shrink-0" />
+                      <span>⏰ Tempo Esgotado! Resposta não enviada a tempo.</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">A avançar...</span>
+                  </div>
+                )}
 
                 {/* AI Explanation Trigger Button (if answered) */}
                 {myAnswer !== undefined && (
@@ -3278,6 +3419,36 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 <p className="text-xs text-slate-300 mt-1">Concurso Público do MININT Angola</p>
               </div>
 
+              {/* Tiebreaker by Time Notice Banner */}
+              {!isBotMatch && !currentRoom.isForfeit && (myPlayer?.score || 0) === (opponent?.score || 0) && currentRoom.winnerUid !== 'draw' && (
+                <div className={`border rounded-2xl p-3.5 text-left space-y-1.5 shadow-md ${
+                  currentRoom.winnerUid === profile.uid
+                    ? 'bg-gradient-to-r from-amber-950/90 via-slate-900 to-amber-950/90 border-amber-500/40 text-amber-300'
+                    : 'bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border-slate-700/60 text-slate-300'
+                }`}>
+                  <div className="flex items-center gap-2 font-black text-xs">
+                    <Zap size={16} className="text-amber-400 shrink-0" />
+                    <span>⚡ Critério de Desempate: Menor Tempo Acumulado</span>
+                  </div>
+                  <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
+                    Com a pontuação empatada em <strong>{myPlayer?.score || 0} Pts</strong>, a vitória foi atribuída a quem respondeu mais rápido no total ({myTotalTime < oppTotalTime ? (myPlayer?.displayName || 'Você') : (opponent?.displayName || 'Oponente')}: <strong>{Math.min(myTotalTime, oppTotalTime)}s</strong> vs <strong>{Math.max(myTotalTime, oppTotalTime)}s</strong>).
+                  </p>
+                </div>
+              )}
+
+              {/* Exact Draw Notice Banner */}
+              {!isBotMatch && !currentRoom.isForfeit && currentRoom.winnerUid === 'draw' && (
+                <div className="bg-gradient-to-r from-blue-950/90 via-slate-900 to-blue-950/90 border border-blue-500/40 rounded-2xl p-3.5 text-left space-y-1.5 shadow-md">
+                  <div className="flex items-center gap-2 text-blue-300 font-black text-xs">
+                    <Scale size={16} className="text-blue-400 shrink-0" />
+                    <span>🤝 Empate Formal no Duelo</span>
+                  </div>
+                  <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
+                    Ambos os candidatos terminaram com pontuação e tempo acumulado idênticos (<strong>{myPlayer?.score || 0} Pts</strong> e <strong>{myTotalTime}s</strong>). O resultado foi declarado formalmente como <strong>EMPATE</strong>, distribuindo metade do XP de vitória (<strong>25 XP</strong>) para cada um.
+                  </p>
+                </div>
+              )}
+
               {/* Forfeit Notice Banner */}
               {!isBotMatch && currentRoom.isForfeit && (
                 <div className={`border rounded-2xl p-3.5 text-left space-y-1.5 shadow-md ${
@@ -3346,6 +3517,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                       <span className="font-mono font-bold text-emerald-400">{myAccuracyPct}% ({myCorrectAnswers}/{totalQ})</span>
                     </div>
                     <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Hourglass size={11} /> Tempo Total:</span>
+                      <span className="font-mono font-bold text-amber-400">{myTotalTime}s</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
                       <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> Tempo Médio:</span>
                       <span className="font-mono font-bold text-amber-300">{myAvgTime}s</span>
                     </div>
@@ -3369,6 +3544,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     <div className="flex justify-between items-center text-slate-300">
                       <span className="flex items-center gap-1 text-slate-400"><Target size={11} /> Precisão:</span>
                       <span className="font-mono font-bold text-blue-400">{oppAccuracyPct}% ({oppCorrectAnswers}/{totalQ})</span>
+                    </div>
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="flex items-center gap-1 text-slate-400"><Hourglass size={11} /> Tempo Total:</span>
+                      <span className="font-mono font-bold text-blue-300">{oppTotalTime}s</span>
                     </div>
                     <div className="flex justify-between items-center text-slate-300">
                       <span className="flex items-center gap-1 text-slate-400"><Clock size={11} /> Tempo Médio:</span>
@@ -3518,6 +3697,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
               <button
                 onClick={() => {
+                  setShowHonorVictoryOverlay(false);
                   if (opponent) {
                     handleRechallenge(
                       opponent.displayName,
@@ -3542,6 +3722,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <button
                 onClick={() => {
                   setCurrentRoom(null);
+                  setProcessedDuelId(null);
+                  setShowHonorVictoryOverlay(false);
+                  setIsRoomClosedModalOpen(false);
+                  setIsExitModalOpen(false);
                   setViewState('lobby');
                 }}
                 className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold uppercase tracking-wider border border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"

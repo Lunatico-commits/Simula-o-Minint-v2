@@ -223,6 +223,8 @@ export interface DuelRoom {
   forfeitedBy?: string;
   forfeitReason?: 'opponent_left' | 'inactivity' | 'timeout' | string;
   isForfeit?: boolean;
+  rewardClaimed?: boolean;
+  rewardClaimedBy?: Record<string, boolean>;
 }
 
 export interface DuelHistoryEntry {
