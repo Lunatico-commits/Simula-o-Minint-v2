@@ -245,7 +245,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
     setChosenAnswerIndex(index);
     setUserAnswers(prev => ({ ...prev, [currentIndex]: index }));
-    trackMissionProgress('questions', 1);
+    trackMissionProgress('questions', 1, profile?.uid);
 
     const currentQ = activeQuestions[currentIndex];
     if (index === currentQ.correctIndex) {
@@ -279,7 +279,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
   // Finish Quiz
   const handleFinishQuiz = () => {
     setQuizState('completed');
-    trackMissionProgress('simulado', 1);
+    trackMissionProgress('simulado', 1, profile?.uid);
 
     const duration = quizStartTime ? Math.max(1, Math.floor((Date.now() - quizStartTime) / 1000)) : 0;
     setTimeSpentSeconds(duration);
@@ -557,7 +557,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
           </button>
 
           {/* 6. PAINEL DE MISSÕES DIÁRIAS (Abaixo do botão Iniciar Simulado) */}
-          <DailyMissions onClaimXp={(xpAmount, coinsAmount) => onUpdateStats(0, 0, xpAmount, false, undefined, false, coinsAmount)} />
+          <DailyMissions profile={profile} onClaimXp={(xpAmount, coinsAmount) => onUpdateStats(0, 0, xpAmount, false, undefined, false, coinsAmount)} />
 
           {/* WhatsApp Community Card */}
           <div className="bg-[#0b141a] dark:bg-[#0b141a] border border-[#25D366]/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl shadow-[#25D366]/10 relative overflow-hidden group">

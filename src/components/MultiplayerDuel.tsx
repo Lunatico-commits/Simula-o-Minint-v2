@@ -36,7 +36,7 @@ import {
   MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX, WifiOff, UserX, Hourglass, Scale
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
-import { trackMissionProgress } from '../utils/dailyMissions';
+import { trackMissionProgress, updateQuestProgress } from '../utils/dailyMissions';
 
 /**
  * Normalizes user-entered room codes (e.g., 'mnt 8421', 'mnt-8421', '8421', 'MNT8421')
@@ -583,10 +583,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   ) => {
     const isBot = room.player2?.isBot;
     const roomId = room.id || room.roomCode;
-    const updatedClaimedBy = {
-      ...(room.rewardClaimedBy || {}),
-      [winnerUid]: true,
-    };
 
     const finishedRoom: DuelRoom = {
       ...room,
@@ -595,8 +591,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       forfeitedBy: forfeitedByUid,
       forfeitReason: reason,
       isForfeit: true,
-      rewardClaimed: true,
-      rewardClaimedBy: updatedClaimedBy,
+      rewardClaimed: false,
     };
 
     setCurrentRoom(finishedRoom);
@@ -616,8 +611,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           forfeitedBy: forfeitedByUid,
           forfeitReason: reason,
           isForfeit: true,
-          rewardClaimed: true,
-          rewardClaimedBy: updatedClaimedBy,
           player1: sanitizeFirestoreData(finishedRoom.player1),
           player2: finishedRoom.player2 ? sanitizeFirestoreData(finishedRoom.player2) : null,
         }), { merge: true }).catch((e) => console.warn('Erro ao salvar vitória por desistência no Firestore:', e));
@@ -628,8 +621,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           forfeitedBy: forfeitedByUid,
           forfeitReason: reason,
           isForfeit: true,
-          rewardClaimed: true,
-          [`rewardClaimedBy/${winnerUid}`]: true,
           player1: finishedRoom.player1,
           player2: finishedRoom.player2 || null,
         }).catch((e) => console.warn('Erro ao salvar vitória por desistência no RTDB:', e));
@@ -845,17 +836,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         }
       }
 
-      const updatedClaimedBy = {
-        ...(updatedRoom.rewardClaimedBy || {}),
-        [profile.uid]: true,
-      };
-
       const finishedRoom: DuelRoom = {
         ...updatedRoom,
         status: 'finished',
         winnerUid: winner,
-        rewardClaimed: true,
-        rewardClaimedBy: updatedClaimedBy,
+        rewardClaimed: false,
       };
 
       setCurrentRoom(finishedRoom);
@@ -872,8 +857,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           setDoc(roomRef, sanitizeFirestoreData({
             status: 'finished',
             winnerUid: winner,
-            rewardClaimed: true,
-            rewardClaimedBy: updatedClaimedBy,
             player1: sanitizeFirestoreData(updatedRoom.player1),
             player2: updatedRoom.player2 ? sanitizeFirestoreData(updatedRoom.player2) : null,
           }), { merge: true }).catch((e) => console.warn('Erro ao finalizar duelo no Firestore:', e));
@@ -881,8 +864,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), {
             status: 'finished',
             winnerUid: winner,
-            rewardClaimed: true,
-            [`rewardClaimedBy/${profile.uid}`]: true,
             player1: updatedRoom.player1,
             player2: updatedRoom.player2 || null,
           }).catch((e) => console.warn('Erro ao finalizar duelo no RTDB:', e));
@@ -1647,15 +1628,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const roomId = roomData.id || roomData.roomCode || `duel_${Date.now()}`;
 
     // Verify if reward has ALREADY been claimed for this user/duel
-    const isRewardClaimedInRoom = Boolean(
-      roomData.rewardClaimed ||
-      (roomData.rewardClaimedBy && roomData.rewardClaimedBy[profile.uid])
+    const isRewardClaimedByMeInRoom = Boolean(
+      roomData.rewardClaimedBy && roomData.rewardClaimedBy[profile.uid]
     );
     const isRewardClaimedLocally = Boolean(
       claimedRewardsRef.current.has(roomId) ||
       (roomId && localStorage.getItem(`minint_claimed_duel_${roomId}_${profile.uid}`) === 'true')
     );
-    const isAlreadyClaimed = isRewardClaimedInRoom || isRewardClaimedLocally;
+    const isAlreadyClaimed = isRewardClaimedByMeInRoom || isRewardClaimedLocally;
 
     // Check if opponent is bot or AI tutor
     const isOpponentBot = !opponent ||
@@ -1808,10 +1788,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     // Award XP, ranking stats, and achievements ONLY ONCE
     onUpdateStats(correctCount, roomData.questions.length, totalXp, isWin, categoryBreakdown, isMultiplayerReal);
 
+    // Track answered questions in missions
+    const answeredCount = myPlayer?.answers ? Object.keys(myPlayer.answers).length : (roomData.questions?.length || 5);
+    if (answeredCount > 0) {
+      updateQuestProgress('questions', answeredCount, profile.uid);
+    }
+
     // Audio effects and victory celebration triggers (executed strictly once)
     if (isWin) {
       playVictorySound();
-      trackMissionProgress('duel_win', 1);
+      updateQuestProgress('win_duel', 1, profile.uid);
+      trackMissionProgress('duel_win', 1, profile.uid);
       // Trigger full-screen celebratory confetti animation with custom particles
       fireDuelVictoryFullScreenConfetti();
       if (isMultiplayerReal) {

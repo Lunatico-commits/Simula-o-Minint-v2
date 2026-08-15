@@ -1,3 +1,6 @@
+import { db } from '../lib/firebase';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+
 export interface DailyMission {
   id: string;
   title: string;
@@ -10,6 +13,16 @@ export interface DailyMission {
 }
 
 const STORAGE_KEY = 'minint_daily_missions';
+
+export type QuestType = 
+  | 'questions' 
+  | 'question'
+  | 'simulado' 
+  | 'quiz'
+  | 'duel_win' 
+  | 'win_duel' 
+  | 'duel' 
+  | 'win';
 
 const INITIAL_MISSIONS: Omit<DailyMission, 'current' | 'claimed'>[] = [
   {
@@ -43,15 +56,51 @@ export function getTodayDateStr(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
-export function getDailyMissions(): DailyMission[] {
+function getEffectiveUid(passedUid?: string): string | null {
+  if (passedUid && passedUid !== 'guest_user') return passedUid;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const saved = localStorage.getItem('minint_current_account_uid') || 
+                  localStorage.getItem('currentUserId') || 
+                  localStorage.getItem('minint_user');
+    if (saved && saved !== 'guest_user') return saved;
+  } catch (e) {}
+  return null;
+}
+
+export function getDailyMissions(uid?: string): DailyMission[] {
+  try {
     const today = getTodayDateStr();
+    const effectiveUid = getEffectiveUid(uid);
+    const userSpecificKey = effectiveUid ? `${STORAGE_KEY}_${effectiveUid}` : null;
+
+    let raw = userSpecificKey ? localStorage.getItem(userSpecificKey) : null;
+    if (!raw) {
+      raw = localStorage.getItem(STORAGE_KEY);
+    }
 
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.date === today && Array.isArray(parsed.missions)) {
-        return parsed.missions;
+      if (parsed.date === today && Array.isArray(parsed.missions) && parsed.missions.length > 0) {
+        // Ensure all required initial missions are present
+        const missionMap = new Map(parsed.missions.map((m: DailyMission) => [m.id, m]));
+        const merged = INITIAL_MISSIONS.map((init) => {
+          const existing = missionMap.get(init.id) as DailyMission | undefined;
+          if (existing) {
+            return {
+              ...init,
+              ...existing,
+              target: init.target,
+              xpReward: init.xpReward,
+              coinsReward: init.coinsReward,
+            };
+          }
+          return {
+            ...init,
+            current: 0,
+            claimed: false,
+          };
+        });
+        return merged;
       }
     }
 
@@ -62,7 +111,7 @@ export function getDailyMissions(): DailyMission[] {
       claimed: false,
     }));
 
-    saveDailyMissions(newMissions);
+    saveDailyMissions(newMissions, effectiveUid || undefined);
     return newMissions;
   } catch {
     return INITIAL_MISSIONS.map((m) => ({
@@ -73,38 +122,70 @@ export function getDailyMissions(): DailyMission[] {
   }
 }
 
-export function saveDailyMissions(missions: DailyMission[]): void {
+export function saveDailyMissions(missions: DailyMission[], uid?: string): void {
   try {
     const today = getTodayDateStr();
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        date: today,
-        missions,
-      })
-    );
-    window.dispatchEvent(new CustomEvent('daily_missions_updated'));
+    const payload = JSON.stringify({
+      date: today,
+      missions,
+    });
+
+    localStorage.setItem(STORAGE_KEY, payload);
+
+    const effectiveUid = getEffectiveUid(uid);
+    if (effectiveUid) {
+      localStorage.setItem(`${STORAGE_KEY}_${effectiveUid}`, payload);
+      
+      // Asynchronously synchronize with Firestore
+      try {
+        const userRef = doc(db, 'users', effectiveUid);
+        setDoc(userRef, {
+          dailyMissions: {
+            date: today,
+            missions: missions,
+            updatedAt: new Date().toISOString(),
+          }
+        }, { merge: true }).catch((err) => {
+          console.warn('Erro ao sincronizar missões no Firestore:', err);
+        });
+      } catch (dbErr) {
+        console.warn('Falha na persistência Firestore das missões diárias:', dbErr);
+      }
+    }
+
+    // Dispatch global event for instant UI update
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('daily_missions_updated', { detail: missions }));
+    }
   } catch (err) {
     console.error('Error saving daily missions:', err);
   }
 }
 
-export function trackMissionProgress(type: 'questions' | 'simulado' | 'duel_win', amount: number = 1): void {
-  const missions = getDailyMissions();
+/**
+ * Main function to update quest and daily mission progress.
+ * Supports aliases 'win_duel', 'duel_win', 'questions', 'simulado'.
+ */
+export function updateQuestProgress(type: QuestType, amount: number = 1, uid?: string): void {
+  const missions = getDailyMissions(uid);
   let updated = false;
 
+  const isQuestions = type === 'questions' || type === 'question';
+  const isSimulado = type === 'simulado' || type === 'quiz';
+  const isDuelWin = type === 'duel_win' || type === 'win_duel' || type === 'duel' || type === 'win';
+
   const newMissions = missions.map((m) => {
-    if (type === 'questions' && m.id === 'questions_15') {
+    if (isQuestions && m.id === 'questions_15') {
       const nextCurrent = Math.min(m.target, m.current + amount);
       if (nextCurrent !== m.current) updated = true;
       return { ...m, current: nextCurrent };
     }
-    if (type === 'simulado' && m.id === 'simulado_1') {
+    if (isSimulado && m.id === 'simulado_1') {
       const nextCurrent = Math.min(m.target, m.current + amount);
       if (nextCurrent !== m.current) updated = true;
       return { ...m, current: nextCurrent };
     }
-    if (type === 'duel_win' && m.id === 'duel_win_1') {
+    if (isDuelWin && m.id === 'duel_win_1') {
       const nextCurrent = Math.min(m.target, m.current + amount);
       if (nextCurrent !== m.current) updated = true;
       return { ...m, current: nextCurrent };
@@ -113,12 +194,57 @@ export function trackMissionProgress(type: 'questions' | 'simulado' | 'duel_win'
   });
 
   if (updated) {
-    saveDailyMissions(newMissions);
+    saveDailyMissions(newMissions, uid);
   }
 }
 
-export function claimMissionReward(missionId: string): { xpReward: number; coinsReward: number } {
-  const missions = getDailyMissions();
+/**
+ * Backwards-compatible alias for updateQuestProgress.
+ */
+export function trackMissionProgress(type: QuestType, amount: number = 1, uid?: string): void {
+  updateQuestProgress(type, amount, uid);
+}
+
+/**
+ * Synchronize daily missions from Firestore on user login/profile load.
+ */
+export async function syncDailyMissionsWithFirestore(uid: string): Promise<DailyMission[]> {
+  if (!uid || uid === 'guest_user') return getDailyMissions();
+  try {
+    const userRef = doc(db, 'users', uid);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const today = getTodayDateStr();
+      if (data?.dailyMissions?.date === today && Array.isArray(data.dailyMissions.missions)) {
+        const firestoreMissions: DailyMission[] = data.dailyMissions.missions;
+        const currentLocal = getDailyMissions(uid);
+
+        // Merge keeping the highest progress
+        const merged = currentLocal.map((localM) => {
+          const remoteM = firestoreMissions.find((r) => r.id === localM.id);
+          if (remoteM) {
+            return {
+              ...localM,
+              current: Math.max(localM.current, remoteM.current || 0),
+              claimed: localM.claimed || remoteM.claimed || false,
+            };
+          }
+          return localM;
+        });
+
+        saveDailyMissions(merged, uid);
+        return merged;
+      }
+    }
+  } catch (err) {
+    console.warn('Erro ao carregar missões do Firestore:', err);
+  }
+  return getDailyMissions(uid);
+}
+
+export function claimMissionReward(missionId: string, uid?: string): { xpReward: number; coinsReward: number } {
+  const missions = getDailyMissions(uid);
   let xp = 0;
   let coins = 0;
 
@@ -132,8 +258,9 @@ export function claimMissionReward(missionId: string): { xpReward: number; coins
   });
 
   if (xp > 0 || coins > 0) {
-    saveDailyMissions(newMissions);
+    saveDailyMissions(newMissions, uid);
   }
 
   return { xpReward: xp, coinsReward: coins };
 }
+

@@ -1,36 +1,48 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { CheckCircle2, Zap, Award, Target, Sparkles, Check, Gift, Coins } from 'lucide-react';
-import { DailyMission, getDailyMissions, claimMissionReward } from '../utils/dailyMissions';
+import { DailyMission, getDailyMissions, claimMissionReward, syncDailyMissionsWithFirestore } from '../utils/dailyMissions';
+import { UserProfile } from '../types';
 import { fireConfetti } from '../utils/confetti';
 import { playCorrectSound } from '../utils/audio';
 
 interface DailyMissionsProps {
+  profile?: UserProfile;
   onClaimXp: (xpAmount: number, coinsAmount?: number) => void;
 }
 
-export const DailyMissions: React.FC<DailyMissionsProps> = ({ onClaimXp }) => {
-  const [missions, setMissions] = useState<DailyMission[]>([]);
+export const DailyMissions: React.FC<DailyMissionsProps> = ({ profile, onClaimXp }) => {
+  const [missions, setMissions] = useState<DailyMission[]>(() => getDailyMissions(profile?.uid));
 
   const loadMissions = () => {
-    setMissions(getDailyMissions());
+    setMissions(getDailyMissions(profile?.uid));
   };
 
   useEffect(() => {
     loadMissions();
 
-    const handleUpdate = () => {
-      loadMissions();
+    if (profile?.uid && profile.uid !== 'guest_user') {
+      syncDailyMissionsWithFirestore(profile.uid).then((synced) => {
+        setMissions(synced);
+      }).catch(() => {});
+    }
+
+    const handleUpdate = (e: any) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setMissions(e.detail);
+      } else {
+        loadMissions();
+      }
     };
 
     window.addEventListener('daily_missions_updated', handleUpdate);
     return () => {
       window.removeEventListener('daily_missions_updated', handleUpdate);
     };
-  }, []);
+  }, [profile?.uid]);
 
   const handleClaim = (mission: DailyMission) => {
-    const reward = claimMissionReward(mission.id);
+    const reward = claimMissionReward(mission.id, profile?.uid);
     if (reward.xpReward > 0 || reward.coinsReward > 0) {
       fireConfetti();
       playCorrectSound();

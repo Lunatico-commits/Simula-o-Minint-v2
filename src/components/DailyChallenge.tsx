@@ -20,6 +20,7 @@ import {
   ChevronRight, AlertCircle, HelpCircle, Check, Star, LogOut
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
+import { updateQuestProgress } from '../utils/dailyMissions';
 
 interface DailyChallengeProps {
   profile: UserProfile;
@@ -173,6 +174,7 @@ export const DailyChallenge: React.FC<DailyChallengeProps> = ({
 
     const updatedAnswers = { ...userAnswers, [currentIndex]: index };
     setUserAnswers(updatedAnswers);
+    updateQuestProgress('questions', 1, profile.uid);
 
     // Auto advance after 1.2s delay
     setTimeout(() => {
