@@ -220,6 +220,9 @@ export interface DuelRoom {
   player2?: DuelPlayer;
   winnerUid?: string | 'draw';
   createdAt: number | any;
+  forfeitedBy?: string;
+  forfeitReason?: 'opponent_left' | 'inactivity' | 'timeout' | string;
+  isForfeit?: boolean;
 }
 
 export interface DuelHistoryEntry {
@@ -239,6 +242,8 @@ export interface DuelHistoryEntry {
   isOpponentBot?: boolean;
   result: 'win' | 'loss' | 'draw';
   totalQuestions: number;
+  isForfeit?: boolean;
+  forfeitReason?: string;
 }
 
 export interface AIExplanationResponse {

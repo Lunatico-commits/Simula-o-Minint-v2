@@ -48,7 +48,9 @@ export const ShopView: React.FC<ShopViewProps> = ({
   const streakFreezeCount = profile.streakFreezeCount || 0;
   const extraHintsCount = profile.extraHintsCount || 0;
 
+  const equippedShopItem = SHOP_ITEMS.find((item) => item.id === profile.avatarId);
   const currentAvatarInfo = getAvatarOption(profile.avatarId, profile.branch, profile.displayName);
+  const currentUniformName = equippedShopItem?.name || currentAvatarInfo.label || `Oficial ${profile.branch || 'PNA'}`;
 
   const handlePurchase = (item: ShopItem) => {
     playClickSound();
@@ -226,37 +228,48 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
       {/* User Active Inventory Overview Bar */}
       <div className="bg-slate-100 dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl p-3.5 grid grid-cols-3 gap-2 text-center shadow-xs">
         {/* Equipping Status */}
-        <div className="flex flex-col items-center justify-center border-r border-slate-200 dark:border-white/10 pr-2">
+        <div className="flex flex-col items-center justify-center border-r border-slate-200 dark:border-white/10 pr-2 min-w-0">
           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            <Shirt size={12} className="text-amber-500" />
+            <Shirt size={12} className="text-amber-500 shrink-0" />
             <span>Farda Actual</span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="text-lg">{currentAvatarInfo.symbol}</span>
-            <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate max-w-[80 sm:max-w-[120px]">
-              {currentAvatarInfo.label}
+          <div className="mt-1 flex items-center justify-center gap-1.5 min-w-0 max-w-full w-full px-0.5">
+            <div className="shrink-0 flex items-center justify-center">
+              <ReactiveAvatar
+                avatarId={profile.avatarId}
+                branch={profile.branch}
+                displayName={profile.displayName}
+                size="xs"
+                className="shrink-0"
+              />
+            </div>
+            <span
+              className="text-xs font-black text-slate-800 dark:text-slate-200 truncate w-full block text-left sm:text-center"
+              title={currentUniformName}
+            >
+              {currentUniformName}
             </span>
           </div>
         </div>
 
         {/* Streak Freeze Inventory */}
-        <div className="flex flex-col items-center justify-center border-r border-slate-200 dark:border-white/10 px-2">
+        <div className="flex flex-col items-center justify-center border-r border-slate-200 dark:border-white/10 px-2 min-w-0">
           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            <Snowflake size={12} className="text-sky-400" />
+            <Snowflake size={12} className="text-sky-400 shrink-0" />
             <span>Congelamento</span>
           </div>
-          <p className="mt-1 text-xs font-black font-mono text-sky-600 dark:text-sky-300">
+          <p className="mt-1 text-xs font-black font-mono text-sky-600 dark:text-sky-300 truncate w-full block">
             {streakFreezeCount > 0 ? `${streakFreezeCount} Activo${streakFreezeCount > 1 ? 's' : ''}` : 'Nenhum'}
           </p>
         </div>
 
         {/* Power-ups 50:50 Inventory */}
-        <div className="flex flex-col items-center justify-center pl-2">
+        <div className="flex flex-col items-center justify-center pl-2 min-w-0">
           <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            <Zap size={12} className="text-purple-400 fill-purple-400" />
+            <Zap size={12} className="text-purple-400 fill-purple-400 shrink-0" />
             <span>Dicas 50:50</span>
           </div>
-          <p className="mt-1 text-xs font-black font-mono text-purple-600 dark:text-purple-300">
+          <p className="mt-1 text-xs font-black font-mono text-purple-600 dark:text-purple-300 truncate w-full block">
             {extraHintsCount} Unidade{extraHintsCount !== 1 ? 's' : ''}
           </p>
         </div>

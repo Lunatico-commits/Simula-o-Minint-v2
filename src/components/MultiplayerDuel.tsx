@@ -5,7 +5,7 @@ import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs, limit, serverTimestamp 
 } from 'firebase/firestore';
 import {
-  ref as rtdbRef, set as rtdbSet, update as rtdbUpdate, onValue as rtdbOnValue, remove as rtdbRemove, get as rtdbGet
+  ref as rtdbRef, set as rtdbSet, update as rtdbUpdate, onValue as rtdbOnValue, remove as rtdbRemove, get as rtdbGet, onDisconnect as rtdbOnDisconnect
 } from 'firebase/database';
 import { QUESTION_BANK } from '../data/questions';
 import { getRandomQuestions } from '../utils/questionSelector';
@@ -33,7 +33,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Swords, Users, Plus, KeyRound, Sparkles, Trophy, CheckCircle2, XCircle, Clock, Shield, ArrowRight, RotateCcw, AlertCircle, Zap,
   Copy, Check, Share2, Radio, UserCheck, MapPin, Loader2, History, Flame, Trash2, Crosshair, RefreshCw, LogOut, LogIn,
-  MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX
+  MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX, WifiOff, UserX
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
 import { trackMissionProgress } from '../utils/dailyMissions';
@@ -272,26 +272,88 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // Auto-cleanup on unmount: if current user is host and room is active or waiting, mark as abandoned
+  // RTDB Presence Tracker for 1v1 multiplayer matches
   useEffect(() => {
+    if (!currentRoom?.id || currentRoom.player2?.isBot || viewState !== 'room') return;
+
+    const roomId = currentRoom.id;
+    const isHost = currentRoom.player1.uid === profile.uid;
+    const myKey = isHost ? 'player1' : 'player2';
+    const presenceRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/isConnected`);
+
+    try {
+      const discon = rtdbOnDisconnect(presenceRef);
+      discon.set(false);
+      rtdbSet(presenceRef, true);
+    } catch (e) {
+      console.warn('Erro ao configurar presença no RTDB:', e);
+    }
+
     return () => {
+      try {
+        rtdbSet(presenceRef, false);
+      } catch (e) {}
+    };
+  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, profile?.uid]);
+
+  // Auto-cleanup on unmount / window close: if in active multiplayer duel, award forfeit victory to opponent
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const room = currentRoomRef.current;
+      if (room && room.status === 'active' && !room.player2?.isBot && room.player2) {
+        const roomId = room.id || room.roomCode;
+        const isHost = room.player1.uid === profile?.uid;
+        const opponentUid = isHost ? room.player2.uid : room.player1.uid;
+        try {
+          rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
+            status: 'finished',
+            winnerUid: opponentUid,
+            forfeitedBy: profile?.uid,
+            forfeitReason: 'opponent_left',
+            isForfeit: true,
+          }).catch(() => {});
+        } catch (e) {}
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       const room = currentRoomRef.current;
       if (room && !room.player2?.isBot) {
-        const isHost = room.hostUid ? (room.hostUid === profile?.uid) : (room.player1?.uid === profile?.uid);
-        if (isHost && (room.status === 'waiting' || room.status === 'active')) {
-          const roomId = room.id || room.roomCode;
-          if (roomId) {
+        const roomId = room.id || room.roomCode;
+        if (room.status === 'active' && room.player2) {
+          const isHost = room.player1.uid === profile?.uid;
+          const opponentUid = isHost ? room.player2.uid : room.player1.uid;
+          try {
+            const roomRef = doc(db, 'duels', roomId);
+            setDoc(roomRef, {
+              status: 'finished',
+              winnerUid: opponentUid,
+              forfeitedBy: profile?.uid,
+              forfeitReason: 'opponent_left',
+              isForfeit: true,
+            }, { merge: true }).catch(() => {});
+
+            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
+              status: 'finished',
+              winnerUid: opponentUid,
+              forfeitedBy: profile?.uid,
+              forfeitReason: 'opponent_left',
+              isForfeit: true,
+            }).catch(() => {});
+          } catch (e) {
+            console.warn('Erro ao finalizar duelo por abandono no unmount:', e);
+          }
+        } else if (room.status === 'waiting') {
+          const isHost = room.hostUid ? (room.hostUid === profile?.uid) : (room.player1?.uid === profile?.uid);
+          if (isHost && roomId) {
             try {
               const roomRef = doc(db, 'duels', roomId);
-              updateDoc(roomRef, { status: 'abandoned' }).catch(() => {
-                deleteDoc(roomRef).catch(() => {});
-              });
-              rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'abandoned' }).catch(() => {
-                rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
-              });
-            } catch (e) {
-              console.warn('Erro ao encerrar sala automaticamente no unmount:', e);
-            }
+              deleteDoc(roomRef).catch(() => {});
+              rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
+            } catch (e) {}
           }
         }
       }
@@ -476,6 +538,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   }, []);
 
   const [processedDuelId, setProcessedDuelId] = useState<string | null>(null);
+  const processedTimeoutRef = useRef<string>('');
+
   const [xpBreakdown, setXpBreakdown] = useState<{
     baseXp: number;
     speedBonusXp: number;
@@ -483,6 +547,73 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     totalXp: number;
     resultType: 'win' | 'draw' | 'loss';
   } | null>(null);
+
+  // Helper to count consecutive unanswered questions (timeout / disconnect)
+  const countConsecutiveTimeouts = (answers: Record<number, { chosenIndex: number }> | undefined, currentIdx: number): number => {
+    if (!answers) return 0;
+    let count = 0;
+    for (let i = currentIdx; i >= 0; i--) {
+      if (answers[i]?.chosenIndex === -1) {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
+  };
+
+  // Helper to handle immediate forfeit victory
+  const handleForfeitVictory = (
+    room: DuelRoom,
+    winnerUid: string,
+    forfeitedByUid: string,
+    reason: 'opponent_left' | 'inactivity' | 'timeout' = 'opponent_left'
+  ) => {
+    const isBot = room.player2?.isBot;
+    const finishedRoom: DuelRoom = {
+      ...room,
+      status: 'finished',
+      winnerUid,
+      forfeitedBy: forfeitedByUid,
+      forfeitReason: reason,
+      isForfeit: true,
+    };
+
+    setCurrentRoom(finishedRoom);
+    setViewState('finished');
+
+    if (processedDuelId !== finishedRoom.id) {
+      setProcessedDuelId(finishedRoom.id);
+      handleDuelFinished(finishedRoom);
+    }
+
+    if (!isBot) {
+      try {
+        const roomRef = doc(db, 'duels', room.id);
+        setDoc(roomRef, sanitizeFirestoreData({
+          status: 'finished',
+          winnerUid,
+          forfeitedBy: forfeitedByUid,
+          forfeitReason: reason,
+          isForfeit: true,
+          player1: sanitizeFirestoreData(finishedRoom.player1),
+          player2: finishedRoom.player2 ? sanitizeFirestoreData(finishedRoom.player2) : null,
+        }), { merge: true }).catch((e) => console.warn('Erro ao salvar vitória por desistência no Firestore:', e));
+
+        rtdbUpdate(rtdbRef(rtdb, `duels/${room.id}`), {
+          status: 'finished',
+          winnerUid,
+          forfeitedBy: forfeitedByUid,
+          forfeitReason: reason,
+          isForfeit: true,
+          player1: finishedRoom.player1,
+          player2: finishedRoom.player2 || null,
+        }).catch((e) => console.warn('Erro ao salvar vitória por desistência no RTDB:', e));
+      } catch (e) {
+        console.warn('Erro ao finalizar duelo por abandono:', e);
+      }
+    }
+  };
 
   // Real-time Listener for current active room (Online Multiplayer only - RTDB + Firestore)
   useEffect(() => {
@@ -496,11 +627,16 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const roomRef = doc(db, 'duels', currentRoom.id);
       unsubscribeFirestore = onSnapshot(roomRef, (docSnap) => {
         if (!docSnap.exists()) {
-          // Room deleted by host
+          // Room deleted
           if (viewState === 'room') {
             const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
             if (!isHost) {
-              setIsRoomClosedModalOpen(true);
+              // If match was active, award forfeit victory to the player who stayed
+              if (currentRoom.status === 'active' && currentRoom.player2) {
+                handleForfeitVictory(currentRoom, profile.uid, isHost ? currentRoom.player1.uid : currentRoom.player2.uid, 'opponent_left');
+              } else {
+                setIsRoomClosedModalOpen(true);
+              }
             } else {
               setViewState('lobby');
               setCurrentRoom(null);
@@ -514,11 +650,18 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
           if (viewState === 'room') {
             const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
-            if (!isHost) {
-              setIsRoomClosedModalOpen(true);
+            // If the room was active, the opponent who stayed wins by forfeit!
+            if (currentRoom.status === 'active' && roomData.player2) {
+              const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
+              const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
+              handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
             } else {
-              setViewState('lobby');
-              setCurrentRoom(null);
+              if (!isHost) {
+                setIsRoomClosedModalOpen(true);
+              } else {
+                setViewState('lobby');
+                setCurrentRoom(null);
+              }
             }
           }
           return;
@@ -548,7 +691,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           if (viewState === 'room') {
             const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
             if (!isHost) {
-              setIsRoomClosedModalOpen(true);
+              if (currentRoom.status === 'active' && currentRoom.player2) {
+                handleForfeitVictory(currentRoom, profile.uid, isHost ? currentRoom.player1.uid : currentRoom.player2.uid, 'opponent_left');
+              } else {
+                setIsRoomClosedModalOpen(true);
+              }
             } else {
               setViewState('lobby');
               setCurrentRoom(null);
@@ -562,11 +709,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
           if (viewState === 'room') {
             const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
-            if (!isHost) {
-              setIsRoomClosedModalOpen(true);
+            if (currentRoom.status === 'active' && roomData.player2) {
+              const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
+              const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
+              handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
             } else {
-              setViewState('lobby');
-              setCurrentRoom(null);
+              if (!isHost) {
+                setIsRoomClosedModalOpen(true);
+              } else {
+                setViewState('lobby');
+                setCurrentRoom(null);
+              }
             }
           }
           return;
@@ -594,7 +747,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         unsubscribeRtdb();
       }
     };
-  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, processedDuelId, profile?.uid]);
+  }, [currentRoom?.id, currentRoom?.player2?.isBot, currentRoom?.status, viewState, processedDuelId, profile?.uid]);
 
   // Helper to advance question or finish duel
   const advanceOrFinishDuel = (updatedRoom: DuelRoom, qIndex: number) => {
@@ -610,20 +763,26 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           ...prev,
           currentQuestionIndex: nextIdx,
           questionStartTime: nextStartTime,
+          player1: updatedRoom.player1,
+          player2: updatedRoom.player2,
         };
       });
 
       if (!isBot) {
         try {
           const roomRef = doc(db, 'duels', updatedRoom.id);
-          setDoc(roomRef, {
+          setDoc(roomRef, sanitizeFirestoreData({
             currentQuestionIndex: nextIdx,
             questionStartTime: nextStartTime,
-          }, { merge: true }).catch((e) => console.warn('Erro ao avançar questão no Firestore:', e));
+            player1: sanitizeFirestoreData(updatedRoom.player1),
+            player2: updatedRoom.player2 ? sanitizeFirestoreData(updatedRoom.player2) : null,
+          }), { merge: true }).catch((e) => console.warn('Erro ao avançar questão no Firestore:', e));
           
           rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), {
             currentQuestionIndex: nextIdx,
             questionStartTime: nextStartTime,
+            player1: updatedRoom.player1,
+            player2: updatedRoom.player2 || null,
           }).catch((e) => console.warn('Erro ao avançar questão no RTDB:', e));
         } catch (e) {
           console.warn('Erro ao salvar avanço no banco de dados:', e);
@@ -655,20 +814,90 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       if (!isBot) {
         try {
           const roomRef = doc(db, 'duels', updatedRoom.id);
-          setDoc(roomRef, {
+          setDoc(roomRef, sanitizeFirestoreData({
             status: 'finished',
             winnerUid: winner,
-          }, { merge: true }).catch((e) => console.warn('Erro ao finalizar duelo no Firestore:', e));
+            player1: sanitizeFirestoreData(updatedRoom.player1),
+            player2: updatedRoom.player2 ? sanitizeFirestoreData(updatedRoom.player2) : null,
+          }), { merge: true }).catch((e) => console.warn('Erro ao finalizar duelo no Firestore:', e));
 
           rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), {
             status: 'finished',
             winnerUid: winner,
+            player1: updatedRoom.player1,
+            player2: updatedRoom.player2 || null,
           }).catch((e) => console.warn('Erro ao finalizar duelo no RTDB:', e));
         } catch (e) {
           console.warn('Erro ao finalizar no banco de dados:', e);
         }
       }
     }
+  };
+
+  // Automated Question Timeout Handler (Forces round to advance when time expires or players are inactive)
+  const handleForcedQuestionTimeout = (room: DuelRoom, qIndex: number) => {
+    const timeoutKey = `${room.id}_q${qIndex}`;
+    if (processedTimeoutRef.current === timeoutKey) return;
+    processedTimeoutRef.current = timeoutKey;
+
+    const totalTime = room.timePerQuestion || (room.mode === 'relampago' ? 30 : 20);
+    const isBot = room.player2?.isBot;
+
+    // Check existing answers
+    const p1Answered = Boolean(room.player1.answers && room.player1.answers[qIndex] !== undefined);
+    const p2Answered = Boolean(room.player2?.answers && room.player2.answers[qIndex] !== undefined);
+
+    let newP1Answers = { ...(room.player1.answers || {}) };
+    let newP1Score = room.player1.score || 0;
+    if (!p1Answered) {
+      newP1Answers[qIndex] = {
+        chosenIndex: -1,
+        isCorrect: false,
+        timeSeconds: totalTime,
+      };
+    }
+
+    let newP2Answers = { ...(room.player2?.answers || {}) };
+    let newP2Score = room.player2?.score || 0;
+    if (room.player2 && !p2Answered) {
+      newP2Answers[qIndex] = {
+        chosenIndex: -1,
+        isCorrect: false,
+        timeSeconds: totalTime,
+      };
+    }
+
+    const updatedRoom: DuelRoom = {
+      ...room,
+      player1: {
+        ...room.player1,
+        answers: newP1Answers,
+        score: newP1Score,
+      },
+      player2: room.player2 ? {
+        ...room.player2,
+        answers: newP2Answers,
+        score: newP2Score,
+      } : undefined,
+    };
+
+    // Disconnection & Inactivity Check for Online Multiplayer
+    if (!isBot && room.player2) {
+      const p1ConsecutiveTimeouts = countConsecutiveTimeouts(newP1Answers, qIndex);
+      const p2ConsecutiveTimeouts = countConsecutiveTimeouts(newP2Answers, qIndex);
+
+      // If Player 2 timed out 2 times consecutively while Player 1 is active (or vice versa):
+      if (p2ConsecutiveTimeouts >= 2 && p1ConsecutiveTimeouts < 2) {
+        handleForfeitVictory(updatedRoom, room.player1.uid, room.player2.uid, 'inactivity');
+        return;
+      } else if (p1ConsecutiveTimeouts >= 2 && p2ConsecutiveTimeouts < 2) {
+        handleForfeitVictory(updatedRoom, room.player2.uid, room.player1.uid, 'inactivity');
+        return;
+      }
+    }
+
+    // Advance to next question or finish
+    advanceOrFinishDuel(updatedRoom, qIndex);
   };
 
   // Cancel or Leave Room
@@ -681,26 +910,53 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     if (currentRoom) {
       const roomId = currentRoom.id || currentRoom.roomCode;
       const roomCode = currentRoom.roomCode || currentRoom.code || roomId;
+      const isBot = currentRoom.player2?.isBot;
 
       // Immediately filter out cancelled room from local open rooms array
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== roomId && r.roomCode !== roomCode));
 
-      if (roomId && !currentRoom.player2?.isBot) {
-        try {
-          const roomRef = doc(db, 'duels', roomId);
-          deleteDoc(roomRef).catch(() => {
-            updateDoc(roomRef, { status: 'abandoned' }).catch((e) => {
-              console.warn('Erro ao atualizar status no Firestore:', e);
-            });
-          });
+      if (roomId && !isBot) {
+        if (currentRoom.status === 'active' && currentRoom.player2) {
+          // Forfeit active multiplayer match to opponent
+          const isHost = currentRoom.player1.uid === profile.uid;
+          const opponentUid = isHost ? currentRoom.player2.uid : currentRoom.player1.uid;
+          try {
+            const roomRef = doc(db, 'duels', roomId);
+            setDoc(roomRef, {
+              status: 'finished',
+              winnerUid: opponentUid,
+              forfeitedBy: profile.uid,
+              forfeitReason: 'opponent_left',
+              isForfeit: true,
+            }, { merge: true }).catch(() => {});
 
-          rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {
-            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'abandoned' }).catch((e) => {
-              console.warn('Erro ao cancelar sala no RTDB:', e);
+            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
+              status: 'finished',
+              winnerUid: opponentUid,
+              forfeitedBy: profile.uid,
+              forfeitReason: 'opponent_left',
+              isForfeit: true,
+            }).catch(() => {});
+          } catch (e) {
+            console.warn('Erro ao notificar desistência no banco de dados:', e);
+          }
+        } else if (currentRoom.status === 'waiting') {
+          try {
+            const roomRef = doc(db, 'duels', roomId);
+            deleteDoc(roomRef).catch(() => {
+              updateDoc(roomRef, { status: 'cancelled' }).catch((e) => {
+                console.warn('Erro ao atualizar status no Firestore:', e);
+              });
             });
-          });
-        } catch (e) {
-          console.warn('Erro ao encerrar sala no banco de dados:', e);
+
+            rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {
+              rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'cancelled' }).catch((e) => {
+                console.warn('Erro ao cancelar sala no RTDB:', e);
+              });
+            });
+          } catch (e) {
+            console.warn('Erro ao encerrar sala no banco de dados:', e);
+          }
         }
       }
     }
@@ -711,23 +967,24 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setViewState('lobby');
   };
 
-  // Synchronized Question Timer
+  // Synchronized Question Timer with Automatic Forced Timeout
   useEffect(() => {
     if (viewState !== 'room' || !currentRoom || currentRoom.status !== 'active') return;
 
     const timeLimit = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
+    const qIdx = currentRoom.currentQuestionIndex;
 
     const interval = setInterval(() => {
       if (!currentRoom.questionStartTime) return;
-      const elapsed = Math.floor((Date.now() - currentRoom.questionStartTime) / 1000);
+      const now = Date.now();
+      const elapsed = Math.floor((now - currentRoom.questionStartTime) / 1000);
       const remaining = Math.max(0, timeLimit - elapsed);
       setQuestionTimer(remaining);
 
       // Play progressive sound alert if player has not answered yet
       const isHost = currentRoom.player1.uid === profile.uid;
       const player = isHost ? currentRoom.player1 : currentRoom.player2;
-      const qIdx = currentRoom.currentQuestionIndex;
-      const hasAnswered = player?.answers && player.answers[qIdx] !== undefined;
+      const hasAnswered = Boolean(player?.answers && player.answers[qIdx] !== undefined);
 
       if (!hasAnswered && remaining > 0) {
         if (currentRoom.mode === 'relampago') {
@@ -737,16 +994,32 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         }
       }
 
-      // Auto advance or handle time expiration if timer hits 0
-      if (remaining === 0) {
-        if (player && !hasAnswered) {
-          handleAnswerQuestion(-1);
-        }
+      // 1. If my personal timer hit 0 and I have not answered yet, auto-submit timeout answer (-1)
+      if (remaining === 0 && player && !hasAnswered) {
+        handleAnswerQuestion(-1);
       }
-    }, 1000);
+
+      // 2. Global Timeout Enforcement for the Round:
+      // If elapsed time has passed the timeLimit (+ 1.5s grace period), force the round to advance
+      // even if one or both players disconnected or ignored the question.
+      if (elapsed >= timeLimit + 1.5) {
+        handleForcedQuestionTimeout(currentRoom, qIdx);
+      }
+    }, 500);
 
     return () => clearInterval(interval);
-  }, [viewState, currentRoom?.questionStartTime, currentRoom?.currentQuestionIndex, currentRoom?.status, currentRoom?.timePerQuestion, currentRoom?.mode]);
+  }, [
+    viewState, 
+    currentRoom?.id, 
+    currentRoom?.status, 
+    currentRoom?.questionStartTime, 
+    currentRoom?.currentQuestionIndex, 
+    currentRoom?.timePerQuestion, 
+    currentRoom?.mode,
+    currentRoom?.player1?.answers,
+    currentRoom?.player2?.answers,
+    profile?.uid
+  ]);
 
   // Bot Auto Answer Simulation (100% Local - No Firestore)
   useEffect(() => {
@@ -1416,6 +1689,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       isOpponentBot: opponent?.isBot || false,
       result: isWin ? 'win' : isDraw ? 'draw' : 'loss',
       totalQuestions: roomData.questions?.length || 5,
+      isForfeit: roomData.isForfeit,
+      forfeitReason: roomData.forfeitReason,
     };
 
     setDuelHistory((prev) => {
@@ -2658,7 +2933,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
                         {/* Opponent Status Badge */}
                         <div className="mt-1">
-                          {oppAnswered ? (
+                          {opponent?.isConnected === false && !opponent?.isBot ? (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/50 text-rose-300 font-extrabold text-[9px] flex items-center gap-1 shadow-xs animate-pulse">
+                              <WifiOff size={10} className="text-rose-400" />
+                              <span>Desconectado</span>
+                            </span>
+                          ) : oppAnswered ? (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-extrabold text-[9px] flex items-center gap-1 shadow-xs">
                               <CheckCircle2 size={10} className="text-emerald-400" />
                               <span>✓ Respondeu!</span>
@@ -2985,6 +3265,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                         : currentRoom.winnerUid === 'draw'
                         ? '🤝 EMPATE EM TREINO IA'
                         : 'TREINO IA CONCLUÍDO')
+                    : currentRoom.isForfeit
+                    ? (currentRoom.winnerUid === profile.uid
+                        ? '🏆 VITÓRIA POR DESISTÊNCIA!'
+                        : '❌ DERROTA POR ABANDONO')
                     : (currentRoom.winnerUid === profile.uid
                         ? '🏆 VITÓRIA NO DUELO!'
                         : currentRoom.winnerUid === 'draw'
@@ -2993,6 +3277,34 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 </h2>
                 <p className="text-xs text-slate-300 mt-1">Concurso Público do MININT Angola</p>
               </div>
+
+              {/* Forfeit Notice Banner */}
+              {!isBotMatch && currentRoom.isForfeit && (
+                <div className={`border rounded-2xl p-3.5 text-left space-y-1.5 shadow-md ${
+                  currentRoom.winnerUid === profile.uid
+                    ? 'bg-gradient-to-r from-emerald-950/90 via-slate-900 to-emerald-950/90 border-emerald-500/40 text-emerald-300'
+                    : 'bg-gradient-to-r from-rose-950/90 via-slate-900 to-rose-950/90 border-rose-500/40 text-rose-300'
+                }`}>
+                  <div className="flex items-center gap-2 font-black text-xs">
+                    {currentRoom.winnerUid === profile.uid ? (
+                      <>
+                        <Trophy size={16} className="text-amber-400 shrink-0" />
+                        <span>Vitória Atribuída por Abandono do Oponente</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserX size={16} className="text-rose-400 shrink-0" />
+                        <span>Partida Encerrada por Inatividade / Abandono</span>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-200 leading-relaxed font-medium">
+                    {currentRoom.winnerUid === profile.uid
+                      ? 'O seu oponente desconectou-se ou ausentou-se durante a partida. A vitória foi atribuída a si com todas as honras e XP!'
+                      : 'Você ausentou-se ou saiu da partida em andamento. A vitória foi atribuída ao seu oponente.'}
+                  </p>
+                </div>
+              )}
 
               {/* AI Training Notice Banner */}
               {isBotMatch && (
