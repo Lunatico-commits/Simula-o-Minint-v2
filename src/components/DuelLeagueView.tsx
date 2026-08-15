@@ -400,6 +400,217 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
         </div>
       </div>
 
+      {/* PODIUM TOP 3 DA LIGA */}
+      {filteredCandidates.length > 0 && (
+        <div className="bg-slate-950/80 dark:bg-[#0A0C0E] border border-amber-500/30 rounded-3xl p-2.5 sm:p-4 shadow-xl space-y-3 w-full max-w-full overflow-hidden">
+          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-400 tracking-wider px-1">
+            <span className="flex items-center gap-1">
+              <Sparkles size={12} />
+              Pódio dos Líderes • {activeLeagueConfig.name}
+            </span>
+            <span className="text-slate-400 font-mono">
+              Top 3 da Semana
+            </span>
+          </div>
+
+          <div className="w-full max-w-full overflow-hidden px-1">
+            <div className="grid grid-cols-3 gap-1.5 w-full max-w-full px-1 items-end my-4">
+              {/* 2º LUGAR */}
+              {filteredCandidates[1] ? (() => {
+                const cand = filteredCandidates[1];
+                const isMe = Boolean(
+                  (cand.uid && currentProfile.uid && cand.uid === currentProfile.uid) ||
+                  (cand.id && currentProfile.id && cand.id === currentProfile.id) ||
+                  (cand.uid && currentProfile.id && cand.uid === currentProfile.id) ||
+                  (cand.id && currentProfile.uid && cand.id === currentProfile.uid)
+                );
+                const bInfo = MININT_BRANCHES[cand.branch] || MININT_BRANCHES.PNA;
+                const avatar = getAvatarOption(cand.avatarId, cand.branch, cand.displayName);
+
+                return (
+                  <motion.div
+                    ref={isMe ? setUserNode : undefined}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={() => setSelectedCandidate(cand)}
+                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[140px] bg-slate-800/80 border border-slate-700 cursor-pointer transition-all ${
+                      isMe
+                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                        : 'hover:border-amber-500/50'
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">🥈 #2</span>
+                    <div className="relative my-1 shrink-0">
+                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-slate-400/50 overflow-hidden`}>
+                        <span className="text-sm sm:text-base">{avatar.symbol}</span>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                        {cand.branch}
+                      </span>
+                    </div>
+
+                    <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                      {cand.displayName || 'Candidato'}
+                    </p>
+
+                    {isMe && (
+                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                        VOCÊ
+                      </span>
+                    )}
+
+                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                      📍 {cand.province || 'Luanda'} • {cand.multiplayerDuelsWon ?? cand.duelsWon ?? 0} Vits
+                    </p>
+                    <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                      {cand.weeklyDuelPoints || 0} Pts
+                    </p>
+                  </motion.div>
+                );
+              })() : (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[140px] bg-slate-800/80 rounded-2xl border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+                >
+                  2.º Lugar
+                </motion.div>
+              )}
+
+              {/* 1º LUGAR */}
+              {filteredCandidates[0] ? (() => {
+                const cand = filteredCandidates[0];
+                const isMe = Boolean(
+                  (cand.uid && currentProfile.uid && cand.uid === currentProfile.uid) ||
+                  (cand.id && currentProfile.id && cand.id === currentProfile.id) ||
+                  (cand.uid && currentProfile.id && cand.uid === currentProfile.id) ||
+                  (cand.id && currentProfile.uid && cand.id === currentProfile.uid)
+                );
+                const bInfo = MININT_BRANCHES[cand.branch] || MININT_BRANCHES.PNA;
+                const avatar = getAvatarOption(cand.avatarId, cand.branch, cand.displayName);
+
+                return (
+                  <motion.div
+                    ref={isMe ? setUserNode : undefined}
+                    initial={{ opacity: 0, y: 35 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.55, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={() => setSelectedCandidate(cand)}
+                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[160px] bg-slate-800/90 border border-amber-500/50 -translate-y-2 cursor-pointer transition-all ${
+                      isMe
+                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
+                        : 'hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                    }`}
+                  >
+                    <span className="text-[11px] font-black text-amber-400 whitespace-nowrap">👑 #1</span>
+                    <div className="relative my-1 shrink-0">
+                      <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br ${bInfo.badgeBg} border-2 border-amber-400 flex items-center justify-center overflow-hidden shadow-md`}>
+                        <span className="text-base sm:text-lg">{avatar.symbol}</span>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                        {cand.branch}
+                      </span>
+                    </div>
+
+                    <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
+                      {cand.displayName || 'Candidato'}
+                    </p>
+
+                    {isMe && (
+                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                        VOCÊ
+                      </span>
+                    )}
+
+                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-300 text-center mt-0.5">
+                      📍 {cand.province || 'Luanda'} • {cand.multiplayerDuelsWon ?? cand.duelsWon ?? 0} Vits
+                    </p>
+                    <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                      {cand.weeklyDuelPoints || 0} Pts
+                    </p>
+                  </motion.div>
+                );
+              })() : (
+                <motion.div
+                  initial={{ opacity: 0, y: 25 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[160px] bg-slate-800/90 rounded-2xl border border-amber-500/50 -translate-y-2 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+                >
+                  1.º Lugar
+                </motion.div>
+              )}
+
+              {/* 3º LUGAR */}
+              {filteredCandidates[2] ? (() => {
+                const cand = filteredCandidates[2];
+                const isMe = Boolean(
+                  (cand.uid && currentProfile.uid && cand.uid === currentProfile.uid) ||
+                  (cand.id && currentProfile.id && cand.id === currentProfile.id) ||
+                  (cand.uid && currentProfile.id && cand.uid === currentProfile.id) ||
+                  (cand.id && currentProfile.uid && cand.id === currentProfile.uid)
+                );
+                const bInfo = MININT_BRANCHES[cand.branch] || MININT_BRANCHES.PNA;
+                const avatar = getAvatarOption(cand.avatarId, cand.branch, cand.displayName);
+
+                return (
+                  <motion.div
+                    ref={isMe ? setUserNode : undefined}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={() => setSelectedCandidate(cand)}
+                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[125px] bg-slate-800/70 border border-slate-700/80 cursor-pointer transition-all ${
+                      isMe
+                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                        : 'hover:border-amber-500/50'
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">🥉 #3</span>
+                    <div className="relative my-1 shrink-0">
+                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-amber-700/50 overflow-hidden`}>
+                        <span className="text-sm sm:text-base">{avatar.symbol}</span>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                        {cand.branch}
+                      </span>
+                    </div>
+
+                    <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                      {cand.displayName || 'Candidato'}
+                    </p>
+
+                    {isMe && (
+                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                        VOCÊ
+                      </span>
+                    )}
+
+                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                      📍 {cand.province || 'Luanda'} • {cand.multiplayerDuelsWon ?? cand.duelsWon ?? 0} Vits
+                    </p>
+                    <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                      {cand.weeklyDuelPoints || 0} Pts
+                    </p>
+                  </motion.div>
+                );
+              })() : (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[125px] bg-slate-800/70 rounded-2xl border border-slate-700/80 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+                >
+                  3.º Lugar
+                </motion.div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* LEAGUE LEADERBOARD TABLE (COM CARREGAMENTO PROGRESSIVO DE 10 ITENS) */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="p-4 border-b border-slate-800/80 flex items-center justify-between bg-slate-950/40">

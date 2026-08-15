@@ -268,97 +268,208 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
       </div>
 
       {/* 3. PODIUM TOP 3 COMBATENTES (DUEL CHAMPIONS) */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <Crown size={16} className="text-amber-400 fill-amber-400" />
-            <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">
-              Pódio dos Campeões • Top 3 da Semana
-            </h4>
-          </div>
-          <span className="text-[10px] font-mono text-amber-500 font-bold">
-            Pontos de Duelo Semanais
+      <div className="bg-slate-950/80 dark:bg-[#0A0C0E] border border-amber-500/30 rounded-3xl p-2.5 sm:p-4 shadow-xl space-y-3 w-full max-w-full overflow-hidden">
+        <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-400 tracking-wider px-1">
+          <span className="flex items-center gap-1">
+            <Crown size={12} className="text-amber-400 fill-amber-400" />
+            Pódio dos Campeões • Top 3 da Semana
+          </span>
+          <span className="text-slate-400 font-mono">
+            Duelos Semanais
           </span>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 items-end pt-2 pb-1">
-          {/* 2nd Place (Left) */}
-          {top2 ? (
-            <DuelPodiumCard
-              candidate={top2}
-              rank={2}
-              rankChange={duelRankDeltasMap[top2.uid || top2.displayName || 'top2'] ?? 0}
-              isMe={Boolean(
+        <div className="w-full max-w-full overflow-hidden px-1">
+          <div className="grid grid-cols-3 gap-1.5 w-full max-w-full px-1 items-end my-4">
+            {/* 2º LUGAR */}
+            {top2 ? (() => {
+              const isMe = Boolean(
                 (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
                 (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
                 (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
                 (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
-              )}
-              elementRef={Boolean(
-                (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
-                (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
-                (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
-                (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
-              ) ? setUserNode : undefined}
-              onSelectCandidate={onSelectCandidate}
-            />
-          ) : (
-            <div className="h-32 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
-              2.º Lugar
-            </div>
-          )}
+              );
+              const bInfo = MININT_BRANCHES[top2.branch] || MININT_BRANCHES.PNA;
+              const avatar = getAvatarOption(top2.avatarId, top2.branch, top2.displayName);
 
-          {/* 1st Place (Center - Elevated) */}
-          {top1 ? (
-            <DuelPodiumCard
-              candidate={top1}
-              rank={1}
-              rankChange={duelRankDeltasMap[top1.uid || top1.displayName || 'top1'] ?? 0}
-              isMe={Boolean(
+              return (
+                <motion.div
+                  ref={isMe ? setUserNode : undefined}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                  onClick={() => onSelectCandidate?.(top2)}
+                  className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[140px] bg-slate-800/80 border border-slate-700 cursor-pointer transition-all ${
+                    isMe
+                      ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                      : 'hover:border-amber-500/50'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">🥈 #2</span>
+                  <div className="relative my-1 shrink-0">
+                    <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-slate-400/50 overflow-hidden`}>
+                      <span className="text-sm sm:text-base">{avatar.symbol}</span>
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                      {top2.branch}
+                    </span>
+                  </div>
+
+                  <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                    {top2.displayName || 'Candidato'}
+                  </p>
+
+                  {isMe && (
+                    <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                      VOCÊ
+                    </span>
+                  )}
+
+                  <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                    📍 {top2.province || 'Luanda'} • {top2.multiplayerDuelsWon ?? top2.duelsWon ?? 0} Vits
+                  </p>
+                  <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                    {top2.weeklyDuelPoints || 0} Pts
+                  </p>
+                </motion.div>
+              );
+            })() : (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                className="min-h-[140px] bg-slate-800/80 rounded-2xl border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+              >
+                2.º Lugar
+              </motion.div>
+            )}
+
+            {/* 1º LUGAR */}
+            {top1 ? (() => {
+              const isMe = Boolean(
                 (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
                 (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
                 (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
                 (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
-              )}
-              elementRef={Boolean(
-                (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
-                (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
-                (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
-                (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
-              ) ? setUserNode : undefined}
-              onSelectCandidate={onSelectCandidate}
-            />
-          ) : (
-            <div className="h-36 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
-              1.º Lugar
-            </div>
-          )}
+              );
+              const bInfo = MININT_BRANCHES[top1.branch] || MININT_BRANCHES.PNA;
+              const avatar = getAvatarOption(top1.avatarId, top1.branch, top1.displayName);
 
-          {/* 3rd Place (Right) */}
-          {top3 ? (
-            <DuelPodiumCard
-              candidate={top3}
-              rank={3}
-              rankChange={duelRankDeltasMap[top3.uid || top3.displayName || 'top3'] ?? 0}
-              isMe={Boolean(
+              return (
+                <motion.div
+                  ref={isMe ? setUserNode : undefined}
+                  initial={{ opacity: 0, y: 35 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.55, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  onClick={() => onSelectCandidate?.(top1)}
+                  className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[160px] bg-slate-800/90 border border-amber-500/50 -translate-y-2 cursor-pointer transition-all ${
+                    isMe
+                      ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
+                      : 'hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                  }`}
+                >
+                  <span className="text-[11px] font-black text-amber-400 whitespace-nowrap">👑 #1</span>
+                  <div className="relative my-1 shrink-0">
+                    <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br ${bInfo.badgeBg} border-2 border-amber-400 flex items-center justify-center overflow-hidden shadow-md`}>
+                      <span className="text-base sm:text-lg">{avatar.symbol}</span>
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                      {top1.branch}
+                    </span>
+                  </div>
+
+                  <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
+                    {top1.displayName || 'Candidato'}
+                  </p>
+
+                  {isMe && (
+                    <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                      VOCÊ
+                    </span>
+                  )}
+
+                  <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-300 text-center mt-0.5">
+                    📍 {top1.province || 'Luanda'} • {top1.multiplayerDuelsWon ?? top1.duelsWon ?? 0} Vits
+                  </p>
+                  <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                    {top1.weeklyDuelPoints || 0} Pts
+                  </p>
+                </motion.div>
+              );
+            })() : (
+              <motion.div
+                initial={{ opacity: 0, y: 25 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                className="min-h-[160px] bg-slate-800/90 rounded-2xl border border-amber-500/50 -translate-y-2 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+              >
+                1.º Lugar
+              </motion.div>
+            )}
+
+            {/* 3º LUGAR */}
+            {top3 ? (() => {
+              const isMe = Boolean(
                 (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
                 (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
                 (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
                 (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
-              )}
-              elementRef={Boolean(
-                (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
-                (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
-                (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
-                (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
-              ) ? setUserNode : undefined}
-              onSelectCandidate={onSelectCandidate}
-            />
-          ) : (
-            <div className="h-32 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
-              3.º Lugar
-            </div>
-          )}
+              );
+              const bInfo = MININT_BRANCHES[top3.branch] || MININT_BRANCHES.PNA;
+              const avatar = getAvatarOption(top3.avatarId, top3.branch, top3.displayName);
+
+              return (
+                <motion.div
+                  ref={isMe ? setUserNode : undefined}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  onClick={() => onSelectCandidate?.(top3)}
+                  className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[125px] bg-slate-800/70 border border-slate-700/80 cursor-pointer transition-all ${
+                    isMe
+                      ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                      : 'hover:border-amber-500/50'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">🥉 #3</span>
+                  <div className="relative my-1 shrink-0">
+                    <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-amber-700/50 overflow-hidden`}>
+                      <span className="text-sm sm:text-base">{avatar.symbol}</span>
+                    </div>
+                    <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                      {top3.branch}
+                    </span>
+                  </div>
+
+                  <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                    {top3.displayName || 'Candidato'}
+                  </p>
+
+                  {isMe && (
+                    <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                      VOCÊ
+                    </span>
+                  )}
+
+                  <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                    📍 {top3.province || 'Luanda'} • {top3.multiplayerDuelsWon ?? top3.duelsWon ?? 0} Vits
+                  </p>
+                  <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                    {top3.weeklyDuelPoints || 0} Pts
+                  </p>
+                </motion.div>
+              );
+            })() : (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                className="min-h-[125px] bg-slate-800/70 rounded-2xl border border-slate-700/80 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+              >
+                3.º Lugar
+              </motion.div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -628,130 +739,5 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
         )}
       </AnimatePresence>
     </div>
-  );
-};
-
-// PODIUM CARD FOR TOP 3 DUELISTS
-const DuelPodiumCard: React.FC<{
-  candidate: UserProfile;
-  rank: 1 | 2 | 3;
-  rankChange?: number;
-  isMe: boolean;
-  elementRef?: (node: HTMLElement | null) => void;
-  onSelectCandidate?: (candidate: UserProfile) => void;
-}> = ({ candidate, rank, rankChange = 0, isMe, elementRef, onSelectCandidate }) => {
-  const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-  const avatarOpt = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
-  const leagueInfo = LEAGUES_CONFIG[candidate.duelLeague || 'bronze'] || LEAGUES_CONFIG.bronze;
-
-  let medalEmoji = '🥇';
-  let ringBorder = 'border-amber-400 ring-2 ring-amber-400/40';
-  let heightStyle = 'h-46 pt-3';
-
-  if (rank === 2) {
-    medalEmoji = '🥈';
-    ringBorder = 'border-slate-300 ring-1 ring-slate-300/30';
-    heightStyle = 'h-42 pt-3';
-  } else if (rank === 3) {
-    medalEmoji = '🥉';
-    ringBorder = 'border-amber-700 ring-1 ring-amber-700/30';
-    heightStyle = 'h-40 pt-4';
-  }
-
-  return (
-    <motion.div
-      layout
-      key={candidate.uid}
-      ref={elementRef}
-      initial={{ opacity: 0, y: 15, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ type: 'spring', stiffness: 350, damping: 25 }}
-      onClick={() => onSelectCandidate?.(candidate)}
-      className={`relative bg-gradient-to-b from-slate-900 to-slate-950 border overflow-hidden ${
-        isMe
-          ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
-          : rank === 1
-          ? 'border-amber-500/70 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
-          : 'border-slate-800'
-      } rounded-2xl p-2 text-center flex flex-col justify-between ${heightStyle} transition-all cursor-pointer hover:border-amber-500/50 hover:scale-[1.02] active:scale-[0.98]`}
-    >
-      {/* Subtle pulsing glow ring & ambient aura for current logged-in user */}
-      {isMe && (
-        <>
-          <motion.div
-            animate={{
-              boxShadow: [
-                '0 0 0 0 rgba(245, 158, 11, 0.45)',
-                '0 0 0 5px rgba(245, 158, 11, 0.15)',
-                '0 0 0 0 rgba(245, 158, 11, 0.45)',
-              ],
-              opacity: [0.75, 1, 0.75],
-            }}
-            transition={{
-              duration: 2.2,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-            className="absolute inset-0 rounded-2xl pointer-events-none border border-amber-400/80"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-amber-500/20 via-amber-400/15 to-amber-500/20 animate-pulse pointer-events-none rounded-2xl" />
-        </>
-      )}
-
-      {/* Medal Crown & Rank Position with Variation Indicator */}
-      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-slate-950/90 px-2 py-0.5 rounded-full border border-slate-700/80 shadow-md">
-        <span className="text-base filter drop-shadow">{medalEmoji}</span>
-        <span className="text-[10px] font-black font-mono text-slate-200">#{rank}</span>
-        <RankChangeIndicator change={rankChange} compact />
-      </div>
-
-      <div className="flex flex-col items-center mt-1 relative z-10">
-        {/* Avatar */}
-        <div className="relative mb-1">
-          <div
-            className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-lg border ${ringBorder} shadow-sm`}
-          >
-            {avatarOpt.symbol}
-          </div>
-          <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono">
-            {candidate.branch}
-          </span>
-        </div>
-
-        {/* Name */}
-        <p
-          className={`text-[10px] font-black leading-tight truncate max-w-[85px] mt-0.5 ${
-            isMe ? 'text-amber-300' : 'text-slate-100'
-          }`}
-        >
-          {candidate.displayName}
-        </p>
-
-        {isMe && (
-          <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black mt-0.5 animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.8)] border border-amber-300 flex items-center gap-0.5">
-            <Sparkles size={8} className="fill-slate-950 text-slate-950" />
-            <span>VOCÊ</span>
-          </span>
-        )}
-
-        {/* Province */}
-        <span className="text-[9px] text-amber-400/90 font-medium truncate max-w-[85px] mt-0.5 flex items-center gap-0.5">
-          <MapPin size={8} />
-          {candidate.province || 'Luanda'}
-        </span>
-      </div>
-
-      {/* Duel points footer */}
-      <div className="bg-slate-950/90 rounded-xl p-1 border border-amber-500/30 mt-1">
-        <p className="text-[10px] font-black font-mono text-amber-400 flex items-center justify-center gap-0.5">
-          <Flame size={11} className="text-amber-400 fill-amber-400" />
-          <span>{candidate.weeklyDuelPoints || 0} Pts</span>
-        </p>
-        <p className="text-[8px] text-slate-400 font-medium truncate">
-          {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vitórias
-        </p>
-      </div>
-    </motion.div>
   );
 };

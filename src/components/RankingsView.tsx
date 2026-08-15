@@ -544,8 +544,8 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
       {/* PODIUM (TOP 3 CANDIDATES) */}
       {filteredList.length > 0 && (
-        <div className="bg-slate-950/80 dark:bg-[#0A0C0E] border border-amber-500/30 rounded-3xl p-4 shadow-xl space-y-3">
-          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-400 tracking-wider">
+        <div className="bg-slate-950/80 dark:bg-[#0A0C0E] border border-amber-500/30 rounded-3xl p-2.5 sm:p-4 shadow-xl space-y-3 w-full max-w-full overflow-hidden">
+          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-400 tracking-wider px-1">
             <span className="flex items-center gap-1">
               <Sparkles size={12} />
               Pódio dos Melhores Colocados (Top 3)
@@ -555,84 +555,197 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 items-end pt-2 pb-1">
-            {/* 2nd Place (Left) */}
-            {top2 ? (
-              <PodiumCard
-                candidate={top2}
-                rank={2}
-                rankChange={rankDeltasMap[top2.uid || top2.displayName] ?? 0}
-                isMe={Boolean(
+          <div className="w-full max-w-full overflow-hidden px-1">
+            <div className="grid grid-cols-3 gap-1.5 w-full max-w-full px-1 items-end my-4">
+              {/* 2º LUGAR */}
+              {top2 ? (() => {
+                const isMe = Boolean(
                   (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
                   (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
                   (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
                   (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
-                )}
-                elementRef={Boolean(
-                  (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
-                  (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
-                  (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
-                  (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
-                ) ? setUserNode : undefined}
-                onSelectCandidate={setSelectedCandidate}
-              />
-            ) : (
-              <div className="h-28 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
-                2.º Lugar
-              </div>
-            )}
+                );
+                const bInfo = MININT_BRANCHES[top2.branch] || MININT_BRANCHES.PNA;
+                const avatar = getAvatarOption(top2.avatarId || top2.avatar, top2.branch, top2.displayName);
 
-            {/* 1st Place (Center - Elevated) */}
-            {top1 ? (
-              <PodiumCard
-                candidate={top1}
-                rank={1}
-                rankChange={rankDeltasMap[top1.uid || top1.displayName] ?? 0}
-                isMe={Boolean(
+                return (
+                  <motion.div
+                    ref={isMe ? setUserNode : undefined}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={() => setSelectedCandidate(top2)}
+                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[140px] bg-slate-800/80 border border-slate-700 cursor-pointer transition-all ${
+                      isMe
+                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                        : 'hover:border-amber-500/50'
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">🥈 #2</span>
+                    <div className="relative my-1 shrink-0">
+                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-slate-400/50 overflow-hidden`}>
+                        <span className="text-sm sm:text-base">{avatar.symbol}</span>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                        {top2.branch}
+                      </span>
+                    </div>
+
+                    <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                      {top2.displayName || 'Candidato'}
+                    </p>
+
+                    {isMe && (
+                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                        VOCÊ
+                      </span>
+                    )}
+
+                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                      📍 {top2.province || 'Luanda'} • {top2.branch}
+                    </p>
+                    <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                      {top2.totalXp?.toLocaleString() ?? 0} XP
+                    </p>
+                  </motion.div>
+                );
+              })() : (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[140px] bg-slate-800/80 rounded-2xl border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+                >
+                  2.º Lugar
+                </motion.div>
+              )}
+
+              {/* 1º LUGAR */}
+              {top1 ? (() => {
+                const isMe = Boolean(
                   (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
                   (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
                   (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
                   (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
-                )}
-                elementRef={Boolean(
-                  (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
-                  (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
-                  (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
-                  (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
-                ) ? setUserNode : undefined}
-                onSelectCandidate={setSelectedCandidate}
-              />
-            ) : (
-              <div className="h-32 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
-                1.º Lugar
-              </div>
-            )}
+                );
+                const bInfo = MININT_BRANCHES[top1.branch] || MININT_BRANCHES.PNA;
+                const avatar = getAvatarOption(top1.avatarId || top1.avatar, top1.branch, top1.displayName);
 
-            {/* 3rd Place (Right) */}
-            {top3 ? (
-              <PodiumCard
-                candidate={top3}
-                rank={3}
-                rankChange={rankDeltasMap[top3.uid || top3.displayName] ?? 0}
-                isMe={Boolean(
+                return (
+                  <motion.div
+                    ref={isMe ? setUserNode : undefined}
+                    initial={{ opacity: 0, y: 35 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.55, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={() => setSelectedCandidate(top1)}
+                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[160px] bg-slate-800/90 border border-amber-500/50 -translate-y-2 cursor-pointer transition-all ${
+                      isMe
+                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
+                        : 'hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                    }`}
+                  >
+                    <span className="text-[11px] font-black text-amber-400 whitespace-nowrap">👑 #1</span>
+                    <div className="relative my-1 shrink-0">
+                      <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br ${bInfo.badgeBg} border-2 border-amber-400 flex items-center justify-center overflow-hidden shadow-md`}>
+                        <span className="text-base sm:text-lg">{avatar.symbol}</span>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                        {top1.branch}
+                      </span>
+                    </div>
+
+                    <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
+                      {top1.displayName || 'Candidato'}
+                    </p>
+
+                    {isMe && (
+                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                        VOCÊ
+                      </span>
+                    )}
+
+                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-300 text-center mt-0.5">
+                      📍 {top1.province || 'Luanda'} • {top1.branch}
+                    </p>
+                    <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                      {top1.totalXp?.toLocaleString() ?? 0} XP
+                    </p>
+                  </motion.div>
+                );
+              })() : (
+                <motion.div
+                  initial={{ opacity: 0, y: 25 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[160px] bg-slate-800/90 rounded-2xl border border-amber-500/50 -translate-y-2 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+                >
+                  1.º Lugar
+                </motion.div>
+              )}
+
+              {/* 3º LUGAR */}
+              {top3 ? (() => {
+                const isMe = Boolean(
                   (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
                   (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
                   (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
                   (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
-                )}
-                elementRef={Boolean(
-                  (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
-                  (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
-                  (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
-                  (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
-                ) ? setUserNode : undefined}
-                onSelectCandidate={setSelectedCandidate}
-              />
-            ) : (
-              <div className="h-28 bg-slate-900/40 rounded-2xl border border-slate-800 flex items-center justify-center text-[10px] text-slate-600">
-                3.º Lugar
-              </div>
-            )}
+                );
+                const bInfo = MININT_BRANCHES[top3.branch] || MININT_BRANCHES.PNA;
+                const avatar = getAvatarOption(top3.avatarId || top3.avatar, top3.branch, top3.displayName);
+
+                return (
+                  <motion.div
+                    ref={isMe ? setUserNode : undefined}
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={() => setSelectedCandidate(top3)}
+                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[125px] bg-slate-800/70 border border-slate-700/80 cursor-pointer transition-all ${
+                      isMe
+                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
+                        : 'hover:border-amber-500/50'
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">🥉 #3</span>
+                    <div className="relative my-1 shrink-0">
+                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-amber-700/50 overflow-hidden`}>
+                        <span className="text-sm sm:text-base">{avatar.symbol}</span>
+                      </div>
+                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
+                        {top3.branch}
+                      </span>
+                    </div>
+
+                    <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                      {top3.displayName || 'Candidato'}
+                    </p>
+
+                    {isMe && (
+                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                        VOCÊ
+                      </span>
+                    )}
+
+                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                      📍 {top3.province || 'Luanda'} • {top3.branch}
+                    </p>
+                    <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                      {top3.totalXp?.toLocaleString() ?? 0} XP
+                    </p>
+                  </motion.div>
+                );
+              })() : (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-[125px] bg-slate-800/70 rounded-2xl border border-slate-700/80 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
+                >
+                  3.º Lugar
+                </motion.div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1216,20 +1329,20 @@ const PodiumCard: React.FC<{
   let medalEmoji = '🥇';
   let badgeColor = 'from-amber-400 to-amber-600 text-slate-950';
   let ringBorder = 'border-amber-400 ring-2 ring-amber-400/40';
-  let heightStyle = 'h-44 pt-3';
+  let heightStyle = 'min-h-[185px] sm:min-h-[210px] pt-4 sm:pt-4.5 pb-2 sm:pb-2.5';
   let rankLabel = '1.º Lugar';
 
   if (rank === 2) {
     medalEmoji = '🥈';
     badgeColor = 'from-slate-300 to-slate-400 text-slate-950';
     ringBorder = 'border-slate-300 ring-1 ring-slate-300/30';
-    heightStyle = 'h-40 pt-3';
+    heightStyle = 'min-h-[170px] sm:min-h-[195px] pt-4 sm:pt-4.5 pb-2 sm:pb-2.5';
     rankLabel = '2.º Lugar';
   } else if (rank === 3) {
     medalEmoji = '🥉';
     badgeColor = 'from-amber-700 to-amber-800 text-slate-100';
     ringBorder = 'border-amber-700 ring-1 ring-amber-700/30';
-    heightStyle = 'h-38 pt-4';
+    heightStyle = 'min-h-[160px] sm:min-h-[185px] pt-4 sm:pt-4.5 pb-2 sm:pb-2.5';
     rankLabel = '3.º Lugar';
   }
 
@@ -1243,13 +1356,13 @@ const PodiumCard: React.FC<{
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ type: 'spring', stiffness: 350, damping: 25 }}
       onClick={() => onSelectCandidate?.(candidate)}
-      className={`relative bg-gradient-to-b from-slate-900 to-slate-950 border overflow-hidden ${
+      className={`relative w-full min-w-0 flex flex-col items-center justify-between p-2 rounded-2xl bg-slate-800/80 border border-slate-700/50 box-border overflow-hidden ${heightStyle} ${
         isMe
           ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
           : rank === 1
           ? 'border-amber-500/70 shadow-[0_0_20px_rgba(245,158,11,0.2)]'
-          : 'border-slate-800'
-      } rounded-2xl p-2 text-center flex flex-col justify-between ${heightStyle} transition-all cursor-pointer hover:border-amber-500/50 hover:scale-[1.02] active:scale-[0.98]`}
+          : 'border-slate-700/50'
+      } text-center transition-all cursor-pointer hover:border-amber-500/50 hover:scale-[1.02] active:scale-[0.98]`}
     >
       {/* Subtle pulsing glow ring & ambient aura for current logged-in user in Podium */}
       {isMe && (
@@ -1275,57 +1388,57 @@ const PodiumCard: React.FC<{
       )}
 
       {/* Medal Crown & Rank Position with Variation Indicator */}
-      <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 bg-slate-950/90 px-2 py-0.5 rounded-full border border-slate-700/80 shadow-md">
-        <span className="text-base filter drop-shadow">{medalEmoji}</span>
-        <span className="text-[10px] font-black font-mono text-slate-200">#{rank}</span>
+      <div className="absolute -top-3 sm:-top-3.5 left-1/2 -translate-x-1/2 z-10 flex items-center gap-0.5 sm:gap-1 bg-slate-950/95 px-1.5 sm:px-2 py-0.5 rounded-full border border-slate-700/80 shadow-md">
+        <span className="text-[10px] sm:text-xs filter drop-shadow">{medalEmoji}</span>
+        <span className="text-[10px] sm:text-xs font-black font-mono text-slate-200">#{rank}</span>
         <RankChangeIndicator change={rankChange} compact />
       </div>
 
-      <div className="flex flex-col items-center mt-1 relative z-10">
+      <div className="flex flex-col items-center relative z-10 w-full min-w-0">
         {/* Avatar with Branch Overlay */}
-        <div className="relative mb-1">
-          <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-lg border ${ringBorder} shadow-sm`}>
+        <div className="relative mb-0.5 shrink-0">
+          <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-sm sm:text-lg border ${ringBorder} shadow-sm shrink-0 object-cover`}>
             {avatarOpt.symbol}
           </div>
-          <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono">
+          <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] sm:text-[8px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono">
             {candidate.branch}
           </span>
         </div>
 
         {/* Candidate Name */}
-        <p className={`text-[10px] font-black leading-tight truncate max-w-[85px] mt-0.5 ${isMe ? 'text-amber-300' : 'text-slate-100'}`}>
+        <p className={`w-full truncate whitespace-nowrap text-[11px] sm:text-sm font-bold text-center mt-1 ${isMe ? 'text-amber-300' : 'text-slate-100'}`}>
           {candidate.displayName}
         </p>
 
         {candidate.isVipSupporter && (
-          <span className="text-[8px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-black mt-0.5 flex items-center gap-0.5">
-            <Sparkles size={8} className="fill-amber-400" />
-            <span>VIP 🌟</span>
+          <span className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-black mt-0.5 flex items-center justify-center gap-0.5">
+            <Sparkles size={7} className="fill-amber-400 shrink-0" />
+            <span className="truncate whitespace-nowrap">VIP 🌟</span>
           </span>
         )}
 
         {isMe && (
-          <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 font-black mt-0.5 animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.8)] border border-amber-300 flex items-center gap-0.5">
-            <Sparkles size={8} className="fill-slate-950 text-slate-950" />
+          <span className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] px-1 py-0.2 rounded bg-amber-400 text-slate-950 font-black mt-0.5 animate-pulse shadow-[0_0_10px_rgba(245,158,11,0.8)] border border-amber-300 flex items-center justify-center gap-0.5">
+            <Sparkles size={7} className="fill-slate-950 text-slate-950 shrink-0" />
             <span>VOCÊ</span>
           </span>
         )}
 
         {/* Province Tag */}
-        <span className="text-[9px] text-amber-400/90 font-medium truncate max-w-[85px] mt-0.5 flex items-center gap-0.5">
-          <MapPin size={8} />
-          {candidate.province || 'Luanda'}
+        <span className="w-full truncate whitespace-nowrap text-[9px] sm:text-xs text-slate-400 text-center flex items-center justify-center gap-0.5 mt-0.5">
+          <MapPin size={8} className="shrink-0 text-amber-400/80" />
+          <span className="truncate whitespace-nowrap">{candidate.province || 'Luanda'}</span>
         </span>
       </div>
 
-      {/* XP & Duels Footer */}
-      <div className="bg-slate-950/90 rounded-xl p-1 border border-slate-800/80 mt-1">
-        <p className="text-[10px] font-black font-mono text-amber-400 flex items-center justify-center gap-0.5">
-          <Zap size={10} className="text-amber-400 fill-amber-400" />
-          <span>{candidate.totalXp.toLocaleString()}</span>
+      {/* XP & Duels Footer / Pontuação */}
+      <div className="w-full min-w-0 bg-slate-950/80 rounded-xl p-1 border border-slate-700/40 mt-1">
+        <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-xs font-semibold text-amber-400 text-center flex items-center justify-center gap-0.5 font-mono">
+          <Zap size={10} className="text-amber-400 fill-amber-400 shrink-0" />
+          <span className="truncate whitespace-nowrap">{candidate.totalXp.toLocaleString()} XP</span>
         </p>
-        <p className="text-[8px] text-slate-400 font-medium truncate">
-          {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Duelos Vencidos
+        <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 font-medium text-center">
+          {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Duelos
         </p>
       </div>
     </motion.div>

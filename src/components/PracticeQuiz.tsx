@@ -16,6 +16,7 @@ import { ReactiveAvatar } from './ReactiveAvatar';
 import { trackMissionProgress } from '../utils/dailyMissions';
 import { db } from '../lib/firebase';
 import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
+import bgInsignias from '../assets/insignias_minint.webp';
 
 interface PracticeQuizProps {
   profile: UserProfile;
@@ -60,9 +61,6 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
   // Meme Generator Modal State
   const [isMemeModalOpen, setIsMemeModalOpen] = useState(false);
-
-  // Header Insignia Image Loading State
-  const [isHeaderImageLoaded, setIsHeaderImageLoaded] = useState(false);
 
   // Exit Confirmation Modal State
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
@@ -374,26 +372,17 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
       {quizState === 'setup' && (
         <div className="space-y-4 animate-fadeIn">
           {/* Header Banner */}
-          <div className="border border-amber-500/40 dark:border-amber-500/40 rounded-2xl p-5 text-center shadow-lg dark:shadow-2xl relative overflow-hidden group bg-slate-900/40 dark:bg-slate-950/60">
-            {/* Subtle Skeleton Loader while image downloads */}
-            {!isHeaderImageLoaded && (
-              <div className="absolute inset-0 bg-gradient-to-r from-amber-500/10 via-amber-400/20 to-amber-500/10 animate-pulse pointer-events-none z-0 rounded-2xl" />
-            )}
-
-            {/* Background Image Tag with fade-in */}
-            <img
-              src="https://raw.githubusercontent.com/Lunatico-commits/Simula-o-Minint-v2/refs/heads/main/src/assets/images/insignias_minint.webp"
-              alt="Insígnias MININT"
-              loading="eager"
-              referrerPolicy="no-referrer"
-              onLoad={() => setIsHeaderImageLoaded(true)}
-              className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-0 transition-all duration-700 ease-out group-hover:scale-105 ${
-                isHeaderImageLoaded ? 'opacity-30 scale-100 animate-fadeIn' : 'opacity-0 scale-95'
-              }`}
-            />
-
-            {/* Clear Overlay Layer */}
-            <div className="absolute inset-0 bg-slate-900/20 dark:bg-slate-950/20 backdrop-blur-[0.5px] pointer-events-none z-0" />
+          <div
+            className="border border-amber-500/40 dark:border-amber-500/40 rounded-2xl p-5 text-center shadow-lg dark:shadow-2xl relative overflow-hidden group bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950"
+            style={{
+              backgroundImage: `url(${bgInsignias})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          >
+            {/* Dark Overlay Layer for Guaranteed Text Contrast & Clear Image Visibility */}
+            <div className="absolute inset-0 bg-slate-950/45 dark:bg-slate-950/50 backdrop-blur-[0.5px] pointer-events-none z-0" />
 
             {/* Top Accent Line */}
             <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 opacity-90 z-10" />
