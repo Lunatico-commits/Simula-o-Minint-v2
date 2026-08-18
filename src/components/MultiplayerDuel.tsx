@@ -11,6 +11,7 @@ import { QUESTION_BANK } from '../data/questions';
 import { getRandomQuestions } from '../utils/questionSelector';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { ReactiveAvatar } from './ReactiveAvatar';
+import { UserAvatar } from './UserAvatar';
 import { explainQuestionWithAI } from '../services/apiService';
 import { AIExplanationModal } from './AIExplanationModal';
 import { MemeGeneratorModal } from './MemeGeneratorModal';
@@ -68,6 +69,10 @@ const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): Due
     province: userProfile?.province || 'Luanda',
     photoURL: userProfile?.photoURL || userProfile?.avatar || '',
     isVipSupporter: !!(userProfile?.isVipSupporter),
+    equippedFrame: userProfile?.equippedFrame || userProfile?.avatarAccessories?.frame,
+    equippedBackground: userProfile?.equippedBackground || userProfile?.avatarAccessories?.background,
+    equippedUniform: userProfile?.equippedUniform,
+    avatarAccessories: userProfile?.avatarAccessories,
     score: 0,
     currentQuestionIndex: 0,
     answers: {},
@@ -2284,16 +2289,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             ) : (
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {openRooms.map((room) => {
-                  const bInfo = MININT_BRANCHES[room.player1.branch] || MININT_BRANCHES.PNA;
-                  const roomAvatar = getAvatarOption(room.player1.avatarId, room.player1.branch, room.player1.displayName);
                   return (
                     <div
                       key={room.id}
                       className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-3.5 flex items-center justify-between transition-all shadow-xs"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-lg border border-amber-500/30 shrink-0 shadow-sm`}>
-                          {roomAvatar.symbol}
+                        <div className="shrink-0 flex items-center justify-center">
+                          <UserAvatar user={room.player1} size="sm" showBranchBadge={true} />
                         </div>
                         <div>
                           <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{room.player1.displayName}</p>
@@ -2408,9 +2411,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     return true;
                   })
                   .map((item) => {
-                    const bInfo = MININT_BRANCHES[item.opponentBranch] || MININT_BRANCHES.PNA;
-                    const oppAvatar = getAvatarOption(item.opponentAvatarId, item.opponentBranch, item.opponentName);
-
                     const isWin = item.result === 'win';
                     const isDraw = item.result === 'draw';
 
@@ -2431,8 +2431,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                         <div className="flex items-center justify-between gap-2">
                           {/* Opponent Info */}
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-base border border-amber-500/30 shrink-0`}>
-                              {oppAvatar.symbol}
+                            <div className="shrink-0 flex items-center justify-center">
+                              <UserAvatar
+                                user={{
+                                  displayName: item.opponentName,
+                                  branch: item.opponentBranch,
+                                  avatarId: item.opponentAvatarId,
+                                  province: item.opponentProvince,
+                                }}
+                                size="xs"
+                                showBranchBadge={true}
+                              />
                             </div>
                             <div className="min-w-0">
                               <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-1">
@@ -2533,15 +2542,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 {(() => {
                   const p1 = currentRoom.player1 || buildSafePlayer(profile);
                   const p1Branch = MININT_BRANCHES[p1?.branch || 'PNA'] || MININT_BRANCHES.PNA;
-                  const p1Avatar = getAvatarOption(p1?.avatarId, p1?.branch, p1?.displayName);
                   return (
                     <div className="bg-slate-50 dark:bg-slate-900/80 border border-amber-500/40 rounded-2xl p-3.5 text-center space-y-2 relative shadow-xs">
                       <span className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 text-[9px] font-black uppercase tracking-wider">
                         Anfitrião
                       </span>
 
-                      <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${p1Branch.badgeBg} border-2 border-amber-500/50 flex items-center justify-center text-2xl mx-auto shadow-md`}>
-                        {p1Avatar.symbol}
+                      <div className="mx-auto flex items-center justify-center">
+                        <UserAvatar user={p1} size="lg" showBranchBadge={true} />
                       </div>
 
                       <div>
@@ -2570,8 +2578,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     {currentRoom.player2 ? (
                       (() => {
                         const p2 = currentRoom.player2;
-                        const p2Branch = MININT_BRANCHES[p2?.branch || 'PNA'] || MININT_BRANCHES.PNA;
-                        const p2Avatar = getAvatarOption(p2?.avatarId, p2?.branch, p2?.displayName);
                         return (
                           <motion.div
                             key="player2-connected"
@@ -2594,12 +2600,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                               initial={{ scale: 0.6, rotate: -8 }}
                               animate={{ scale: 1, rotate: 0 }}
                               transition={{ delay: 0.08, type: 'spring', stiffness: 420, damping: 20 }}
-                              className="relative inline-block mx-auto"
+                              className="relative inline-block mx-auto flex items-center justify-center"
                             >
-                              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${p2Branch.badgeBg} border-2 border-emerald-500 flex items-center justify-center text-2xl mx-auto shadow-md relative z-10`}>
-                                {p2Avatar.symbol}
-                              </div>
-                              <span className="absolute -inset-1 rounded-2xl bg-emerald-500/30 animate-pulse blur-sm -z-0"></span>
+                              <UserAvatar user={p2} size="lg" showBranchBadge={true} />
                             </motion.div>
 
                             <motion.div
@@ -2909,18 +2912,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                           )}
 
                           <div className="relative z-10">
-                            <ReactiveAvatar
-                              avatarId={myPlayer?.avatarId || profile.avatarId}
-                              branch={myPlayer?.branch || profile.branch}
-                              displayName={myPlayer?.displayName || profile.displayName}
-                              photoURL={myPlayer?.photoURL || profile.photoURL}
+                            <UserAvatar
+                              user={myPlayer || profile}
                               size="md"
                               triggerReaction={myStreak >= 3 ? 'celebrate' : myPlayer?.score}
                               reaction={myStreak >= 3 ? 'celebrate' : (myAnswered && myPlayer?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle')}
                               showBranchBadge={true}
                               showLevelBadge={true}
-                              level={myPlayer?.level || profile.level || 1}
-                              isVipSupporter={myPlayer?.isVipSupporter || profile.isVipSupporter}
                               interactive={true}
                             />
                           </div>
@@ -3005,18 +3003,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                           )}
 
                           <div className="relative z-10">
-                            <ReactiveAvatar
-                              avatarId={opponent?.avatarId}
-                              branch={opponent?.branch}
-                              displayName={opponent?.displayName}
-                              photoURL={opponent?.photoURL}
+                            <UserAvatar
+                              user={opponent}
                               size="md"
                               triggerReaction={oppStreak >= 3 ? 'celebrate' : opponent?.score}
                               reaction={oppStreak >= 3 ? 'celebrate' : (oppAnswered && opponent?.answers?.[qIndex]?.isCorrect ? 'victory' : 'idle')}
                               showBranchBadge={true}
                               showLevelBadge={true}
-                              level={opponent?.level || 1}
-                              isVipSupporter={opponent?.isVipSupporter}
                               interactive={true}
                             />
                           </div>
@@ -3860,17 +3853,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 transition={{ type: 'spring', damping: 15, stiffness: 200, delay: 0.15 }}
                 className="mx-auto flex items-center justify-center mb-4"
               >
-                <ReactiveAvatar
-                  avatarId={profile.avatarId}
-                  branch={profile.branch}
-                  displayName={profile.displayName}
-                  photoURL={profile.photoURL}
+                <UserAvatar
+                  user={profile}
                   size="3xl"
                   reaction="victory"
                   showBranchBadge={true}
                   showLevelBadge={true}
-                  level={profile.level || 1}
-                  isVipSupporter={profile.isVipSupporter}
                   interactive={true}
                 />
               </motion.div>
@@ -3913,10 +3901,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                   className="mt-4 p-3.5 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between text-left"
                 >
                   <div className="flex items-center gap-3">
-                    <ReactiveAvatar
-                      avatarId={honorVictoryOpponent.avatarId}
-                      branch={honorVictoryOpponent.branch}
-                      displayName={honorVictoryOpponent.displayName}
+                    <UserAvatar
+                      user={honorVictoryOpponent}
                       size="sm"
                       showBranchBadge={true}
                     />

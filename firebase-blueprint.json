@@ -16,12 +16,33 @@
         "createdAt": { "type": "number" }
       },
       "required": ["code", "status", "createdAt"]
+    },
+    "Notification": {
+      "title": "User Notification",
+      "description": "Represents a notification sent to a candidate",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "fromUserId": { "type": "string" },
+        "fromUserName": { "type": "string" },
+        "fromUserBranch": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["type", "fromUserId", "createdAt"]
     }
   },
   "firestore": {
     "/duels/{duelId}": {
       "schema": { "$ref": "#/entities/Duel" },
       "description": "Collection of 1v1 duels"
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Subcollection of notifications for a user"
     }
   }
 }

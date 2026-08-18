@@ -248,6 +248,100 @@ export function listenForDuelInvitations(
 }
 
 /**
+ * Sends a notification entry to the followed user's notifications subcollection
+ */
+export async function sendNewFollowerNotification(
+  senderProfile: UserProfile,
+  targetUserId: string
+): Promise<void> {
+  const senderUid = senderProfile.uid || (senderProfile as any).id;
+  if (!targetUserId || !senderUid || targetUserId === senderUid || targetUserId === 'guest_user') return;
+
+  try {
+    const notifId = `follower_${senderUid}_${Date.now()}`;
+    const notifRef = doc(db, 'users', targetUserId, 'notifications', notifId);
+    await setDoc(notifRef, {
+      id: notifId,
+      type: 'NEW_FOLLOWER',
+      fromUserId: senderUid,
+      fromUserName: senderProfile.displayName,
+      fromUserBranch: senderProfile.branch,
+      fromUserAvatar: senderProfile.avatarId || 'pna_1',
+      fromUserProvince: senderProfile.province || 'Luanda',
+      title: 'Novo Seguidor no MININT!',
+      body: `${senderProfile.displayName} (${senderProfile.branch}) começou a seguir o teu perfil!`,
+      isRead: false,
+      createdAt: Date.now(),
+      timestamp: Date.now(),
+    });
+  } catch (e) {
+    console.warn('Erro ao enviar notificação de novo seguidor para o Firestore:', e);
+  }
+}
+
+/**
+ * Listens for new notifications in the user's personal notifications subcollection
+ */
+export function listenForUserNotifications(
+  currentProfile: UserProfile,
+  onNotificationReceived: (notification: {
+    id: string;
+    title: string;
+    body: string;
+    type?: 'duel' | 'daily' | 'follower' | 'general';
+  }) => void
+) {
+  const myUid = currentProfile.uid || (currentProfile as any).id;
+  if (!myUid || myUid === 'guest_user') return () => {};
+
+  try {
+    const q = query(
+      collection(db, 'users', myUid, 'notifications'),
+      where('isRead', '==', false),
+      limit(10)
+    );
+
+    const initialTime = Date.now();
+
+    return onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const notif = change.doc.data();
+          if (
+            notif &&
+            notif.createdAt &&
+            Date.now() - notif.createdAt < 5 * 60 * 1000 &&
+            notif.createdAt >= initialTime - 5000
+          ) {
+            const title = notif.title || '🔔 Nova Atividade!';
+            const body = notif.body || 'Tens uma nova notificação no concurso MININT.';
+
+            // Trigger browser push notification
+            triggerPushNotification(title, {
+              body,
+              tag: `user-notif-${change.doc.id}`,
+              onClickUrl: '#rankings',
+            });
+
+            onNotificationReceived({
+              id: change.doc.id,
+              title,
+              body,
+              type: notif.type === 'NEW_FOLLOWER' ? 'follower' : 'general',
+            });
+          }
+        }
+      });
+    }, (err) => {
+      console.warn('Erro no observador de notificações do utilizador:', err);
+    });
+  } catch (e) {
+    console.warn('Erro ao subscrever notificações de utilizador:', e);
+    return () => {};
+  }
+}
+
+/**
  * Checks and triggers the Daily Study Reminder push notification
  */
 export function checkAndTriggerDailyStudyReminder(profile: UserProfile): boolean {

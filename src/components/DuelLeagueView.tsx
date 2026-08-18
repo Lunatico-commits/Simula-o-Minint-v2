@@ -11,6 +11,7 @@ import {
   getCurrentISOWeek,
 } from '../utils/league';
 import { RankChangeIndicator } from './RankingsView';
+import { UserAvatar } from './UserAvatar';
 import {
   Trophy,
   Swords,
@@ -424,8 +425,6 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                   (cand.uid && currentProfile.id && cand.uid === currentProfile.id) ||
                   (cand.id && currentProfile.uid && cand.id === currentProfile.uid)
                 );
-                const bInfo = MININT_BRANCHES[cand.branch] || MININT_BRANCHES.PNA;
-                const avatar = getAvatarOption(cand.avatarId, cand.branch, cand.displayName);
 
                 return (
                   <motion.div
@@ -441,13 +440,8 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                     }`}
                   >
                     <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">🥈 #2</span>
-                    <div className="relative my-1 shrink-0">
-                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-slate-400/50 overflow-hidden`}>
-                        <span className="text-sm sm:text-base">{avatar.symbol}</span>
-                      </div>
-                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
-                        {cand.branch}
-                      </span>
+                    <div className="my-1 shrink-0 flex items-center justify-center">
+                      <UserAvatar user={cand} size="md" showBranchBadge={true} />
                     </div>
 
                     <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
@@ -488,8 +482,6 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                   (cand.uid && currentProfile.id && cand.uid === currentProfile.id) ||
                   (cand.id && currentProfile.uid && cand.id === currentProfile.uid)
                 );
-                const bInfo = MININT_BRANCHES[cand.branch] || MININT_BRANCHES.PNA;
-                const avatar = getAvatarOption(cand.avatarId, cand.branch, cand.displayName);
 
                 return (
                   <motion.div
@@ -505,13 +497,8 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                     }`}
                   >
                     <span className="text-[11px] font-black text-amber-400 whitespace-nowrap">👑 #1</span>
-                    <div className="relative my-1 shrink-0">
-                      <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br ${bInfo.badgeBg} border-2 border-amber-400 flex items-center justify-center overflow-hidden shadow-md`}>
-                        <span className="text-base sm:text-lg">{avatar.symbol}</span>
-                      </div>
-                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
-                        {cand.branch}
-                      </span>
+                    <div className="my-1 shrink-0 flex items-center justify-center">
+                      <UserAvatar user={cand} size="lg" showBranchBadge={true} />
                     </div>
 
                     <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
@@ -552,8 +539,6 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                   (cand.uid && currentProfile.id && cand.uid === currentProfile.id) ||
                   (cand.id && currentProfile.uid && cand.id === currentProfile.uid)
                 );
-                const bInfo = MININT_BRANCHES[cand.branch] || MININT_BRANCHES.PNA;
-                const avatar = getAvatarOption(cand.avatarId, cand.branch, cand.displayName);
 
                 return (
                   <motion.div
@@ -569,13 +554,8 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                     }`}
                   >
                     <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">🥉 #3</span>
-                    <div className="relative my-1 shrink-0">
-                      <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-amber-700/50 overflow-hidden`}>
-                        <span className="text-sm sm:text-base">{avatar.symbol}</span>
-                      </div>
-                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
-                        {cand.branch}
-                      </span>
+                    <div className="my-1 shrink-0 flex items-center justify-center">
+                      <UserAvatar user={cand} size="md" showBranchBadge={true} />
                     </div>
 
                     <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
@@ -718,13 +698,8 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                         <RankChangeIndicator change={leagueRankDeltasMap[candidate.uid || candidate.displayName || `cand_${idx}`] ?? 0} compact />
                       </div>
 
-                      <div className="relative flex-shrink-0">
-                        <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${candidateBranch.badgeBg} border border-amber-500/40 flex items-center justify-center text-base shadow-sm`}>
-                          {avatar.symbol}
-                        </div>
-                        {candidate.isVipSupporter && (
-                          <span className="absolute -top-1 -right-1 text-[10px]" title="VIP">🌟</span>
-                        )}
+                      <div className="shrink-0 flex items-center justify-center">
+                        <UserAvatar user={candidate} size="sm" showBranchBadge={true} />
                       </div>
 
                       <div className="min-w-0">
@@ -864,13 +839,8 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                 className="flex items-center gap-3 min-w-0 cursor-pointer"
               >
                 {/* Avatar & Branch Badge */}
-                <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/30 to-amber-600/20 border border-amber-500 flex items-center justify-center text-lg shadow-sm">
-                    {getAvatarOption(currentProfile.avatarId, currentProfile.branch, currentProfile.displayName).symbol}
-                  </div>
-                  <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded-md bg-amber-500 text-slate-950 font-mono">
-                    {currentProfile.branch}
-                  </span>
+                <div className="shrink-0 flex items-center justify-center">
+                  <UserAvatar user={currentProfile} size="sm" showBranchBadge={true} />
                 </div>
 
                 <div className="min-w-0">
@@ -958,13 +928,8 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
 
               {/* Modal Header & Avatar */}
               <div className="flex flex-col items-center text-center pt-2 pb-4 border-b border-slate-800/80">
-                <div className="relative mb-3">
-                  <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${(MININT_BRANCHES[selectedCandidate.branch] || MININT_BRANCHES.PNA).badgeBg} flex items-center justify-center text-4xl border-2 border-amber-500/60 shadow-lg`}>
-                    {getAvatarOption(selectedCandidate.avatarId, selectedCandidate.branch, selectedCandidate.displayName).symbol}
-                  </div>
-                  <span className="absolute -bottom-2 -right-2 px-2 py-0.5 text-xs font-black rounded-lg bg-slate-950 text-amber-400 border border-amber-500/50 shadow-md font-mono">
-                    {selectedCandidate.branch}
-                  </span>
+                <div className="mb-3 flex items-center justify-center">
+                  <UserAvatar user={selectedCandidate} size="xl" showBranchBadge={true} />
                 </div>
 
                 <h3 className="text-base font-black text-white flex items-center justify-center gap-1.5 flex-wrap">

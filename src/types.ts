@@ -90,11 +90,24 @@ export interface Question {
   difficulty: 'fácil' | 'médio' | 'difícil';
 }
 
+export interface AvatarAccessories {
+  frame?: string;
+  background?: string;
+  badge?: string;
+  frames?: string;
+  backgrounds?: string;
+  badges?: string;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;
   branch: MININTBranch;
   avatarId: string;
+  equippedUniform?: string;
+  equippedFrame?: string;
+  equippedBackground?: string;
+  avatarAccessories?: AvatarAccessories;
   province: string;
   academicLevel?: AcademicLevel;
   rankTitle: string;
@@ -126,6 +139,7 @@ export interface UserProfile {
   referralCode?: string;
   referredBy?: string;
   referralsCount?: number;
+  following?: string[];
   emailOrPhone?: string;
   password?: string;
   role?: 'admin' | 'candidate';
@@ -147,6 +161,10 @@ export interface DailyChallengeEntry {
   province: string;
   avatarId?: string;
   isVipSupporter?: boolean;
+  equippedFrame?: string;
+  equippedBackground?: string;
+  equippedUniform?: string;
+  avatarAccessories?: AvatarAccessories;
   date: string;
   score: number;
   totalQuestions: number;
@@ -181,6 +199,10 @@ export interface SavedAccount {
   emailOrPhone?: string;
   password?: string;
   isVipSupporter?: boolean;
+  equippedFrame?: string;
+  equippedBackground?: string;
+  equippedUniform?: string;
+  avatarAccessories?: AvatarAccessories;
   lastLoginAt: string;
 }
 
@@ -193,6 +215,10 @@ export interface DuelPlayer {
   photoURL?: string;
   isVipSupporter?: boolean;
   isBot?: boolean;
+  equippedFrame?: string;
+  equippedBackground?: string;
+  equippedUniform?: string;
+  avatarAccessories?: AvatarAccessories;
   score: number;
   currentQuestionIndex: number;
   answers: Record<number, { chosenIndex: number; isCorrect: boolean; timeSeconds: number }>;

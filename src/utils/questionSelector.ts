@@ -61,8 +61,9 @@ function getMergedQuestionBank(): Question[] {
 export interface GetRandomQuestionsOptions {
   category?: QuestionCategory | 'todas' | 'misto';
   academicLevel?: AcademicLevel;
+  difficulty?: 'fácil' | 'médio' | 'difícil' | 'todas';
   count: number;
-  modeKey?: 'rapido' | 'exame' | 'materia' | 'desafio' | 'duel';
+  modeKey?: 'rapido' | 'exame' | 'materia' | 'desafio' | 'duel' | string;
 }
 
 // In-memory cache for recent question IDs per mode to prevent repetitions
@@ -99,7 +100,7 @@ function saveRecentIds(modeKey: string, ids: string[]): void {
  * Also shuffles the options (A, B, C, D) within each selected question.
  */
 export function getRandomQuestions(options: GetRandomQuestionsOptions): Question[] {
-  const { category, academicLevel, count, modeKey = 'general' } = options;
+  const { category, academicLevel, difficulty, count, modeKey = 'general' } = options;
 
   const fullBank = getMergedQuestionBank();
 
@@ -123,6 +124,16 @@ export function getRandomQuestions(options: GetRandomQuestionsOptions): Question
     const levelPool = candidatePool.filter(q => q.academicLevel === academicLevel);
     if (levelPool.length >= count) {
       candidatePool = levelPool;
+    }
+  }
+
+  if (difficulty && difficulty !== 'todas') {
+    const diffMatches = candidatePool.filter(q => q.difficulty === difficulty);
+    if (diffMatches.length >= count) {
+      candidatePool = diffMatches;
+    } else if (diffMatches.length > 0) {
+      const otherMatches = candidatePool.filter(q => q.difficulty !== difficulty);
+      candidatePool = [...diffMatches, ...otherMatches];
     }
   }
 

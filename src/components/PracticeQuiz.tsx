@@ -13,6 +13,7 @@ import { BookOpen, Sparkles, CheckCircle2, XCircle, Clock, Award, ArrowRight, Ro
 import { ConfirmExitModal } from './ConfirmExitModal';
 import { DailyMissions } from './DailyMissions';
 import { ReactiveAvatar } from './ReactiveAvatar';
+import { UserAvatar } from './UserAvatar';
 import { trackMissionProgress } from '../utils/dailyMissions';
 import { db } from '../lib/firebase';
 import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
@@ -37,6 +38,7 @@ interface PracticeQuizProps {
 export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateStats, onNavigateTab, onOpenSupportModal, onSessionActiveChange }) => {
   const [selectedCategory, setSelectedCategory] = useState<QuestionCategory | 'todas'>('todas');
   const [quizMode, setQuizMode] = useState<'rapido' | 'exame'>('rapido');
+  const [difficulty, setDifficulty] = useState<'fácil' | 'médio' | 'difícil'>('médio');
   const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [chosenAnswerIndex, setChosenAnswerIndex] = useState<number | null>(null);
@@ -52,6 +54,24 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
   // Timer for Exame & Rapido modes
   const [timeLeft, setTimeLeft] = useState(0);
+
+  const getTimePerQuestion = (diff: 'fácil' | 'médio' | 'difícil') => {
+    switch (diff) {
+      case 'fácil': return 45;
+      case 'difícil': return 15;
+      case 'médio':
+      default: return 30;
+    }
+  };
+
+  const getXpMultiplier = (diff: 'fácil' | 'médio' | 'difícil') => {
+    switch (diff) {
+      case 'fácil': return 1.0;
+      case 'difícil': return 2.0;
+      case 'médio':
+      default: return 1.5;
+    }
+  };
 
   // AI Explanation Modal State
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -213,11 +233,12 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
   // Start Quiz Handler
   const handleStartQuiz = () => {
     const limit = quizMode === 'rapido' ? 5 : 10;
-    const modeKey = selectedCategory !== 'todas' ? 'materia' : (quizMode === 'rapido' ? 'rapido' : 'exame');
+    const modeKey = selectedCategory !== 'todas' ? `materia_${difficulty}` : (quizMode === 'rapido' ? `rapido_${difficulty}` : `exame_${difficulty}`);
     
     const finalQuestions = getRandomQuestions({
       category: selectedCategory,
       academicLevel: profile.academicLevel,
+      difficulty,
       count: limit,
       modeKey,
     });
@@ -232,10 +253,11 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
     setReviewFilter('all');
     setQuizState('playing');
 
+    const timePerQ = getTimePerQuestion(difficulty);
     if (quizMode === 'exame') {
-      setTimeLeft(finalQuestions.length * 45); // 45 sec per question (e.g. 10 q = 450s = 7m30s)
+      setTimeLeft(finalQuestions.length * timePerQ); // Dynamic per difficulty (e.g. 10 q: Fácil 450s, Médio 300s, Difícil 150s)
     } else {
-      setTimeLeft(30); // 30 sec per question for Simulado Rápido
+      setTimeLeft(timePerQ); // Dynamic per question for Simulado Rápido
     }
   };
 
@@ -269,7 +291,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
       const nextAnswer = userAnswers[currentIndex + 1] ?? null;
       setChosenAnswerIndex(nextAnswer);
       if (quizMode === 'rapido' && nextAnswer === null) {
-        setTimeLeft(30);
+        setTimeLeft(getTimePerQuestion(difficulty));
       }
     } else {
       handleFinishQuiz();
@@ -303,9 +325,16 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
     });
     setScore(finalScore);
 
-    // Calculate XP: 20 XP per correct answer + 50 bonus for completion
-    const xpGained = (finalScore * 20) + 50;
-    onUpdateStats(finalScore, activeQuestions.length, xpGained, false, categoryBreakdown);
+    // Calculate XP with Difficulty Multiplier: Fácil = 1.0x, Médio = 1.5x, Difícil = 2.0x
+    const multiplier = getXpMultiplier(difficulty);
+    const baseXp = (finalScore * 20) + 50;
+    const xpGained = Math.round(baseXp * multiplier);
+    
+    // Coins gained proportionally to score & difficulty
+    const coinsMultiplier = difficulty === 'difícil' ? 4 : difficulty === 'médio' ? 3 : 2;
+    const coinsGained = finalScore * coinsMultiplier;
+
+    onUpdateStats(finalScore, activeQuestions.length, xpGained, false, categoryBreakdown, false, coinsGained);
 
     // Play Completion sound & trigger Confetti if score >= 50%
     playQuizCompleteSound();
@@ -472,7 +501,9 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                   <Zap size={14} className={quizMode === 'rapido' ? 'text-slate-950' : 'text-amber-500'} />
                   <span>Simulado Rápido</span>
                 </div>
-                <p className={`text-[10px] ${quizMode === 'rapido' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>5 Questões • 30s por questão</p>
+                <p className={`text-[10px] ${quizMode === 'rapido' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>
+                  5 Questões • {getTimePerQuestion(difficulty)}s por questão
+                </p>
               </button>
 
               <button
@@ -488,12 +519,95 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                   <Clock size={14} className={quizMode === 'exame' ? 'text-slate-950' : 'text-amber-500'} />
                   <span>Exame Cronometrado</span>
                 </div>
-                <p className={`text-[10px] ${quizMode === 'exame' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>10 Questões • 45s/q (7m30s total)</p>
+                <p className={`text-[10px] ${quizMode === 'exame' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>
+                  10 Questões • {getTimePerQuestion(difficulty)}s/q ({formatTimeSpent(10 * getTimePerQuestion(difficulty))} total)
+                </p>
               </button>
             </div>
           </div>
 
-          {/* 4. SELECIONE A MATÉRIA */}
+          {/* 4. SELETOR DE DIFICULDADE (FÁCIL / MÉDIO / DIFÍCIL) */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-[11px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold">
+                Nível de Dificuldade & Bónus de XP
+              </label>
+              <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                {difficulty === 'difícil' ? '🔥 2.0x XP' : difficulty === 'médio' ? '⚡ 1.5x XP' : '🌱 1.0x XP'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                {
+                  id: 'fácil',
+                  label: 'Fácil',
+                  time: '45s',
+                  multiplier: '1.0x XP',
+                  tagColor: 'text-emerald-500 dark:text-emerald-400',
+                  badgeBg: 'bg-emerald-500/15 border-emerald-500/30',
+                  desc: 'Mais tempo para raciocinar',
+                },
+                {
+                  id: 'médio',
+                  label: 'Médio',
+                  time: '30s',
+                  multiplier: '1.5x XP',
+                  tagColor: 'text-amber-500 dark:text-amber-400',
+                  badgeBg: 'bg-amber-500/15 border-amber-500/30',
+                  desc: 'Padrão oficial do concurso',
+                },
+                {
+                  id: 'difícil',
+                  label: 'Difícil',
+                  time: '15s',
+                  multiplier: '2.0x XP',
+                  tagColor: 'text-rose-500 dark:text-rose-400',
+                  badgeBg: 'bg-rose-500/15 border-rose-500/30',
+                  desc: 'Alta pressão e XP duplo',
+                },
+              ].map((diff) => {
+                const isSelected = difficulty === diff.id;
+                return (
+                  <button
+                    key={diff.id}
+                    type="button"
+                    onClick={() => setDifficulty(diff.id as any)}
+                    className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                      isSelected
+                        ? 'bg-amber-500/15 border-amber-500 text-slate-900 dark:text-slate-100 shadow-md ring-1 ring-amber-500/40'
+                        : 'bg-white dark:bg-[#0F1115] border-slate-200 dark:border-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-1">
+                      <span className={`text-xs font-black capitalize ${isSelected ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                        {diff.label}
+                      </span>
+                      {isSelected && (
+                        <div className="w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-[9px]">
+                          <Check size={10} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1">
+                        <Clock size={10} className="text-slate-400 shrink-0" />
+                        <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                          {diff.time}/q
+                        </span>
+                      </div>
+                      <span className={`text-[10px] font-mono font-black block ${diff.tagColor}`}>
+                        {diff.multiplier}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 5. SELECIONE A MATÉRIA */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-[11px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold">
@@ -607,9 +721,18 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
           {/* Top Progress & Timer Bar */}
           <div className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm p-3.5 space-y-2">
             <div className="flex items-center justify-between text-xs font-mono font-bold">
-              <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200">
+              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                 <span>QUESTÃO {currentIndex + 1} DE {activeQuestions.length}</span>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                  difficulty === 'difícil'
+                    ? 'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400'
+                    : difficulty === 'médio'
+                    ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                    : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                }`}>
+                  {difficulty} ({getXpMultiplier(difficulty)}x XP)
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -882,7 +1005,9 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
         const totalQ = activeQuestions.length || 1;
         const pct = Math.round((score / totalQ) * 100);
         const isPassed = pct >= 50;
-        const xpGained = (score * 20) + 50;
+        const multiplier = getXpMultiplier(difficulty);
+        const baseXp = (score * 20) + 50;
+        const xpGained = Math.round(baseXp * multiplier);
         const { categories, worstCategory } = getSubjectDiagnostics();
 
         return (
@@ -901,32 +1026,40 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 opacity-60" />
 
               <div className="flex items-center justify-center mx-auto pt-8">
-                <ReactiveAvatar
-                  avatarId={profile.avatarId}
-                  branch={profile.branch}
-                  displayName={profile.displayName}
-                  photoURL={profile.photoURL}
+                <UserAvatar
+                  user={profile}
                   size="2xl"
                   reaction={isPassed ? 'quizComplete' : 'idle'}
                   showBranchBadge={true}
                   showLevelBadge={true}
-                  level={profile.level || 1}
-                  isVipSupporter={profile.isVipSupporter}
                   interactive={true}
                 />
               </div>
 
               <div>
-                <div
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-1.5 border"
-                  style={{
-                    backgroundColor: isPassed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-                    borderColor: isPassed ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)',
-                    color: isPassed ? '#10b981' : '#f43f5e'
-                  }}
-                >
-                  <span>{isPassed ? 'Aprovado na Simulação!' : 'Necessita Mais Estudo'}</span>
+                <div className="flex items-center justify-center gap-2 mb-1.5 flex-wrap">
+                  <div
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider border"
+                    style={{
+                      backgroundColor: isPassed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+                      borderColor: isPassed ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)',
+                      color: isPassed ? '#10b981' : '#f43f5e'
+                    }}
+                  >
+                    <span>{isPassed ? 'Aprovado na Simulação!' : 'Necessita Mais Estudo'}</span>
+                  </div>
+
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                    difficulty === 'difícil'
+                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-600 dark:text-rose-400'
+                      : difficulty === 'médio'
+                      ? 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400'
+                      : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    {difficulty === 'difícil' ? '🔥' : difficulty === 'médio' ? '⚡' : '🌱'} Nível {difficulty} ({multiplier}x XP)
+                  </span>
                 </div>
+
                 <h2 className="text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
                   {pct}% de Aproveitamento
                 </h2>
@@ -970,7 +1103,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                 >
                   <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-[10px] uppercase tracking-wider font-bold">
                     <Zap size={12} className="text-amber-500 fill-amber-500 shrink-0" />
-                    <span>Recompensa</span>
+                    <span>Recompensa ({multiplier}x)</span>
                   </div>
                   <p className="text-base sm:text-lg font-black text-amber-600 dark:text-amber-400 mt-1">
                     +{xpGained} XP

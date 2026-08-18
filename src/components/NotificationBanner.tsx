@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Swords, Flame, X, ArrowRight, Bell } from 'lucide-react';
+import { Swords, Flame, X, ArrowRight, Bell, UserPlus } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 interface NotificationBannerProps {
@@ -9,7 +9,7 @@ interface NotificationBannerProps {
     title: string;
     body: string;
     roomCode?: string;
-    type?: 'duel' | 'daily' | 'general';
+    type?: 'duel' | 'daily' | 'follower' | 'general';
   } | null;
   onClose: () => void;
   onAcceptDuel?: (roomCode: string) => void;
@@ -32,11 +32,17 @@ export const NotificationBanner: React.FC<NotificationBannerProps> = ({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-amber-400 shrink-0">
+            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
+              notification.type === 'follower'
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                : 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+            }`}>
               {notification.type === 'duel' ? (
                 <Swords size={20} className="animate-bounce" />
               ) : notification.type === 'daily' ? (
                 <Flame size={20} className="animate-pulse" />
+              ) : notification.type === 'follower' ? (
+                <UserPlus size={20} className="animate-pulse" />
               ) : (
                 <Bell size={20} />
               )}

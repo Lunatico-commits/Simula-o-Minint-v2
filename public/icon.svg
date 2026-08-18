@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="shieldBg" x1="256" y1="20" x2="256" y2="492" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1e3a8a" />
+      <stop offset="1" stop-color="#0b1329" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="256" y1="120" x2="256" y2="300" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fde047" />
+      <stop offset="0.5" stop-color="#f59e0b" />
+      <stop offset="1" stop-color="#b45309" />
+    </linearGradient>
+    <linearGradient id="borderGrad" x1="256" y1="20" x2="256" y2="492" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fbbf24" />
+      <stop offset="0.7" stop-color="#f59e0b" />
+      <stop offset="1" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Shield Shell -->
+  <path
+    d="M256 26C358 26 448 70 460 154C460 320 358 435 256 486C154 435 52 320 52 154C64 70 154 26 256 26Z"
+    fill="url(#shieldBg)"
+    stroke="url(#borderGrad)"
+    stroke-width="24"
+    stroke-linejoin="round"
+  />
+
+  <!-- Inner Golden Border -->
+  <path
+    d="M256 58C339 58 416 92 426 164C426 297 345 397 256 445C167 397 86 297 86 164C96 92 173 58 256 58Z"
+    stroke="#f59e0b"
+    stroke-width="10"
+    stroke-opacity="0.85"
+    fill="none"
+  />
+
+  <!-- Golden Star / Insignia Emblem -->
+  <path
+    d="M256 122L284 182L346 192L301 234L311 297L256 268L201 297L211 234L166 192L228 182L256 122Z"
+    fill="url(#goldGrad)"
+    stroke="#78350f"
+    stroke-width="6"
+    stroke-linejoin="round"
+  />
+
+  <!-- Central Red Security Core -->
+  <circle cx="256" cy="212" r="36" fill="#dc2626" stroke="#f59e0b" stroke-width="8" />
+  <circle cx="256" cy="212" r="13" fill="#fef08a" />
+
+  <!-- Security Laurel / Arc detail -->
+  <path
+    d="M166 333C205 358 307 358 346 333"
+    stroke="#f59e0b"
+    stroke-width="16"
+    stroke-linecap="round"
+  />
+</svg>

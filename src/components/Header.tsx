@@ -6,7 +6,7 @@ import { calculateCurrentStreak } from '../utils/streak';
 import { Lightbulb, Shield, Trophy, User, Wifi, WifiOff, Sparkles, BookOpen, Swords, Sun, Moon, Monitor, ShieldCheck, HelpCircle, Volume2, VolumeX, Flame, Bell, Award, MessageSquareQuote, Sliders, FileText, Zap, Coins, ShoppingBag, Settings, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BranchIllustration } from './BranchIllustration';
-import { ReactiveAvatar } from './ReactiveAvatar';
+import { UserAvatar } from './UserAvatar';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 
@@ -459,17 +459,12 @@ export const Header: React.FC<HeaderProps> = ({
             }}
             title={`Perfil de ${profile.displayName || 'Candidato'} (${profile.totalXp} XP)`}
             aria-label="Abrir Perfil"
-            className="p-0.5 rounded-full hover:ring-2 hover:ring-amber-500/50 transition-all active:scale-95 cursor-pointer shrink-0"
+            className="p-0.5 rounded-full hover:ring-2 hover:ring-amber-500/50 transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center"
           >
-            <ReactiveAvatar
-              avatarId={profile.avatarId}
-              branch={profile.branch}
-              displayName={profile.displayName}
-              photoURL={profile.photoURL}
-              size="xs"
+            <UserAvatar
+              user={profile}
+              size="sm"
               showBranchBadge={true}
-              level={profile.level}
-              isVipSupporter={profile.isVipSupporter}
             />
           </button>
         </div>

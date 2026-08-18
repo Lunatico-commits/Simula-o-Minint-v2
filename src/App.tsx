@@ -14,7 +14,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { NotificationBanner } from './components/NotificationBanner';
-import { listenForDuelInvitations, checkAndTriggerDailyStudyReminder } from './utils/notifications';
+import { listenForDuelInvitations, listenForUserNotifications, checkAndTriggerDailyStudyReminder } from './utils/notifications';
 import { SupportProjectModal } from './components/SupportProjectModal';
 import { StudyMaterialsView } from './components/StudyMaterialsView';
 import { ShopView } from './components/ShopView';
@@ -484,9 +484,22 @@ export default function App() {
       });
     });
 
+    // 3. Listen for personal user notifications (e.g. NEW_FOLLOWER)
+    const unsubscribeUserNotifs = listenForUserNotifications(profile, (notif) => {
+      setActiveNotification({
+        id: notif.id || `notif_${Date.now()}`,
+        title: notif.title,
+        body: notif.body,
+        type: notif.type,
+      });
+    });
+
     return () => {
       if (typeof unsubscribeDuel === 'function') {
         unsubscribeDuel();
+      }
+      if (typeof unsubscribeUserNotifs === 'function') {
+        unsubscribeUserNotifs();
       }
     };
   }, [profile?.uid, loading]);
@@ -944,7 +957,13 @@ export default function App() {
             {activeTab === 'rankings' && (
               <RankingsView
                 currentProfile={profile}
-                onPlayDuel={() => requestTabChange('duel')}
+                onPlayDuel={(challenger) => {
+                  if (challenger?.uid) {
+                    setInviteRoomCode(challenger.uid);
+                  }
+                  requestTabChange('duel');
+                }}
+                onUpdateProfile={handleSaveProfile}
               />
             )}
 

@@ -4,6 +4,7 @@ import { UserProfile, MININTBranch } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { LEAGUES_CONFIG, getTimeUntilWeeklyReset, DuelLeague } from '../utils/league';
 import { RankChangeIndicator } from './RankingsView';
+import { UserAvatar } from './UserAvatar';
 import {
   Trophy,
   Swords,
@@ -289,8 +290,6 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                 (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
                 (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
               );
-              const bInfo = MININT_BRANCHES[top2.branch] || MININT_BRANCHES.PNA;
-              const avatar = getAvatarOption(top2.avatarId, top2.branch, top2.displayName);
 
               return (
                 <motion.div
@@ -306,13 +305,8 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                   }`}
                 >
                   <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">🥈 #2</span>
-                  <div className="relative my-1 shrink-0">
-                    <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-slate-400/50 overflow-hidden`}>
-                      <span className="text-sm sm:text-base">{avatar.symbol}</span>
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
-                      {top2.branch}
-                    </span>
+                  <div className="my-1 shrink-0 flex items-center justify-center">
+                    <UserAvatar user={top2} size="md" showBranchBadge={true} />
                   </div>
 
                   <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
@@ -352,8 +346,6 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                 (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
                 (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
               );
-              const bInfo = MININT_BRANCHES[top1.branch] || MININT_BRANCHES.PNA;
-              const avatar = getAvatarOption(top1.avatarId, top1.branch, top1.displayName);
 
               return (
                 <motion.div
@@ -369,13 +361,8 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                   }`}
                 >
                   <span className="text-[11px] font-black text-amber-400 whitespace-nowrap">👑 #1</span>
-                  <div className="relative my-1 shrink-0">
-                    <div className={`w-11 h-11 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br ${bInfo.badgeBg} border-2 border-amber-400 flex items-center justify-center overflow-hidden shadow-md`}>
-                      <span className="text-base sm:text-lg">{avatar.symbol}</span>
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
-                      {top1.branch}
-                    </span>
+                  <div className="my-1 shrink-0 flex items-center justify-center">
+                    <UserAvatar user={top1} size="lg" showBranchBadge={true} isFirstPlace={true} />
                   </div>
 
                   <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
@@ -415,8 +402,6 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                 (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
                 (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
               );
-              const bInfo = MININT_BRANCHES[top3.branch] || MININT_BRANCHES.PNA;
-              const avatar = getAvatarOption(top3.avatarId, top3.branch, top3.displayName);
 
               return (
                 <motion.div
@@ -432,13 +417,8 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                   }`}
                 >
                   <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">🥉 #3</span>
-                  <div className="relative my-1 shrink-0">
-                    <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center border border-amber-700/50 overflow-hidden`}>
-                      <span className="text-sm sm:text-base">{avatar.symbol}</span>
-                    </div>
-                    <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[7px] font-black rounded bg-slate-900 text-amber-400 border border-amber-500/40 font-mono whitespace-nowrap">
-                      {top3.branch}
-                    </span>
+                  <div className="my-1 shrink-0 flex items-center justify-center">
+                    <UserAvatar user={top3} size="md" showBranchBadge={true} />
                   </div>
 
                   <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
@@ -567,17 +547,8 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                       </div>
 
                       {/* Avatar */}
-                      <div className="relative shrink-0">
-                        <div
-                          className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-lg border ${
-                            isMe ? 'border-amber-400 ring-2 ring-amber-400/60 shadow-sm' : 'border-amber-500/30'
-                          } shadow-xs`}
-                        >
-                          {avatar.symbol}
-                        </div>
-                        <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded-md bg-slate-900 text-amber-400 border border-amber-500/40 font-mono">
-                          {candidate.branch}
-                        </span>
+                      <div className="shrink-0 flex items-center justify-center">
+                        <UserAvatar user={candidate} size="sm" showBranchBadge={true} />
                       </div>
 
                       {/* Candidate info */}
@@ -680,13 +651,8 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                 onClick={() => onSelectCandidate(currentProfile)}
                 className="flex items-center gap-3 min-w-0 cursor-pointer"
               >
-                <div className="relative shrink-0">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/30 to-amber-600/20 border border-amber-500 flex items-center justify-center text-lg shadow-sm">
-                    {getAvatarOption(currentProfile.avatarId, currentProfile.branch, currentProfile.displayName).symbol}
-                  </div>
-                  <span className="absolute -bottom-1 -right-1 px-1 py-0.2 text-[8px] font-black rounded-md bg-amber-500 text-slate-950 font-mono">
-                    {currentProfile.branch}
-                  </span>
+                <div className="shrink-0 flex items-center justify-center">
+                  <UserAvatar user={currentProfile} size="sm" showBranchBadge={true} />
                 </div>
 
                 <div className="min-w-0">

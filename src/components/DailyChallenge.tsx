@@ -9,6 +9,7 @@ import {
   fetchDailyLeaderboard 
 } from '../utils/dailyChallenge';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
+import { UserAvatar } from './UserAvatar';
 import { explainQuestionWithAI } from '../services/apiService';
 import { AIExplanationModal } from './AIExplanationModal';
 import { MemeGeneratorModal } from './MemeGeneratorModal';
@@ -386,6 +387,10 @@ export const DailyChallenge: React.FC<DailyChallengeProps> = ({
                         }`}>
                           {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
                         </span>
+
+                        <div className="shrink-0 flex items-center justify-center">
+                          <UserAvatar user={entry} size="xs" showBranchBadge={true} />
+                        </div>
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">

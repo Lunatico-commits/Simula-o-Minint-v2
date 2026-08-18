@@ -1,12 +1,55 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserProfile, MININTBranch, AcademicLevel, ACADEMIC_LEVELS } from '../types';
+import { UserProfile, MININTBranch, AcademicLevel, ACADEMIC_LEVELS, AvatarAccessories } from '../types';
 import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, BASIC_FREE_AVATARS, RANKS_MININT, getAvatarOption, getCandidateInitials } from '../data/branches';
 import { BADGES_LIST } from '../data/badges';
+import { 
+  ACCESSORY_FRAMES, 
+  ACCESSORY_BACKGROUNDS, 
+  ACCESSORY_BADGES, 
+  AccessoryItem, 
+  AccessoryCategory, 
+  getAccessoryItem 
+} from '../data/avatarAccessories';
+import { SHOP_ITEMS } from '../data/shopItems';
 import { generateReferralCode } from '../utils/referral';
 import { calculateCurrentStreak } from '../utils/streak';
-import { getSoundEnabled, setSoundEnabled, playClickSound } from '../utils/audio';
-import { Shield, Check, X, Award, MapPin, Zap, UserCheck, Flame, Gift, Copy, Share2, Users, GraduationCap, Coffee, Star, Volume2, VolumeX, BarChart3, ChevronRight, Sparkles, HelpCircle, LogOut, Coins, Lock, ShoppingBag, Sliders, User } from 'lucide-react';
+import { getSoundEnabled, setSoundEnabled, playClickSound, playCorrectSound } from '../utils/audio';
+import { fireConfetti } from '../utils/confetti';
+import { 
+  Shield, 
+  Check, 
+  X, 
+  Award, 
+  MapPin, 
+  Zap, 
+  UserCheck, 
+  Flame, 
+  Gift, 
+  Copy, 
+  Share2, 
+  Users, 
+  GraduationCap, 
+  Coffee, 
+  Star, 
+  Volume2, 
+  VolumeX, 
+  BarChart3, 
+  ChevronRight, 
+  Sparkles, 
+  HelpCircle, 
+  LogOut, 
+  Coins, 
+  Lock, 
+  ShoppingBag, 
+  Sliders, 
+  User,
+  Palette,
+  CheckCircle2,
+  Undo2,
+  Layers,
+  Glasses
+} from 'lucide-react';
 import { AccuracyDashboard } from './AccuracyDashboard';
 import { CircularXpProgressRing } from './CircularXpProgressRing';
 import { BranchIllustration } from './BranchIllustration';
@@ -41,7 +84,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onOpenCertificateModal,
   onOpenWelcomeTour,
 }) => {
-  const [activeTab, setActiveTab] = useState<'stats' | 'settings'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'customizer' | 'settings'>('stats');
   const [displayName, setDisplayName] = useState(profile.displayName || '');
   const [branch, setBranch] = useState<MININTBranch>(profile.branch || 'PNA');
   const [province, setProvince] = useState(profile.province || 'Luanda');
@@ -51,13 +94,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => getSoundEnabled());
   const [avatarReaction, setAvatarReaction] = useState<AvatarReactionType>('idle');
 
+  // Avatar Accessories state
+  const [accessories, setAccessories] = useState<AvatarAccessories>(
+    profile.avatarAccessories || { frame: 'frame_none', background: 'bg_default', badge: 'badge_none' }
+  );
+  const [customizerCategory, setCustomizerCategory] = useState<AccessoryCategory>('frames');
+  const [customizerFeedback, setCustomizerFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
   useEffect(() => {
     setDisplayName(profile.displayName || '');
     setBranch(profile.branch || 'PNA');
     setProvince(profile.province || 'Luanda');
     setAvatarId(profile.avatarId || 'pna_1');
     setAcademicLevel(profile.academicLevel || 'high_school');
-  }, [profile.displayName, profile.branch, profile.province, profile.avatarId, profile.academicLevel]);
+    setAccessories(
+      profile.avatarAccessories || { frame: 'frame_none', background: 'bg_default', badge: 'badge_none' }
+    );
+  }, [profile.displayName, profile.branch, profile.province, profile.avatarId, profile.academicLevel, profile.avatarAccessories]);
 
   const handleUpdateBranch = (newBranch: MININTBranch) => {
     setBranch(newBranch);
@@ -88,6 +141,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const selectedAvatar = getAvatarOption(avatarId, branch, displayName);
   const userReferralCode = profile.referralCode || generateReferralCode(profile.displayName || 'CANDIDATO');
 
+  // Equipped Uniform Name from Shop Items or Branch Defaults
+  const equippedShopItem = SHOP_ITEMS.find((item) => item.id === avatarId);
+  const currentUniformName = equippedShopItem?.name || selectedAvatar.label || `Farda Oficial ${branch}`;
+
   const handleCopyCode = () => {
     navigator.clipboard.writeText(userReferralCode);
     setCopied(true);
@@ -114,11 +171,117 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       branch,
       province,
       avatarId,
+      avatarAccessories: accessories,
       academicLevel,
       rankTitle: currentRank.title,
       referralCode: userReferralCode,
     });
     onClose();
+  };
+
+  // Accessory Selection & Purchase Logic
+  const handleSelectAccessory = (item: AccessoryItem) => {
+    playClickSound();
+    const currentPurchased = profile.purchasedItems || [];
+    const isUnlocked = item.cost === 0 || item.isDefault || currentPurchased.includes(item.id);
+    const categoryKey: 'frame' | 'background' | 'badge' =
+      item.category === 'frames' ? 'frame' : item.category === 'backgrounds' ? 'background' : 'badge';
+
+    if (isUnlocked) {
+      // Equip immediately
+      const updatedAccessories: AvatarAccessories = {
+        ...accessories,
+        [categoryKey]: item.id,
+        [item.category]: item.id,
+      };
+      setAccessories(updatedAccessories);
+      onSaveProfile({
+        avatarAccessories: updatedAccessories,
+        equippedFrame: updatedAccessories.frame,
+        equippedBackground: updatedAccessories.background,
+      });
+      setCustomizerFeedback({
+        text: `Equipado: ${item.name} ✨`,
+        type: 'success',
+      });
+      setTimeout(() => setCustomizerFeedback(null), 2500);
+      return;
+    }
+
+    // Locked Item -> Check userCoins
+    const userCoins = profile.minintCoins || 0;
+    if (userCoins < item.cost) {
+      setCustomizerFeedback({
+        text: `Créditos insuficientes! Precisa de mais ${item.cost - userCoins} Moedas. Cumpra missões diárias ou simulados para ganhar mais.`,
+        type: 'error',
+      });
+      setTimeout(() => setCustomizerFeedback(null), 3500);
+      return;
+    }
+
+    // Deduct coins & unlock & equip
+    const newCoins = userCoins - item.cost;
+    const newPurchased = [...currentPurchased, item.id];
+    const updatedAccessories: AvatarAccessories = {
+      ...accessories,
+      [categoryKey]: item.id,
+      [item.category]: item.id,
+    };
+
+    setAccessories(updatedAccessories);
+    onSaveProfile({
+      minintCoins: newCoins,
+      purchasedItems: newPurchased,
+      avatarAccessories: updatedAccessories,
+      equippedFrame: updatedAccessories.frame,
+      equippedBackground: updatedAccessories.background,
+    });
+
+    fireConfetti();
+    playCorrectSound();
+    setCustomizerFeedback({
+      text: `"${item.name}" desbloqueado e equipado com sucesso! (-${item.cost} Moedas) 🎖️`,
+      type: 'success',
+    });
+    setTimeout(() => setCustomizerFeedback(null), 3500);
+  };
+
+  // Reset accessories to default
+  const handleResetAccessories = () => {
+    playClickSound();
+    const defaultAccs: AvatarAccessories = {
+      frame: 'frame_none',
+      background: 'bg_default',
+      badge: 'badge_none',
+      frames: 'frame_none',
+      backgrounds: 'bg_default',
+      badges: 'badge_none',
+    };
+    setAccessories(defaultAccs);
+    onSaveProfile({
+      avatarAccessories: defaultAccs,
+      equippedFrame: 'frame_none',
+      equippedBackground: 'bg_default',
+    });
+    setCustomizerFeedback({
+      text: 'Acessórios redefinidos para a farda base original!',
+      type: 'success',
+    });
+    setTimeout(() => setCustomizerFeedback(null), 2500);
+  };
+
+  // List of accessories for current category
+  const getCurrentCategoryItems = (): AccessoryItem[] => {
+    switch (customizerCategory) {
+      case 'frames':
+        return ACCESSORY_FRAMES;
+      case 'backgrounds':
+        return ACCESSORY_BACKGROUNDS;
+      case 'badges':
+        return ACCESSORY_BADGES;
+      default:
+        return ACCESSORY_FRAMES;
+    }
   };
 
   return (
@@ -146,23 +309,36 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <p className="text-[11px] text-slate-600 dark:text-slate-400">Acompanhe o seu progresso e personalize as suas definições</p>
         </div>
 
-        {/* Compact Highlighted Top Avatar Preview with Compact Reaction Test */}
+        {/* Highlighted Top Avatar Preview with Accessories & Reaction Test */}
         <div className="bg-gradient-to-br from-amber-500/10 via-slate-50 to-amber-500/5 dark:from-amber-500/15 dark:via-[#0F1115] dark:to-[#16181D] border border-amber-500/30 rounded-2xl p-3 mb-3.5 flex flex-col items-center justify-center text-center shadow-md relative overflow-visible">
-          <div className="relative mb-1 flex items-center justify-center pt-8">
+          <div className="relative mb-1 flex flex-col items-center justify-center pt-8">
             <ReactiveAvatar
               avatarId={avatarId}
               branch={branch}
               displayName={displayName}
               photoURL={profile.photoURL}
+              accessories={accessories}
               size="xl"
               reaction={avatarReaction}
-              showBranchBadge={true}
-              showLevelBadge={true}
+              showBranchBadge={false}
+              showLevelBadge={false}
               level={profile.level || 1}
               isVipSupporter={profile.isVipSupporter}
               interactive={true}
               onReactionComplete={() => setAvatarReaction('idle')}
             />
+
+            {/* Badges alinhados lado a lado sob o avatar sem sobreposição */}
+            <div className="flex items-center justify-center gap-2 mt-2">
+              <div className="px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 border border-amber-500/50 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs font-mono">
+                <Zap size={11} className="text-amber-400 fill-amber-400" />
+                <span>Lv {profile.level || 1}</span>
+              </div>
+              <div className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 border border-amber-600/30 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs font-mono">
+                <BranchIllustration branch={branch} size={13} />
+                <span>{branch}</span>
+              </div>
+            </div>
           </div>
 
           <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-1.5 justify-center flex-wrap mt-0.5">
@@ -173,8 +349,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </span>
           </h3>
 
-          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-0.5">
-            Oficial {branch} • {province}
+          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-bold mt-0.5 flex items-center justify-center gap-1.5 flex-wrap">
+            <span>{currentUniformName}</span>
+            <span className="text-slate-400">•</span>
+            <span>{province}</span>
           </p>
 
           {/* Compact Reaction Buttons + Shop Link */}
@@ -218,7 +396,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 onClose();
                 if (onNavigateTab) onNavigateTab('shop');
               }}
-              title="Personalizar & Comprar Fardas na Loja"
+              title="Personalizar & Comprar Fardas Oficiais na Loja"
               className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shrink-0 transition-all cursor-pointer shadow-xs active:scale-95"
             >
               <ShoppingBag size={11} />
@@ -227,22 +405,38 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
         </div>
 
-        {/* Tab Navigation Controls (Segmented Bar) */}
-        <div className="grid grid-cols-2 gap-1 bg-slate-100 dark:bg-[#0F1115] p-1 rounded-xl mb-4 border border-slate-200 dark:border-white/5">
+        {/* Tab Navigation Controls (3 Tabs: Estatísticas, Personalizar Perfil, Definições) */}
+        <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-[#0F1115] p-1 rounded-xl mb-4 border border-slate-200 dark:border-white/5">
           <button
             type="button"
             onClick={() => {
               playClickSound();
               setActiveTab('stats');
             }}
-            className={`py-2 px-3 rounded-lg text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`py-2 px-1 sm:px-2 rounded-lg text-[10.5px] sm:text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
               activeTab === 'stats'
                 ? 'bg-amber-500 text-slate-950 shadow-md font-black'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5'
             }`}
           >
-            <BarChart3 size={14} />
-            <span>Estatísticas & Progresso</span>
+            <BarChart3 size={13} />
+            <span className="truncate">Estatísticas</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              setActiveTab('customizer');
+            }}
+            className={`py-2 px-1 sm:px-2 rounded-lg text-[10.5px] sm:text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              activeTab === 'customizer'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5'
+            }`}
+          >
+            <Palette size={13} />
+            <span className="truncate">Personalizar</span>
           </button>
 
           <button
@@ -251,14 +445,14 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               playClickSound();
               setActiveTab('settings');
             }}
-            className={`py-2 px-3 rounded-lg text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`py-2 px-1 sm:px-2 rounded-lg text-[10.5px] sm:text-xs font-extrabold uppercase tracking-wider flex items-center justify-center gap-1 transition-all cursor-pointer ${
               activeTab === 'settings'
                 ? 'bg-amber-500 text-slate-950 shadow-md font-black'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-white/5'
             }`}
           >
-            <Sliders size={14} />
-            <span>Definições do Perfil</span>
+            <Sliders size={13} />
+            <span className="truncate">Definições</span>
           </button>
         </div>
 
@@ -270,22 +464,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             transition={{ duration: 0.2 }}
             className="space-y-3.5"
           >
-            {/* Circular SVG XP Progress Ring for Certificate */}
-            <CircularXpProgressRing totalXp={profile.totalXp || 0} targetXp={50000} />
+            {/* XP Circular Progress Level Card */}
+            <div>
+              <CircularXpProgressRing
+                totalXp={profile.totalXp}
+                currentRank={currentRank}
+                rankIndex={RANKS_MININT.findIndex(r => r.title === currentRank.title)}
+                totalRanks={RANKS_MININT.length}
+                allRanks={RANKS_MININT}
+              />
+            </div>
 
-            {/* Quick Metrics Summary Card */}
+            {/* Quick Stats Grid */}
             {(() => {
               const streakInfo = calculateCurrentStreak(profile);
               return (
-                <div className="bg-slate-50 dark:bg-[#0F1115] border border-slate-200 dark:border-white/5 rounded-xl p-3 grid grid-cols-5 gap-1 text-center shadow-xs">
-                  <div>
-                    <div className="flex items-center justify-center text-amber-600 dark:text-amber-500 text-xs font-mono font-bold gap-0.5">
-                      <Zap size={12} />
-                      <span>{profile.totalXp}</span>
-                    </div>
-                    <p className="text-[9px] text-slate-500 dark:text-slate-500 mt-0.5 uppercase tracking-wider font-mono">XP Total</p>
-                  </div>
-
+                <div className="grid grid-cols-4 gap-1.5 p-2 bg-slate-50 dark:bg-[#0F1115] rounded-xl border border-slate-200 dark:border-white/5 text-center">
                   <div>
                     <div className="flex items-center justify-center text-yellow-600 dark:text-yellow-400 text-xs font-mono font-bold gap-0.5">
                       <Coins size={12} className="fill-yellow-400/80" />
@@ -419,9 +613,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               const hasLendaConcurso = unlockedSet.has('veterano_minint') || unlockedSet.has('Lenda do Concurso');
               const requiredBadgesCount = (hasEstudiosoOuro ? 1 : 0) + (hasLendaConcurso ? 1 : 0);
 
-              const totalQuestionsAnswered = (profile.correctAnswers || 0) + (profile.incorrectAnswers || 0);
+              const totalQuestionsAnswered = (profile.correctAnswersCount || 0) + (profile.totalQuestionsAnswered || 0);
               const accuracy = totalQuestionsAnswered > 0 
-                ? Math.round(((profile.correctAnswers || 0) / totalQuestionsAnswered) * 100) 
+                ? Math.round(((profile.correctAnswersCount || 0) / totalQuestionsAnswered) * 100) 
                 : 100;
 
               const xpRatio = Math.min(1, (profile.totalXp || 0) / 50000);
@@ -434,57 +628,57 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               return (
                 <div className={`w-full rounded-2xl p-3.5 border transition-all shadow-md relative overflow-hidden ${
                   isEligible 
-                    ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-amber-600/10 border-amber-500/60'
+                    ? 'bg-gradient-to-br from-amber-500/20 via-slate-900 to-amber-600/10 border-amber-500/60' 
                     : 'bg-slate-50 dark:bg-[#0F1115] border-slate-200 dark:border-white/10'
                 }`}>
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className={`p-2.5 rounded-xl border shrink-0 ${
-                        isEligible
-                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md animate-pulse'
-                          : 'bg-slate-200 dark:bg-white/10 text-slate-500 border-slate-300 dark:border-white/10'
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold ${
+                        isEligible ? 'bg-amber-500 text-slate-950 shadow-sm' : 'bg-slate-200 dark:bg-white/10 text-slate-400'
                       }`}>
-                        <Award size={18} />
+                        <GraduationCap size={18} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/30">
-                            {isEligible ? 'DISPONÍVEL ★ 100%' : `PROGRESSO: ${prepProgress}%`}
-                          </span>
-                        </div>
-                        <h4 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight mt-0.5">
-                          Certificado de Preparação MININT
+                        <h4 className="text-xs font-black uppercase tracking-tight text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <span>Certificado de Preparação MININT</span>
+                          {isEligible && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[9px] font-mono font-bold">
+                              DISPONÍVEL
+                            </span>
+                          )}
                         </h4>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Comprovativo digital de aptidão e preparação intensiva
+                        </p>
                       </div>
                     </div>
                   </div>
 
-                  {!isEligible && (
-                    <div className="space-y-1 my-2">
-                      <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                        <div 
-                          className="bg-gradient-to-r from-amber-500 to-amber-400 h-full rounded-full transition-all duration-500"
-                          style={{ width: `${prepProgress}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-                        Meta para o Certificado: 50.000 XP, 80% acertos & 2 Badges exigidas.
-                      </p>
+                  {/* Progress bar */}
+                  <div className="space-y-1 my-2.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold">
+                      <span className="text-slate-600 dark:text-slate-400">Requisitos Concluídos</span>
+                      <span className="font-mono text-amber-600 dark:text-amber-400">{prepProgress}%</span>
                     </div>
-                  )}
-
-                  <p className="text-[10.5px] text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5">
-                    {isEligible
-                      ? 'Parabéns! Concluiu com sucesso o programa de preparação. Clique abaixo para gerar o seu Certificado Oficial.'
-                      : 'Gere o seu documento comprovativo oficial de preparação para o Concurso Público do Ministério do Interior.'}
-                  </p>
+                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-white/10 overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          isEligible ? 'bg-gradient-to-r from-emerald-500 to-amber-500' : 'bg-amber-500'
+                        }`}
+                        style={{ width: `${prepProgress}%` }}
+                      />
+                    </div>
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => {
-                      if (onOpenCertificateModal) onOpenCertificateModal();
+                      playClickSound();
+                      if (onOpenCertificateModal) {
+                        onOpenCertificateModal();
+                      }
                     }}
-                    className={`w-full py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md active:scale-95 ${
+                    className={`w-full py-2 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm ${
                       isEligible
                         ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/20'
                         : 'bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 text-amber-400 border border-amber-500/30'
@@ -499,7 +693,232 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </motion.div>
         )}
 
-        {/* TAB 2: DEFINIÇÕES DO PERFIL */}
+        {/* TAB 2: PERSONALIZAR PERFIL (EDITOR DE ACESSÓRIOS & COSMÉTICOS) */}
+        {activeTab === 'customizer' && (
+          <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2 }}
+            className="space-y-3.5"
+          >
+            {/* Header & Notice: Complementary to Official Shop */}
+            <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 dark:to-[#0F1115] border border-amber-500/30 shadow-xs">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Palette size={15} className="text-amber-500 shrink-0" />
+                  <span className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight">
+                    Editor de Acessórios
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-yellow-600 dark:text-yellow-400 text-xs font-mono font-black">
+                  <Coins size={12} className="fill-yellow-400/80" />
+                  <span>{profile.minintCoins || 0} Moedas</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                Personalize molduras, fundos e distintivos sobre a sua farda actual. As fardas completas são obtidas exclusivamente na{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onNavigateTab) onNavigateTab('shop');
+                  }}
+                  className="font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-0.5 cursor-pointer"
+                >
+                  <span>Loja Oficial</span>
+                  <ShoppingBag size={10} />
+                </button>.
+              </p>
+            </div>
+
+            {/* Customizer Feedback Toast */}
+            <AnimatePresence>
+              {customizerFeedback && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border shadow-sm ${
+                    customizerFeedback.type === 'success'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-rose-500/15 border-rose-500/40 text-rose-700 dark:text-rose-300'
+                  }`}
+                >
+                  {customizerFeedback.type === 'success' ? (
+                    <CheckCircle2 size={15} className="shrink-0 text-emerald-500" />
+                  ) : (
+                    <Lock size={15} className="shrink-0 text-rose-500" />
+                  )}
+                  <span className="text-[11px] leading-tight">{customizerFeedback.text}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Category Selector Sub-Tabs: 3 Guaranteed Composition Categories */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 dark:bg-[#0F1115] rounded-xl border border-slate-200 dark:border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setCustomizerCategory('frames');
+                }}
+                className={`py-2 px-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-tight flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  customizerCategory === 'frames'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <span>🖼️</span>
+                <span className="truncate">Molduras</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setCustomizerCategory('backgrounds');
+                }}
+                className={`py-2 px-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-tight flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  customizerCategory === 'backgrounds'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <span>🎨</span>
+                <span className="truncate">Fundos</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setCustomizerCategory('badges');
+                }}
+                className={`py-2 px-1.5 rounded-lg text-[11px] font-extrabold uppercase tracking-tight flex flex-col sm:flex-row items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  customizerCategory === 'badges'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                }`}
+              >
+                <span>🎖️</span>
+                <span className="truncate">Pins & Selos</span>
+              </button>
+            </div>
+
+            {/* Accessories Grid List */}
+            <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-1 no-scrollbar">
+              {getCurrentCategoryItems().map((item) => {
+                const purchasedList = profile.purchasedItems || [];
+                const isOwned = item.cost === 0 || item.isDefault || purchasedList.includes(item.id);
+                const categoryKey = item.category === 'frames' ? 'frame' : item.category === 'backgrounds' ? 'background' : 'badge';
+                const equippedId = (accessories as any)[categoryKey] || (accessories as any)[item.category];
+                const isEquipped = equippedId === item.id || (!equippedId && item.isDefault);
+
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => handleSelectAccessory(item)}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2.5 transition-all cursor-pointer ${
+                      isEquipped
+                        ? 'bg-amber-500/15 border-amber-500 ring-1 ring-amber-500/50 shadow-sm'
+                        : isOwned
+                        ? 'bg-slate-50 dark:bg-[#0F1115] border-slate-200 dark:border-white/10 hover:border-amber-500/40'
+                        : 'bg-slate-50/70 dark:bg-[#0F1115]/70 border-slate-200/80 dark:border-white/5 hover:border-slate-300 dark:hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Visual Icon / Thumbnail */}
+                      <div className="w-9 h-9 rounded-lg bg-slate-200/80 dark:bg-white/10 flex items-center justify-center text-lg shrink-0 border border-black/5 dark:border-white/10 shadow-xs relative">
+                        <span>{item.icon}</span>
+                        {isEquipped && (
+                          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-[9px] font-black shadow-xs">
+                            ✓
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Name & Description */}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                            {item.name}
+                          </h4>
+                          {item.isDefault && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-400 text-[8.5px] font-mono">
+                              Grátis
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[9.5px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                          {item.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Action Button / Ownership Badge */}
+                    <div className="shrink-0 flex items-center">
+                      {isEquipped ? (
+                        <span className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                          <CheckCircle2 size={11} />
+                          <span>Equipado</span>
+                        </span>
+                      ) : isOwned ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectAccessory(item);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500 text-amber-700 dark:text-amber-300 hover:text-slate-950 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer shadow-xs active:scale-95"
+                        >
+                          Equipar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectAccessory(item);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-slate-900 dark:bg-slate-800 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 text-[10px] font-black flex items-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
+                        >
+                          <Coins size={11} className="fill-yellow-400" />
+                          <span>{item.cost} M</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Quick Actions Footer inside Customizer */}
+            <div className="pt-2 border-t border-slate-200 dark:border-white/10 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={handleResetAccessories}
+                className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 text-[10.5px] font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Undo2 size={12} />
+                <span>Restaurar Padrão</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (onNavigateTab) onNavigateTab('shop');
+                }}
+                className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[10.5px] font-black flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <ShoppingBag size={13} />
+                <span>Loja de Fardas</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB 3: DEFINIÇÕES DO PERFIL */}
         {activeTab === 'settings' && (
           <motion.form
             initial={{ opacity: 0, y: 6 }}
@@ -521,6 +940,27 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 placeholder="Ex: Manuel Agostinho"
                 className="w-full bg-slate-50 dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 transition-colors shadow-xs"
               />
+            </div>
+
+            {/* Shortcut to Personalizar Perfil */}
+            <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-amber-500/5 border border-amber-500/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Palette size={16} className="text-amber-500" />
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-slate-100">Personalizar Cosméticos</p>
+                  <p className="text-[9.5px] text-slate-500 dark:text-slate-400">Molduras, fundos, pins e adereços de avatar</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setActiveTab('customizer');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 text-[10px] font-black uppercase tracking-wider hover:bg-amber-400 transition-all cursor-pointer shadow-xs"
+              >
+                Abrir Editor
+              </button>
             </div>
 
             {/* MININT Branch Selection */}
@@ -779,4 +1219,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     </div>
   );
 };
+
+export default ProfileModal;
 
