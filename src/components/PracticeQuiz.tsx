@@ -399,10 +399,10 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
     <div className="max-w-md mx-auto px-4 py-4 text-slate-900 dark:text-slate-100">
       {/* SETUP VIEW */}
       {quizState === 'setup' && (
-        <div className="space-y-4 animate-fadeIn">
+        <div className="space-y-2.5 sm:space-y-3 pb-24 sm:pb-28 animate-fadeIn">
           {/* Header Banner */}
           <div
-            className="border border-amber-500/40 dark:border-amber-500/40 rounded-2xl p-5 text-center shadow-lg dark:shadow-2xl relative overflow-hidden group bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950"
+            className="border border-amber-500/40 dark:border-amber-500/40 rounded-2xl p-3.5 sm:p-4 text-center shadow-lg dark:shadow-2xl relative overflow-hidden group bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950"
             style={{
               backgroundImage: `url(${bgInsignias})`,
               backgroundSize: 'cover',
@@ -414,37 +414,37 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
             <div className="absolute inset-0 bg-slate-950/45 dark:bg-slate-950/50 backdrop-blur-[0.5px] pointer-events-none z-0" />
 
             {/* Top Accent Line */}
-            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 opacity-90 z-10" />
-            <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/15 rounded-full blur-2xl pointer-events-none z-10" />
-            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl pointer-events-none z-10" />
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 opacity-90 z-10" />
+            <div className="absolute -top-12 -right-12 w-28 h-28 bg-amber-500/15 rounded-full blur-2xl pointer-events-none z-10" />
+            <div className="absolute -bottom-12 -left-12 w-28 h-28 bg-yellow-500/10 rounded-full blur-2xl pointer-events-none z-10" />
 
             {/* Foreground Content in z-10 */}
             <div className="relative z-10">
               {/* Badges / Tags */}
-              <div className="flex items-center justify-center gap-2 mb-3 flex-wrap">
-                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-400 border border-amber-500/50 shadow-md backdrop-blur-md drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]">
+              <div className="flex items-center justify-center gap-1.5 mb-2 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-900/85 text-amber-400 border border-amber-500/50 shadow-xs backdrop-blur-md">
                   <span>🎯</span>
-                  <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">MODO PREPARAÇÃO</span>
+                  <span>MODO PREPARAÇÃO</span>
                 </span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-300 border border-amber-500/50 shadow-md backdrop-blur-md drop-shadow-[0_2px_6px_rgba(0,0,0,0.85)]">
+                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-900/85 text-amber-300 border border-amber-500/50 shadow-xs backdrop-blur-md">
                   <span>🔥</span>
-                  <span className="drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">PLATAFORMA NÚMERO 1</span>
+                  <span>PLATAFORMA N.º 1</span>
                 </span>
               </div>
 
               {/* Icon */}
-              <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-900/85 border border-amber-500/50 text-amber-400 mb-2.5 shadow-[0_0_20px_rgba(245,158,11,0.3)] backdrop-blur-md drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)]">
-                <BookOpen size={24} className="stroke-[2.5] drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]" />
+              <div className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-slate-900/85 border border-amber-500/50 text-amber-400 mb-1.5 shadow-[0_0_15px_rgba(245,158,11,0.25)] backdrop-blur-md">
+                <BookOpen size={18} className="stroke-[2.5]" />
               </div>
 
               {/* Main Title */}
-              <h2 className="text-base sm:text-lg font-black text-white uppercase tracking-tight leading-snug drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_4px_rgba(0,0,0,0.9)]">
-                PREPARA-TE PARA A TUA VAGA NO <span className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent filter drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">MININT</span>
+              <h2 className="text-sm sm:text-base font-black text-white uppercase tracking-tight leading-tight drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)]">
+                PREPARA-TE PARA A TUA VAGA NO <span className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 bg-clip-text text-transparent">MININT</span>
               </h2>
 
               {/* Subtitle */}
-              <p className="text-xs font-semibold text-slate-100 dark:text-slate-100 mt-2 max-w-sm mx-auto leading-relaxed drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)] [text-shadow:_0_1px_3px_rgba(0,0,0,0.9)] bg-slate-950/70 p-2.5 rounded-xl border border-white/10 backdrop-blur-xs">
-                <strong className="text-amber-400 font-bold drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">A disciplina de hoje é a aprovação de amanhã.</strong> Treina com questões atualizadas de Legislação, Português e Cultura Geral e garante o teu futuro!
+              <p className="text-[11px] font-semibold text-slate-100 dark:text-slate-100 mt-1.5 max-w-sm mx-auto leading-snug bg-slate-950/70 p-2 rounded-xl border border-white/10 backdrop-blur-xs">
+                <strong className="text-amber-400 font-bold">A disciplina de hoje é a aprovação de amanhã.</strong> Treina com questões atualizadas e garante a tua vaga!
               </p>
             </div>
           </div>
@@ -456,52 +456,52 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
           <button
             type="button"
             onClick={() => onNavigateTab && onNavigateTab('desafio')}
-            className="w-full text-left bg-gradient-to-br from-amber-950 via-slate-900 to-slate-950 border border-amber-500/50 rounded-2xl p-4 shadow-lg hover:border-amber-400 transition-all group relative overflow-hidden cursor-pointer"
+            className="w-full text-left bg-gradient-to-br from-amber-950 via-slate-900 to-slate-950 border border-amber-500/50 rounded-2xl p-2.5 sm:p-3 shadow-lg hover:border-amber-400 transition-all group relative overflow-hidden cursor-pointer"
           >
-            <div className="absolute top-0 right-0 -mr-6 -mt-6 w-28 h-28 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
+            <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
             
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 group-hover:scale-105 transition-transform">
-                  <Flame size={24} className="fill-amber-400 animate-pulse" />
+            <div className="flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 group-hover:scale-105 transition-transform">
+                  <Flame size={20} className="fill-amber-400 animate-pulse" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-xs font-black text-amber-300 uppercase tracking-tight">Desafio Diário de Hoje</span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-300 border border-amber-500/40 font-black">+150 XP</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/30 text-amber-300 border border-amber-500/40 font-black">+150 XP</span>
                   </div>
-                  <p className="text-[11px] text-slate-300 mt-0.5">
+                  <p className="text-[10px] sm:text-[11px] text-slate-300 mt-0.5">
                     10 Questões cronometradas • Ranking diário de Angola
                   </p>
                 </div>
               </div>
 
-              <div className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 group-hover:translate-x-1 transition-transform">
-                <ArrowRight size={16} />
+              <div className="w-7 h-7 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0 group-hover:translate-x-0.5 transition-transform">
+                <ArrowRight size={14} />
               </div>
             </div>
           </button>
 
           {/* 3. MODO DE TREINO */}
           <div>
-            <label className="block text-[11px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 mb-2 font-bold">
+            <label className="block text-[10px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 mb-1.5 font-bold">
               Modo de Treino
             </label>
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => setQuizMode('rapido')}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
                   quizMode === 'rapido'
                     ? 'bg-amber-500 text-slate-950 border-amber-600 font-bold shadow-md'
                     : 'bg-white dark:bg-[#0F1115] border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold text-xs mb-1">
+                <div className="flex items-center gap-1.5 font-bold text-xs mb-0.5">
                   <Zap size={14} className={quizMode === 'rapido' ? 'text-slate-950' : 'text-amber-500'} />
                   <span>Simulado Rápido</span>
                 </div>
-                <p className={`text-[10px] ${quizMode === 'rapido' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>
+                <p className={`text-[9.5px] ${quizMode === 'rapido' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>
                   5 Questões • {getTimePerQuestion(difficulty)}s por questão
                 </p>
               </button>
@@ -509,35 +509,35 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
               <button
                 type="button"
                 onClick={() => setQuizMode('exame')}
-                className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer ${
                   quizMode === 'exame'
                     ? 'bg-amber-500 text-slate-950 border-amber-600 font-bold shadow-md'
                     : 'bg-white dark:bg-[#0F1115] border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-bold text-xs mb-1">
+                <div className="flex items-center gap-1.5 font-bold text-xs mb-0.5">
                   <Clock size={14} className={quizMode === 'exame' ? 'text-slate-950' : 'text-amber-500'} />
                   <span>Exame Cronometrado</span>
                 </div>
-                <p className={`text-[10px] ${quizMode === 'exame' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>
-                  10 Questões • {getTimePerQuestion(difficulty)}s/q ({formatTimeSpent(10 * getTimePerQuestion(difficulty))} total)
+                <p className={`text-[9.5px] ${quizMode === 'exame' ? 'text-slate-950/80' : 'text-slate-500 dark:text-slate-400'}`}>
+                  10 Questões • {getTimePerQuestion(difficulty)}s/q
                 </p>
               </button>
             </div>
           </div>
 
-          {/* 4. SELETOR DE DIFICULDADE (FÁCIL / MÉDIO / DIFÍCIL) */}
+          {/* 4. SELETOR DE DIFICULDADE (FÁCIL / MÉDIO / DIFÍCIL EM LINHA ÚNICA DE 3 COLUNAS) */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-[11px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold">
-                Nível de Dificuldade & Bónus de XP
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[10px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold">
+                Nível de Dificuldade
               </label>
-              <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+              <span className="text-[9.5px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-full border border-amber-500/20">
                 {difficulty === 'difícil' ? '🔥 2.0x XP' : difficulty === 'médio' ? '⚡ 1.5x XP' : '🌱 1.0x XP'}
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
               {[
                 {
                   id: 'fácil',
@@ -545,8 +545,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                   time: '45s',
                   multiplier: '1.0x XP',
                   tagColor: 'text-emerald-500 dark:text-emerald-400',
-                  badgeBg: 'bg-emerald-500/15 border-emerald-500/30',
-                  desc: 'Mais tempo para raciocinar',
+                  desc: 'Mais tempo',
                 },
                 {
                   id: 'médio',
@@ -554,8 +553,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                   time: '30s',
                   multiplier: '1.5x XP',
                   tagColor: 'text-amber-500 dark:text-amber-400',
-                  badgeBg: 'bg-amber-500/15 border-amber-500/30',
-                  desc: 'Padrão oficial do concurso',
+                  desc: 'Oficial',
                 },
                 {
                   id: 'difícil',
@@ -563,8 +561,7 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                   time: '15s',
                   multiplier: '2.0x XP',
                   tagColor: 'text-rose-500 dark:text-rose-400',
-                  badgeBg: 'bg-rose-500/15 border-rose-500/30',
-                  desc: 'Alta pressão e XP duplo',
+                  desc: 'XP duplo',
                 },
               ].map((diff) => {
                 const isSelected = difficulty === diff.id;
@@ -573,31 +570,31 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                     key={diff.id}
                     type="button"
                     onClick={() => setDifficulty(diff.id as any)}
-                    className={`p-2.5 sm:p-3 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                    className={`p-2 sm:p-2.5 rounded-xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
                       isSelected
                         ? 'bg-amber-500/15 border-amber-500 text-slate-900 dark:text-slate-100 shadow-md ring-1 ring-amber-500/40'
                         : 'bg-white dark:bg-[#0F1115] border-slate-200 dark:border-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'
                     }`}
                   >
                     <div className="flex items-center justify-between w-full mb-1">
-                      <span className={`text-xs font-black capitalize ${isSelected ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+                      <span className={`text-[11px] font-black capitalize ${isSelected ? 'text-amber-600 dark:text-amber-400' : ''}`}>
                         {diff.label}
                       </span>
                       {isSelected && (
-                        <div className="w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-[9px]">
-                          <Check size={10} strokeWidth={3} />
+                        <div className="w-3 h-3 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-[8px]">
+                          <Check size={8} strokeWidth={3} />
                         </div>
                       )}
                     </div>
 
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-1">
-                        <Clock size={10} className="text-slate-400 shrink-0" />
-                        <span className="text-[10px] font-mono font-bold text-slate-600 dark:text-slate-300">
+                        <Clock size={9} className="text-slate-400 shrink-0" />
+                        <span className="text-[9.5px] font-mono font-bold text-slate-600 dark:text-slate-300">
                           {diff.time}/q
                         </span>
                       </div>
-                      <span className={`text-[10px] font-mono font-black block ${diff.tagColor}`}>
+                      <span className={`text-[9.5px] font-mono font-black block ${diff.tagColor}`}>
                         {diff.multiplier}
                       </span>
                     </div>
@@ -609,24 +606,24 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
           {/* 5. SELECIONE A MATÉRIA */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-[11px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-[10px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-400 font-bold">
                 Seleccione a Matéria
               </label>
-              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center gap-1">
+              <span className="text-[9.5px] text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center gap-0.5">
                 <span>Deslize</span>
                 <span>➔</span>
               </span>
             </div>
 
-            <div className="flex overflow-x-auto gap-2.5 pb-2 snap-x no-scrollbar -mx-1 px-1">
+            <div className="flex overflow-x-auto gap-2 pb-1.5 snap-x no-scrollbar -mx-1 px-1">
               {[
-                { id: 'todas', label: 'Todas as Matérias', desc: 'Simulado Misto MININT', icon: Layers, color: 'text-amber-500' },
-                { id: 'informatica_basica', label: 'Informática Básica', desc: 'Windows, Word, Excel, Net & Email', icon: Laptop, color: 'text-cyan-500' },
-                { id: 'legislacao_minint', label: 'Legislação do MININT', desc: 'PNA, SIC, SME, SP, SPCB e Estatutos', icon: Shield, color: 'text-amber-500' },
-                { id: 'direito_constituicao', label: 'Direito e Constituição (CRA)', desc: 'Constituição (CRA), Direito & LGTFP', icon: Scale, color: 'text-purple-500' },
-                { id: 'historia_cultura_geral', label: 'História e Cultura Geral', desc: 'História, Geografia e Angola', icon: Globe, color: 'text-emerald-500' },
-                { id: 'portugues_raciocinio', label: 'Língua Portuguesa e Raciocínio Lógico', desc: 'Gramática, Redacção, Lógica & Mat.', icon: FileText, color: 'text-blue-500' },
+                { id: 'todas', label: 'Todas as Matérias', desc: 'Simulado Misto MININT', icon: Layers, color: 'text-amber-400' },
+                { id: 'informatica_basica', label: 'Informática Básica', desc: 'Windows, Word, Excel, Net & Email', icon: Laptop, color: 'text-cyan-400' },
+                { id: 'legislacao_minint', label: 'Legislação do MININT', desc: 'PNA, SIC, SME, SP, SPCB e Estatutos', icon: Shield, color: 'text-amber-400' },
+                { id: 'direito_constituicao', label: 'Direito e Constituição (CRA)', desc: 'Constituição (CRA), Direito & LGTFP', icon: Scale, color: 'text-purple-400' },
+                { id: 'historia_cultura_geral', label: 'História e Cultura Geral', desc: 'História, Geografia e Angola', icon: Globe, color: 'text-emerald-400' },
+                { id: 'portugues_raciocinio', label: 'Língua Portuguesa e Raciocínio Lógico', desc: 'Gramática, Redacção, Lógica & Mat.', icon: FileText, color: 'text-blue-400' },
               ].map((cat) => {
                 const IconComp = cat.icon;
                 const isSelected = selectedCategory === cat.id;
@@ -635,25 +632,25 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedCategory(cat.id as any)}
-                    className={`min-w-[175px] max-w-[190px] p-3 rounded-xl border text-left flex flex-col justify-between snap-start transition-all cursor-pointer relative shrink-0 ${
+                    className={`min-w-[155px] max-w-[170px] p-2.5 rounded-xl border text-left flex flex-col justify-between snap-start transition-all cursor-pointer relative shrink-0 ${
                       isSelected
-                        ? 'bg-amber-500/10 border-amber-500 text-slate-900 dark:text-slate-100 shadow-md ring-1 ring-amber-500/30'
-                        : 'bg-white dark:bg-[#0F1115] border-slate-200 dark:border-white/5 text-slate-800 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5'
+                        ? 'bg-slate-900 border-2 border-amber-500 text-white shadow-lg shadow-amber-500/15 ring-1 ring-amber-500/50'
+                        : 'bg-slate-950/80 dark:bg-[#0F1115] border-slate-800 dark:border-white/5 text-slate-300 hover:border-slate-700 hover:bg-slate-900/60'
                     }`}
                   >
-                    <div className="flex items-center justify-between w-full mb-2">
-                      <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-100 dark:bg-slate-800 ' + cat.color}`}>
-                        <IconComp size={16} />
+                    <div className="flex items-center justify-between w-full mb-1.5">
+                      <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-amber-500 text-slate-950 font-black shadow-xs' : 'bg-slate-800/80 ' + cat.color}`}>
+                        <IconComp size={14} />
                       </div>
                       {isSelected && (
-                        <div className="w-4 h-4 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-[10px] shadow-xs">
-                          <Check size={11} strokeWidth={3} />
+                        <div className="w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black text-[9px] shadow-xs">
+                          <Check size={10} strokeWidth={3} />
                         </div>
                       )}
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight">{cat.label}</p>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{cat.desc}</p>
+                      <p className={`text-[11px] font-bold leading-tight ${isSelected ? 'text-amber-300' : 'text-slate-200'}`}>{cat.label}</p>
+                      <p className={`text-[9.5px] mt-0.5 truncate ${isSelected ? 'text-slate-300 font-medium' : 'text-slate-400'}`}>{cat.desc}</p>
                     </div>
                   </button>
                 );
@@ -661,28 +658,19 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
             </div>
           </div>
 
-          {/* 5. INICIAR SIMULADO AGORA */}
-          <button
-            onClick={handleStartQuiz}
-            className="w-full py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-md flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer uppercase tracking-wider"
-          >
-            <span>INICIAR SIMULADO AGORA</span>
-            <ArrowRight size={16} />
-          </button>
-
-          {/* 6. PAINEL DE MISSÕES DIÁRIAS (Abaixo do botão Iniciar Simulado) */}
+          {/* 6. PAINEL DE MISSÕES DIÁRIAS */}
           <DailyMissions profile={profile} onClaimXp={(xpAmount, coinsAmount) => onUpdateStats(0, 0, xpAmount, false, undefined, false, coinsAmount)} />
 
           {/* WhatsApp Community Card */}
-          <div className="bg-[#0b141a] dark:bg-[#0b141a] border border-[#25D366]/40 rounded-2xl p-4 sm:p-5 text-white shadow-xl shadow-[#25D366]/10 relative overflow-hidden group">
+          <div className="bg-[#0b141a] dark:bg-[#0b141a] border border-[#25D366]/40 rounded-2xl p-3.5 sm:p-4 text-white shadow-xl shadow-[#25D366]/10 relative overflow-hidden group">
             {/* Ambient Green Lights */}
-            <div className="absolute -top-12 -right-12 w-32 h-32 bg-[#25D366]/20 rounded-full blur-2xl pointer-events-none" />
-            <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-[#25D366]/15 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -top-12 -right-12 w-28 h-28 bg-[#25D366]/20 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-12 -left-12 w-28 h-28 bg-[#25D366]/15 rounded-full blur-2xl pointer-events-none" />
 
-            <div className="relative z-10 space-y-3">
+            <div className="relative z-10 space-y-2.5">
               {/* Top Badge */}
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30 shadow-2xs">
+                <span className="inline-flex items-center gap-1.5 text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30 shadow-2xs">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#25D366] animate-pulse" />
                   <span>COMUNIDADE EXCLUSIVA • MININT Angola</span>
                 </span>
@@ -690,10 +678,10 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
               {/* Title & Description */}
               <div>
-                <h3 className="text-sm sm:text-base font-black text-white tracking-tight leading-snug">
+                <h3 className="text-xs sm:text-sm font-black text-white tracking-tight leading-snug">
                   Junta-te ao Grupo Oficial no WhatsApp
                 </h3>
-                <p className="text-xs text-slate-300 mt-1.5 leading-relaxed font-medium">
+                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed font-medium">
                   Recebe alertas de edital em primeira mão, troca materiais de estudo com outros candidatos e tira dúvidas em tempo real.
                 </p>
               </div>
@@ -703,13 +691,27 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
                 href="https://chat.whatsapp.com/L1nLLLK8M4xGlSGUfzK6ID?s=cl&p=a&ilr=4"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full py-3 px-4 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20 transition-all active:scale-[0.98] cursor-pointer"
+                className="w-full py-2.5 px-3.5 rounded-xl bg-[#25D366] hover:bg-[#20bd5a] text-slate-950 font-extrabold text-[11px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-[#25D366]/20 transition-all active:scale-[0.98] cursor-pointer"
               >
-                <svg className="w-5 h-5 fill-current shrink-0" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24">
                   <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984 0 1.762.459 3.48 1.332 5.001L2 22l5.12-1.338c1.462.798 3.106 1.218 4.887 1.219h.005c5.505 0 9.988-4.479 9.989-9.985.001-2.668-1.034-5.176-2.918-7.062C17.199 3.048 14.68 2 12.012 2zm5.823 14.155c-.247.697-1.442 1.33-1.992 1.405-.515.071-1.185.105-3.393-.81-2.825-1.17-4.643-4.041-4.784-4.23-.14-.188-1.148-1.528-1.148-2.915 0-1.386.726-2.068.984-2.35.258-.282.563-.352.751-.352.188 0 .376.002.54.01.173.008.405-.065.634.484.235.564.8 1.95.87 2.091.07.141.117.306.023.494-.094.188-.141.305-.282.47-.141.165-.296.368-.423.494-.141.14-.288.293-.124.575.165.282.732 1.209 1.572 1.957 1.08 0.962 1.99 1.26 2.272 1.399.282.141.447.118.611-.07.165-.188.705-.823.893-1.105.188-.282.376-.235.634-.141.258.094 1.644.775 1.926.916.282.141.47.211.54.329.07.117.07.681-.177 1.378z" />
                 </svg>
                 <span>ENTRAR NO GRUPO DO WHATSAPP</span>
               </a>
+            </div>
+          </div>
+
+          {/* FIXED STICKY BOTTOM BAR (INICIAR SIMULADO AGORA) */}
+          <div className="fixed bottom-0 left-0 right-0 z-30 bg-[#121212]/95 dark:bg-[#121212]/95 backdrop-blur-md border-t border-amber-500/30 px-4 py-3 shadow-[0_-10px_25px_rgba(0,0,0,0.6)]">
+            <div className="max-w-md mx-auto">
+              <button
+                type="button"
+                onClick={handleStartQuiz}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 text-xs font-black shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer uppercase tracking-wider"
+              >
+                <span>INICIAR SIMULADO AGORA</span>
+                <ArrowRight size={16} className="stroke-[3]" />
+              </button>
             </div>
           </div>
         </div>

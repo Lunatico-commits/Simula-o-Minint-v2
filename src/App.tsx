@@ -1006,7 +1006,7 @@ export default function App() {
       <AdBanner />
 
       {/* Footer & Legal Modal */}
-      <Footer />
+      <Footer hasStickyCTA={activeTab === 'quiz'} />
 
       {/* Profile Modal */}
       <ProfileModal

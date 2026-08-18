@@ -385,16 +385,18 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
   const myActiveRankChange = myActiveScopeRank ? (rankDeltasMap[currentProfile.uid] ?? 0) : 0;
 
-  // Top 3 Podium Candidates (from filtered list)
+  // Top Podium Candidates (from filtered list)
   const top1 = filteredList[0];
   const top2 = filteredList[1];
   const top3 = filteredList[2];
 
-  // Candidates for classification list (4th place onwards)
-  const classificatoryList = filteredList.slice(3);
+  const podiumCount = Math.min(3, filteredList.length);
 
-  // Progressive list limit: since Top 1-3 are on the podium, visibleLimit (e.g. 10) leaves (visibleLimit - 3) in the list
-  const visibleClassificatoryLimit = Math.max(0, visibleLimit - 3);
+  // Candidates for classification list (after podium)
+  const classificatoryList = filteredList.slice(podiumCount);
+
+  // Progressive list limit: leaves (visibleLimit - podiumCount) in the list
+  const visibleClassificatoryLimit = Math.max(0, visibleLimit - podiumCount);
   const visibleClassificatoryList = classificatoryList.slice(0, visibleClassificatoryLimit);
 
   // Pagination indicators
@@ -628,315 +630,150 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
         <Search size={15} className="absolute left-3 top-3 text-slate-400" />
       </div>
 
-      {/* PODIUM (TOP 3 CANDIDATES) */}
-      {filteredList.length > 0 && (
-        <div className="bg-slate-950/80 dark:bg-[#0A0C0E] border border-amber-500/30 rounded-3xl p-2.5 sm:p-4 shadow-xl space-y-3 w-full max-w-full overflow-hidden">
-          <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-400 tracking-wider px-1">
-            <span className="flex items-center gap-1">
-              <Sparkles size={12} />
-              Pódio dos Melhores Colocados (Top 3)
-            </span>
-            <span className="text-slate-400 font-mono">
-              {scopeFilter === 'province' ? selectedProvince : 'Nacional'}
-            </span>
-          </div>
+      {/* PODIUM (TOP CANDIDATES) */}
+      {filteredList.length > 0 && (() => {
+        const renderPodiumCard = (candidate: UserProfile, rank: 1 | 2 | 3, delay: number, isElevated: boolean = false) => {
+          if (!candidate) return null;
+          const isMe = Boolean(
+            (candidate.uid && currentProfile.uid && candidate.uid === currentProfile.uid) ||
+            ((candidate as any).id && (currentProfile as any).id && (candidate as any).id === (currentProfile as any).id) ||
+            (candidate.uid && (currentProfile as any).id && candidate.uid === (currentProfile as any).id) ||
+            ((candidate as any).id && currentProfile.uid && (candidate as any).id === currentProfile.uid)
+          );
+          const isFollowing = Boolean(candidate.uid && followingList.includes(candidate.uid));
 
-          <div className="w-full max-w-full overflow-hidden px-1">
-            <div className="grid grid-cols-3 gap-1.5 w-full max-w-full px-1 items-end my-4">
-              {/* 2º LUGAR */}
-              {top2 ? (() => {
-                const isMe = Boolean(
-                  (top2.uid && currentProfile.uid && top2.uid === currentProfile.uid) ||
-                  (top2.id && currentProfile.id && top2.id === currentProfile.id) ||
-                  (top2.uid && currentProfile.id && top2.uid === currentProfile.id) ||
-                  (top2.id && currentProfile.uid && top2.id === currentProfile.uid)
-                );
-                const isFollowing = Boolean(top2.uid && followingList.includes(top2.uid));
+          const rankBadge = rank === 1 ? '👑 #1' : rank === 2 ? '🥈 #2' : '🥉 #3';
+          const rankColor = rank === 1 ? 'text-amber-400' : rank === 2 ? 'text-slate-300' : 'text-amber-500';
+          const bgStyle = rank === 1
+            ? 'bg-slate-800/90 border-amber-500/50 min-h-[165px]'
+            : rank === 2
+            ? 'bg-slate-800/80 border-slate-700 min-h-[145px]'
+            : 'bg-slate-800/70 border-slate-700/80 min-h-[140px]';
 
-                return (
-                  <motion.div
-                    ref={isMe ? setUserNode : undefined}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-                    onClick={() => setSelectedCandidate(top2)}
-                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[145px] bg-slate-800/80 border border-slate-700 cursor-pointer transition-all ${
-                      isMe
-                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
-                        : 'hover:border-amber-500/50'
+          return (
+            <motion.div
+              key={candidate.uid || (candidate as any).id || `rank_${rank}`}
+              ref={isMe ? setUserNode : undefined}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => setSelectedCandidate(candidate)}
+              className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between border cursor-pointer transition-all ${bgStyle} ${
+                isElevated ? '-translate-y-2' : ''
+              } ${
+                isMe
+                  ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
+                  : rank === 1
+                  ? 'hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                  : 'hover:border-amber-500/50'
+              }`}
+            >
+              <span className={`text-[11px] font-black whitespace-nowrap ${rankColor}`}>{rankBadge}</span>
+              <div className="my-1 shrink-0 flex items-center justify-center">
+                <UserAvatar user={candidate} size={rank === 1 ? "lg" : "md"} showBranchBadge={true} isFirstPlace={rank === 1} />
+              </div>
+
+              <p className={`w-full truncate whitespace-nowrap text-[10.5px] font-bold text-center ${isMe || rank === 1 ? 'text-amber-300' : 'text-white'}`}>
+                {candidate.displayName || 'Candidato'}
+              </p>
+
+              {isMe ? (
+                <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
+                  VOCÊ
+                </span>
+              ) : (
+                <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleFollow(candidate, e)}
+                    title={isFollowing ? "Clique para desseguir" : "Clique para seguir"}
+                    className={`group text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 transition-all cursor-pointer ${
+                      isFollowing
+                        ? 'bg-emerald-500/20 hover:bg-rose-500/20 text-emerald-400 hover:text-rose-400 border border-emerald-500/30 hover:border-rose-500/30'
+                        : 'bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10'
                     }`}
                   >
-                    <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">🥈 #2</span>
-                    <div className="my-1 shrink-0 flex items-center justify-center">
-                      <UserAvatar user={top2} size="md" showBranchBadge={true} />
-                    </div>
-
-                    <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                      {top2.displayName || 'Candidato'}
-                    </p>
-
-                    {isMe ? (
-                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
-                        VOCÊ
-                      </span>
+                    {isFollowing ? (
+                      <>
+                        <Check size={9} className="group-hover:hidden stroke-[2.5]" />
+                        <UserMinus size={9} className="hidden group-hover:inline" />
+                        <span className="group-hover:hidden">✓ Seguindo</span>
+                        <span className="hidden group-hover:inline">Desseguir</span>
+                      </>
                     ) : (
-                      <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleFollow(top2, e)}
-                          title={isFollowing ? "Clique para desseguir" : "Clique para seguir"}
-                          className={`group text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 transition-all cursor-pointer ${
-                            isFollowing
-                              ? 'bg-emerald-500/20 hover:bg-rose-500/20 text-emerald-400 hover:text-rose-400 border border-emerald-500/30 hover:border-rose-500/30'
-                              : 'bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10'
-                          }`}
-                        >
-                          {isFollowing ? (
-                            <>
-                              <Check size={9} className="group-hover:hidden stroke-[2.5]" />
-                              <UserMinus size={9} className="hidden group-hover:inline" />
-                              <span className="group-hover:hidden">✓ Seguindo</span>
-                              <span className="hidden group-hover:inline">Desseguir</span>
-                            </>
-                          ) : (
-                            <>
-                              <UserPlus size={9} />
-                              <span>+ Seguir</span>
-                            </>
-                          )}
-                        </button>
-                        {isFollowing && onPlayDuel && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPlayDuel(top2);
-                            }}
-                            title="Desafiar para Duelo 1v1"
-                            className="p-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer"
-                          >
-                            <Swords size={10} />
-                          </button>
-                        )}
-                      </div>
+                      <>
+                        <UserPlus size={9} />
+                        <span>+ Seguir</span>
+                      </>
                     )}
-
-                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                      📍 {top2.province || 'Luanda'} • {top2.branch}
-                    </p>
-                    <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
-                      {top2.totalXp?.toLocaleString() ?? 0} XP
-                    </p>
-                  </motion.div>
-                );
-              })() : (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.45, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-                  className="min-h-[140px] bg-slate-800/80 rounded-2xl border border-slate-700 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
-                >
-                  2.º Lugar
-                </motion.div>
+                  </button>
+                  {isFollowing && onPlayDuel && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPlayDuel(candidate);
+                      }}
+                      title="Desafiar para Duelo 1v1"
+                      className="p-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer"
+                    >
+                      <Swords size={10} />
+                    </button>
+                  )}
+                </div>
               )}
 
-              {/* 1º LUGAR */}
-              {top1 ? (() => {
-                const isMe = Boolean(
-                  (top1.uid && currentProfile.uid && top1.uid === currentProfile.uid) ||
-                  (top1.id && currentProfile.id && top1.id === currentProfile.id) ||
-                  (top1.uid && currentProfile.id && top1.uid === currentProfile.id) ||
-                  (top1.id && currentProfile.uid && top1.id === currentProfile.uid)
-                );
-                const isFollowing = Boolean(top1.uid && followingList.includes(top1.uid));
+              <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
+                📍 {candidate.province || 'Luanda'} • {candidate.branch}
+              </p>
+              <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
+                {candidate.totalXp?.toLocaleString() ?? 0} XP
+              </p>
+            </motion.div>
+          );
+        };
 
-                return (
-                  <motion.div
-                    ref={isMe ? setUserNode : undefined}
-                    initial={{ opacity: 0, y: 35 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.55, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                    onClick={() => setSelectedCandidate(top1)}
-                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[165px] bg-slate-800/90 border border-amber-500/50 -translate-y-2 cursor-pointer transition-all ${
-                      isMe
-                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.6)]'
-                        : 'hover:border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
-                    }`}
-                  >
-                    <span className="text-[11px] font-black text-amber-400 whitespace-nowrap">👑 #1</span>
-                    <div className="my-1 shrink-0 flex items-center justify-center">
-                      <UserAvatar user={top1} size="lg" showBranchBadge={true} isFirstPlace={true} />
-                    </div>
+        const podiumTitle = filteredList.length === 1
+          ? 'Líder da Classificação'
+          : filteredList.length === 2
+          ? 'Destaques da Classificação (Top 2)'
+          : 'Pódio dos Melhores Colocados (Top 3)';
 
-                    <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
-                      {top1.displayName || 'Candidato'}
-                    </p>
+        return (
+          <div className="bg-slate-950/80 dark:bg-[#0A0C0E] border border-amber-500/30 rounded-3xl p-2.5 sm:p-4 shadow-xl space-y-3 w-full max-w-full overflow-hidden">
+            <div className="flex items-center justify-between text-[10px] uppercase font-bold text-amber-400 tracking-wider px-1">
+              <span className="flex items-center gap-1">
+                <Sparkles size={12} />
+                {podiumTitle}
+              </span>
+              <span className="text-slate-400 font-mono">
+                {scopeFilter === 'province' ? selectedProvince : 'Nacional'}
+              </span>
+            </div>
 
-                    {isMe ? (
-                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
-                        VOCÊ
-                      </span>
-                    ) : (
-                      <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleFollow(top1, e)}
-                          title={isFollowing ? "Clique para desseguir" : "Clique para seguir"}
-                          className={`group text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 transition-all cursor-pointer ${
-                            isFollowing
-                              ? 'bg-emerald-500/20 hover:bg-rose-500/20 text-emerald-400 hover:text-rose-400 border border-emerald-500/30 hover:border-rose-500/30'
-                              : 'bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10'
-                          }`}
-                        >
-                          {isFollowing ? (
-                            <>
-                              <Check size={9} className="group-hover:hidden stroke-[2.5]" />
-                              <UserMinus size={9} className="hidden group-hover:inline" />
-                              <span className="group-hover:hidden">✓ Seguindo</span>
-                              <span className="hidden group-hover:inline">Desseguir</span>
-                            </>
-                          ) : (
-                            <>
-                              <UserPlus size={9} />
-                              <span>+ Seguir</span>
-                            </>
-                          )}
-                        </button>
-                        {isFollowing && onPlayDuel && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPlayDuel(top1);
-                            }}
-                            title="Desafiar para Duelo 1v1"
-                            className="p-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer"
-                          >
-                            <Swords size={10} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-300 text-center mt-0.5">
-                      📍 {top1.province || 'Luanda'} • {top1.branch}
-                    </p>
-                    <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
-                      {top1.totalXp?.toLocaleString() ?? 0} XP
-                    </p>
-                  </motion.div>
-                );
-              })() : (
-                <motion.div
-                  initial={{ opacity: 0, y: 25 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                  className="min-h-[160px] bg-slate-800/90 rounded-2xl border border-amber-500/50 -translate-y-2 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
-                >
-                  1.º Lugar
-                </motion.div>
-              )}
-
-              {/* 3º LUGAR */}
-              {top3 ? (() => {
-                const isMe = Boolean(
-                  (top3.uid && currentProfile.uid && top3.uid === currentProfile.uid) ||
-                  (top3.id && currentProfile.id && top3.id === currentProfile.id) ||
-                  (top3.uid && currentProfile.id && top3.uid === currentProfile.id) ||
-                  (top3.id && currentProfile.uid && top3.id === currentProfile.uid)
-                );
-                const isFollowing = Boolean(top3.uid && followingList.includes(top3.uid));
-
-                return (
-                  <motion.div
-                    ref={isMe ? setUserNode : undefined}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                    onClick={() => setSelectedCandidate(top3)}
-                    className={`w-full min-w-0 p-1.5 rounded-2xl flex flex-col items-center justify-between min-h-[140px] bg-slate-800/70 border border-slate-700/80 cursor-pointer transition-all ${
-                      isMe
-                        ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.5)]'
-                        : 'hover:border-amber-500/50'
-                    }`}
-                  >
-                    <span className="text-[10px] font-bold text-amber-600 whitespace-nowrap">🥉 #3</span>
-                    <div className="my-1 shrink-0 flex items-center justify-center">
-                      <UserAvatar user={top3} size="md" showBranchBadge={true} />
-                    </div>
-
-                    <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                      {top3.displayName || 'Candidato'}
-                    </p>
-
-                    {isMe ? (
-                      <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
-                        VOCÊ
-                      </span>
-                    ) : (
-                      <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleFollow(top3, e)}
-                          title={isFollowing ? "Clique para desseguir" : "Clique para seguir"}
-                          className={`group text-[8.5px] font-extrabold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 transition-all cursor-pointer ${
-                            isFollowing
-                              ? 'bg-emerald-500/20 hover:bg-rose-500/20 text-emerald-400 hover:text-rose-400 border border-emerald-500/30 hover:border-rose-500/30'
-                              : 'bg-white/10 hover:bg-white/20 text-slate-300 border border-white/10'
-                          }`}
-                        >
-                          {isFollowing ? (
-                            <>
-                              <Check size={9} className="group-hover:hidden stroke-[2.5]" />
-                              <UserMinus size={9} className="hidden group-hover:inline" />
-                              <span className="group-hover:hidden">✓ Seguindo</span>
-                              <span className="hidden group-hover:inline">Desseguir</span>
-                            </>
-                          ) : (
-                            <>
-                              <UserPlus size={9} />
-                              <span>+ Seguir</span>
-                            </>
-                          )}
-                        </button>
-                        {isFollowing && onPlayDuel && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPlayDuel(top3);
-                            }}
-                            title="Desafiar para Duelo 1v1"
-                            className="p-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all cursor-pointer"
-                          >
-                            <Swords size={10} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                      📍 {top3.province || 'Luanda'} • {top3.branch}
-                    </p>
-                    <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
-                      {top3.totalXp?.toLocaleString() ?? 0} XP
-                    </p>
-                  </motion.div>
-                );
-              })() : (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.45, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                  className="min-h-[125px] bg-slate-800/70 rounded-2xl border border-slate-700/80 flex items-center justify-center text-[10px] text-slate-500 w-full min-w-0"
-                >
-                  3.º Lugar
-                </motion.div>
+            <div className="w-full max-w-full overflow-hidden px-1">
+              {filteredList.length === 1 ? (
+                <div className="flex justify-center my-3">
+                  <div className="w-full max-w-[260px]">
+                    {renderPodiumCard(top1, 1, 0.15, false)}
+                  </div>
+                </div>
+              ) : filteredList.length === 2 ? (
+                <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto items-end my-3">
+                  {renderPodiumCard(top1, 1, 0.2, true)}
+                  {renderPodiumCard(top2, 2, 0.1, false)}
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5 w-full max-w-full px-1 items-end my-4">
+                  {renderPodiumCard(top2, 2, 0.1, false)}
+                  {renderPodiumCard(top1, 1, 0.25, true)}
+                  {renderPodiumCard(top3, 3, 0.4, false)}
+                </div>
               )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* LISTA CLASSIFICATÓRIA (4.º LUGAR EM DIANTE) */}
       <div className="space-y-2">

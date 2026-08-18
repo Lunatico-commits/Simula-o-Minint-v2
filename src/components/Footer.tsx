@@ -4,12 +4,18 @@ import { ShieldCheck, FileText, X, Scale, Lock, Info, ExternalLink } from 'lucid
 
 type LegalTab = 'terms' | 'privacy';
 
-export const Footer: React.FC = () => {
+interface FooterProps {
+  hasStickyCTA?: boolean;
+}
+
+export const Footer: React.FC<FooterProps> = ({ hasStickyCTA = false }) => {
   const [activeLegalModal, setActiveLegalModal] = useState<LegalTab | null>(null);
 
   return (
     <>
-      <footer className="border-t border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-[#07090C]/90 backdrop-blur-md px-4 py-4 text-center text-xs text-slate-500 dark:text-slate-400 font-sans transition-colors">
+      <footer className={`border-t border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-[#07090C]/90 backdrop-blur-md px-4 py-4 text-center text-xs text-slate-500 dark:text-slate-400 font-sans transition-all ${
+        hasStickyCTA ? 'pb-28 sm:pb-32' : 'pb-6'
+      }`}>
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           {/* Copyright notice */}
           <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
