@@ -37,14 +37,41 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
 
   const handleImageError = () => {
     // If PIR uniform fails to load, fallback smoothly to pna_male.png
-    if ((imgSrc === '/avatars/pna_pir_male.png' || imgSrc === '/avatars/pna_pir_male.webp' || imgSrc === '/avatars/shop/pna_pir_male.webp' || id === 'pna_pir_tactical') && imgSrc !== '/avatars/pna_male.png') {
+    if ((imgSrc === '/avatars/pna_pir_male.png' || imgSrc === '/avatars/pna_pir_male.webp' || imgSrc === '/avatars/shop/pna_pir_male.webp' || id === 'pna_pir_tactical' || id === 'pna_intervencao') && imgSrc !== '/avatars/pna_male.png') {
       setImgSrc('/avatars/pna_male.png');
       return;
     }
     // If SIC forensic uniform fails to load, fallback smoothly to sic_male.png
-    if ((imgSrc === '/avatars/sic_forensic_male.png' || id === 'sic_forensic_expert' || id === 'sic_forensic') && imgSrc !== '/avatars/sic_male.png') {
+    if ((imgSrc === '/avatars/sic_forensic_male.png' || id === 'sic_forensic_expert' || id === 'sic_forensic' || id === 'sic_perito') && imgSrc !== '/avatars/sic_male.png') {
       setImgSrc('/avatars/sic_male.png');
       return;
+    }
+    // General organ branch fallback if a shop uniform asset is not found
+    if (branch === 'PNA' || id?.startsWith('pna_')) {
+      if (imgSrc !== '/avatars/pna_male.png') {
+        setImgSrc('/avatars/pna_male.png');
+        return;
+      }
+    } else if (branch === 'SIC' || id?.startsWith('sic_')) {
+      if (imgSrc !== '/avatars/sic_male.png') {
+        setImgSrc('/avatars/sic_male.png');
+        return;
+      }
+    } else if (branch === 'SME' || id?.startsWith('sme_')) {
+      if (imgSrc !== '/avatars/sme_male.png') {
+        setImgSrc('/avatars/sme_male.png');
+        return;
+      }
+    } else if (branch === 'SPCB' || id?.startsWith('spcb_')) {
+      if (imgSrc !== '/avatars/spcb_male.png') {
+        setImgSrc('/avatars/spcb_male.png');
+        return;
+      }
+    } else if (branch === 'SP' || id?.startsWith('sp_')) {
+      if (imgSrc !== '/avatars/sp_male.png') {
+        setImgSrc('/avatars/sp_male.png');
+        return;
+      }
     }
     setImgError(true);
   };

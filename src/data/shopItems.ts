@@ -60,6 +60,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-emerald-950 via-teal-950 to-slate-950',
     isPopular: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/sme_border_male.png',
   },
   // SPCB: Vermelho resgate, Chama, Capacete dourado e Protecção civil
   {
@@ -73,6 +74,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-amber-950 via-red-950 to-orange-950',
     isPopular: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/spcb_rescue_male.png',
   },
   {
     id: 'pna_gala',
@@ -84,6 +86,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'PNA',
     badgeBg: 'from-blue-950 via-blue-900 to-indigo-950',
     type: 'avatar_farda',
+    assetPath: '/avatars/pna_gala_male.png',
   },
   {
     id: 'pna_intervencao',
@@ -95,6 +98,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'PNA',
     badgeBg: 'from-slate-950 via-blue-950 to-neutral-950',
     type: 'avatar_farda',
+    assetPath: '/avatars/pna_pir_male.png',
   },
   {
     id: 'pna_transito',
@@ -106,6 +110,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'PNA',
     badgeBg: 'from-sky-950 via-blue-900 to-slate-900',
     type: 'avatar_farda',
+    assetPath: '/avatars/pna_traffic_male.png',
   },
   {
     id: 'pna_2',
@@ -129,6 +134,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-slate-950 via-neutral-900 to-slate-900',
     isPopular: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/sic_tactical_male.png',
   },
   {
     id: 'sic_perito',
@@ -140,6 +146,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SIC',
     badgeBg: 'from-teal-950 via-slate-900 to-cyan-950',
     type: 'avatar_farda',
+    assetPath: '/avatars/sic_forensic_male.png',
   },
   {
     id: 'sic_2',
@@ -162,6 +169,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SME',
     badgeBg: 'from-teal-950 via-emerald-900 to-slate-900',
     type: 'avatar_farda',
+    assetPath: '/avatars/sme_airport_male.png',
   },
   {
     id: 'sme_2',
@@ -184,6 +192,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SP',
     badgeBg: 'from-purple-950 via-slate-900 to-slate-950',
     type: 'avatar_farda',
+    assetPath: '/avatars/sp_honor_male.png',
   },
   {
     id: 'sp_2',
@@ -206,6 +215,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SPCB',
     badgeBg: 'from-orange-950 via-amber-900 to-red-950',
     type: 'avatar_farda',
+    assetPath: '/avatars/spcb_rescue_male.png',
   },
   {
     id: 'spcb_2',
@@ -228,6 +238,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-indigo-950 via-slate-900 to-amber-950',
     isExclusive: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/minint_commissar_male.png',
   },
   {
     id: 'minint_gala_gold',
@@ -239,6 +250,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-amber-700 via-yellow-600 to-amber-900',
     isExclusive: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/minint_commissar_male.png',
   },
 
   // 2. Congelamento de Sequência (Streak Freeze)

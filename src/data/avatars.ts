@@ -125,8 +125,16 @@ export const getAvatarAssetPath = (id?: string, branch?: string): string => {
   
   // Backward compatibility mappings
   if (id) {
-    if (id === 'pna_pir_tactical' || id === 'pna_pir_male') return '/avatars/pna_pir_male.png';
-    if (id === 'sic_forensic_expert' || id === 'sic_forensic' || id === 'sic_forensic_male') return '/avatars/sic_forensic_male.png';
+    if (id === 'pna_pir_tactical' || id === 'pna_pir_male' || id === 'pna_intervencao') return '/avatars/pna_pir_male.png';
+    if (id === 'sic_forensic_expert' || id === 'sic_forensic' || id === 'sic_forensic_male' || id === 'sic_perito') return '/avatars/sic_forensic_male.png';
+    if (id === 'sme_border_operator' || id === 'sme_border' || id === 'sme_border_male') return '/avatars/sme_border_male.png';
+    if (id === 'spcb_elite_rescue' || id === 'spcb_rescue' || id === 'spcb_rescue_male') return '/avatars/spcb_rescue_male.png';
+    if (id === 'pna_gala' || id === 'pna_gala_male') return '/avatars/pna_gala_male.png';
+    if (id === 'pna_transito' || id === 'pna_traffic' || id === 'pna_traffic_male') return '/avatars/pna_traffic_male.png';
+    if (id === 'sic_tactical' || id === 'sic_tactical_male') return '/avatars/sic_tactical_male.png';
+    if (id === 'sme_frontier' || id === 'sme_airport' || id === 'sme_airport_male') return '/avatars/sme_airport_male.png';
+    if (id === 'sp_honra' || id === 'sp_honor' || id === 'sp_honor_male') return '/avatars/sp_honor_male.png';
+    if (id === 'minint_instrutor' || id === 'minint_gala_gold' || id === 'minint_commissar' || id === 'minint_commissar_male') return '/avatars/minint_commissar_male.png';
     if (id === 'pna_1' || id === 'pna_male') return '/avatars/pna_male.png';
     if (id === 'pna_female') return '/avatars/pna_female.png';
     if (id === 'sic_1' || id === 'sic_male') return '/avatars/sic_male.png';
