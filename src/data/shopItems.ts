@@ -15,6 +15,7 @@ export interface ShopItem {
   isExclusive?: boolean;
   type: 'avatar_farda' | 'streak_freeze' | 'hint_powerup' | 'xp_booster';
   amount?: number; // Quantity provided (e.g. 3 power-ups)
+  assetPath?: string;
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
@@ -31,6 +32,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-slate-950 via-slate-900 to-red-950',
     isPopular: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/pna_pir_male.png',
   },
   // SIC: Cinza chumbo, Perícia Forense ciano, Crachá prata e Laboratório
   {

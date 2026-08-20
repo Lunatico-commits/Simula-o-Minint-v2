@@ -66,6 +66,7 @@ export interface UnifiedShopItem {
   type: 'avatar_farda' | 'frame' | 'background' | 'badge' | 'faceAccessory' | 'streak_freeze' | 'hint_powerup' | 'xp_booster';
   amount?: number;
   imageUrl?: string;
+  assetPath?: string;
   layerClass?: string;
   rawItem?: ShopItem | AccessoryItem;
 }
@@ -85,6 +86,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
   const [previewItem, setPreviewItem] = useState<UnifiedShopItem | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [insufficientFundsItem, setInsufficientFundsItem] = useState<UnifiedShopItem | null>(null);
+  const [selectedDetailItem, setSelectedDetailItem] = useState<UnifiedShopItem | null>(null);
 
   const userCoins = profile.minintCoins || 0;
   const purchasedItems = profile.purchasedItems || [];
@@ -115,6 +117,8 @@ export const ShopView: React.FC<ShopViewProps> = ({
         isExclusive: si.isExclusive,
         type: si.type,
         amount: si.amount,
+        imageUrl: si.assetPath,
+        assetPath: si.assetPath,
         rawItem: si,
       });
     });
@@ -405,8 +409,24 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
   };
 
   const renderShopItemIcon = (item: UnifiedShopItem) => {
-    // 1. If item is an avatar_farda (Special Fardas per Organ):
-    // Use the 3D Base Avatar for that organ as background
+    // 1. Explicit asset path or image URL (e.g. WebP assets like /avatars/shop/pna_pir_male.webp)
+    const directAsset = item.assetPath || item.imageUrl;
+    if (directAsset) {
+      return (
+        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative bg-slate-950/90 border border-white/10 group">
+          <img
+            src={directAsset}
+            alt={item.name}
+            className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
+            onError={(e) => {
+              e.currentTarget.src = '/avatars/pna_male.png';
+            }}
+          />
+        </div>
+      );
+    }
+
+    // 2. If item is an avatar_farda without direct assetPath:
     if (item.type === 'avatar_farda') {
       const organBranch = (item.branch || profile.branch || 'PNA') as MININTBranch;
       const userIsFemale = profile.avatarId?.includes('female');
@@ -423,7 +443,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             alt={item.name}
             className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 group-hover:opacity-95 transition-opacity"
             onError={(e) => {
-              e.currentTarget.style.display = 'none';
+              e.currentTarget.src = '/avatars/pna_male.png';
             }}
           />
           {/* Tactical darken overlay */}
@@ -439,17 +459,6 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             />
           </div>
         </div>
-      );
-    }
-
-    // 2. If item has an explicit SVG Image (Frames, NVG goggles, Comms headset)
-    if (item.imageUrl) {
-      return (
-        <img
-          src={item.imageUrl}
-          alt={item.name}
-          className="w-12 h-12 object-contain pointer-events-none drop-shadow-md"
-        />
       );
     }
 
@@ -544,6 +553,193 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
         )}
       </AnimatePresence>
 
+      {/* ℹ️ Modal de Detalhes do Item */}
+      <AnimatePresence>
+        {selectedDetailItem && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setSelectedDetailItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0F1115] border border-amber-500/50 rounded-2xl max-w-md w-full p-5 sm:p-6 text-white shadow-2xl shadow-black/80 relative overflow-hidden ring-1 ring-white/10"
+            >
+              {/* Ambient Glow */}
+              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setSelectedDetailItem(null)}
+                className="absolute top-4 right-4 p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Fechar detalhes"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Header Title & Category */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-slate-900 border border-amber-500/40 p-1 flex items-center justify-center text-3xl shrink-0 shadow-lg shadow-black/50">
+                  {renderShopItemIcon(selectedDetailItem)}
+                </div>
+                <div className="flex-1 min-w-0 pr-6">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {selectedDetailItem.branch && (
+                      <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        {selectedDetailItem.branch}
+                      </span>
+                    )}
+                    {selectedDetailItem.isPopular && (
+                      <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                        <Sparkles size={10} />
+                        <span>Popular</span>
+                      </span>
+                    )}
+                    {selectedDetailItem.isExclusive && (
+                      <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                        <Crown size={10} />
+                        <span>Exclusivo</span>
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-slate-100 mt-1 tracking-tight truncate">
+                    {selectedDetailItem.name}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Price & Status Banner */}
+              <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Preço Oficial</span>
+                  <div className="flex items-center gap-1.5 font-mono text-base font-black text-yellow-400 mt-0.5">
+                    <Coins size={16} className="text-yellow-400 fill-yellow-400/90" />
+                    <span>{selectedDetailItem.cost} Moedas MININT</span>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Status do Candidato</span>
+                  {isItemEquipped(selectedDetailItem) ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider mt-0.5">
+                      <Check size={11} /> Equipado
+                    </span>
+                  ) : isItemOwned(selectedDetailItem) ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider mt-0.5">
+                      <Check size={11} /> Desbloqueado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider mt-0.5">
+                      Disponível
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Description & Usage Guide */}
+              <div className="space-y-3 mb-5">
+                <div>
+                  <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 font-mono mb-1">
+                    Descrição do Equipamento
+                  </h4>
+                  <p className="text-xs text-slate-200 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-white/5">
+                    {selectedDetailItem.description}
+                  </p>
+                </div>
+
+                <div className="text-[11px] text-slate-400 bg-slate-900/30 p-2.5 rounded-lg border border-white/5 flex items-center gap-2">
+                  <Info size={14} className="text-amber-400 shrink-0" />
+                  <span>
+                    {selectedDetailItem.type === 'avatar_farda'
+                      ? 'Esta farda especial fica salva no seu perfil e pode ser equipada a qualquer momento.'
+                      : selectedDetailItem.type === 'frame'
+                      ? 'A moldura tática é exibida ao redor do seu avatar nos rankings, ligas e simulados.'
+                      : selectedDetailItem.type === 'streak_freeze'
+                      ? 'Protege automaticamente a sua sequência diária caso falte a um dia de treino.'
+                      : selectedDetailItem.type === 'hint_powerup'
+                      ? 'Elimina 2 alternativas incorretas durante os simulados para ajudar na pontuação.'
+                      : 'Equipamento tático oficial para personalização militar do candidato.'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons in Modal */}
+              <div className="flex flex-col sm:flex-row items-center gap-2 pt-1 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleTestItem(selectedDetailItem);
+                  }}
+                  className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    previewItem?.id === selectedDetailItem.id
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10'
+                  }`}
+                >
+                  <Eye size={14} />
+                  <span>{previewItem?.id === selectedDetailItem.id ? 'A Testar no Topo' : 'Testar no Avatar'}</span>
+                </button>
+
+                {isItemOwned(selectedDetailItem) ? (
+                  !isItemEquipped(selectedDetailItem) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleEquipItem(selectedDetailItem);
+                        setSelectedDetailItem(null);
+                      }}
+                      className="w-full sm:flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Check size={14} />
+                      <span>Equipar Agora</span>
+                    </button>
+                  )
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handlePurchase(selectedDetailItem);
+                      if (userCoins >= selectedDetailItem.cost) {
+                        setSelectedDetailItem(null);
+                      }
+                    }}
+                    className={`w-full sm:flex-1 py-2.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer ${
+                      userCoins >= selectedDetailItem.cost
+                        ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 shadow-yellow-500/25'
+                        : 'bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300'
+                    }`}
+                  >
+                    {userCoins >= selectedDetailItem.cost ? (
+                      <>
+                        <ShoppingBag size={14} />
+                        <span>Comprar por {selectedDetailItem.cost} Moedas</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle size={14} className="text-rose-400" />
+                        <span>Saldo Insuficiente</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedDetailItem(null)}
+                  className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* ⚠️ Alerta Visual de Saldo Insuficiente (Modal / Dialog) */}
       <AnimatePresence>
         {insufficientFundsItem && (
@@ -591,9 +787,16 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
 
               {/* Item Card Details */}
               <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3.5 mb-4 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-2xl shrink-0">
-                  {insufficientFundsItem.imageUrl ? (
-                    <img src={insufficientFundsItem.imageUrl} alt={insufficientFundsItem.name} className="w-10 h-10 object-contain" />
+                <div className="w-12 h-12 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-2xl shrink-0 overflow-hidden">
+                  {(insufficientFundsItem.assetPath || insufficientFundsItem.imageUrl) ? (
+                    <img
+                      src={insufficientFundsItem.assetPath || insufficientFundsItem.imageUrl}
+                      alt={insufficientFundsItem.name}
+                      className="w-10 h-10 object-contain rounded-lg"
+                      onError={(e) => {
+                        e.currentTarget.src = '/avatars/pna_male.png';
+                      }}
+                    />
                   ) : (
                     <span>{insufficientFundsItem.symbol}</span>
                   )}
@@ -1037,15 +1240,19 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
           return (
             <div
               key={item.id}
-              className={`bg-white dark:bg-[#0F1115] border rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden transition-all shadow-xs ${
+              onClick={() => {
+                playClickSound();
+                setSelectedDetailItem(item);
+              }}
+              className={`bg-white dark:bg-[#0F1115] border rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden transition-all shadow-xs cursor-pointer group ${
                 isCurrentPreview
                   ? 'border-amber-500 ring-2 ring-amber-500/50 bg-gradient-to-br from-amber-500/10 to-transparent shadow-md'
                   : isEquipped
                   ? 'border-emerald-500/70 ring-1 ring-emerald-500/30 bg-gradient-to-br from-emerald-500/5 to-transparent'
-                  : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
+                  : 'border-slate-200 dark:border-white/10 hover:border-amber-500/40 dark:hover:border-amber-500/40'
               }`}
             >
-              {/* Badges / Tag overlay - Maximum 2 Badges */}
+              {/* Badges / Tag overlay + Price + Discreet Info Button */}
               <div className="flex items-center justify-between gap-1 mb-2">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {visibleBadges.map((badge) => (
@@ -1059,10 +1266,26 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                   ))}
                 </div>
 
-                {/* Price indicator badge */}
-                <div className="flex items-center gap-1 font-mono text-xs font-black text-amber-500 dark:text-amber-400">
-                  <Coins size={14} className="text-yellow-400 fill-yellow-400/80 shrink-0" />
-                  <span>{item.cost} M</span>
+                {/* Right controls: Price indicator badge + Discreet Info Button (ℹ) */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 font-mono text-xs font-black text-amber-500 dark:text-amber-400">
+                    <Coins size={14} className="text-yellow-400 fill-yellow-400/80 shrink-0" />
+                    <span>{item.cost} M</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playClickSound();
+                      setSelectedDetailItem(item);
+                    }}
+                    className="p-1 rounded-lg text-slate-400 hover:text-amber-400 bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 transition-colors cursor-pointer"
+                    title="Ver detalhes do item"
+                    aria-label={`Ver detalhes de ${item.name}`}
+                  >
+                    <Info size={14} />
+                  </button>
                 </div>
               </div>
 

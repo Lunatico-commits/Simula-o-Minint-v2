@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MININTBranch } from '../types';
 import { getAvatarAssetPath, BASE_AVATARS } from '../data/avatars';
+import { SHOP_ITEMS } from '../data/shopItems';
 
 export interface TacticalAvatarIllustrationProps {
   id: string;
@@ -17,25 +18,44 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
   className = '',
   isAnimated = false,
 }) => {
+  const isDirectBaseAvatar = BASE_AVATARS.some((a) => a.id === id);
+  const shopItem = SHOP_ITEMS.find((s) => s.id === id);
+  const initialAssetPath = isDirectBaseAvatar
+    ? getAvatarAssetPath(id, branch as MININTBranch)
+    : shopItem?.assetPath;
+
+  const [imgSrc, setImgSrc] = useState<string | undefined>(initialAssetPath);
   const [imgError, setImgError] = useState(false);
+
+  React.useEffect(() => {
+    setImgSrc(initialAssetPath);
+    setImgError(false);
+  }, [initialAssetPath, id]);
+
   const width = typeof size === 'number' ? `${size}px` : size;
   const height = typeof size === 'number' ? `${size}px` : size;
 
-  const isDirectBaseAvatar = BASE_AVATARS.some((a) => a.id === id);
-  const assetPath = isDirectBaseAvatar ? getAvatarAssetPath(id, branch as MININTBranch) : undefined;
+  const handleImageError = () => {
+    // If PIR uniform fails to load, fallback smoothly to pna_male.png
+    if ((imgSrc === '/avatars/pna_pir_male.png' || imgSrc === '/avatars/pna_pir_male.webp' || imgSrc === '/avatars/shop/pna_pir_male.webp' || id === 'pna_pir_tactical') && imgSrc !== '/avatars/pna_male.png') {
+      setImgSrc('/avatars/pna_male.png');
+      return;
+    }
+    setImgError(true);
+  };
 
-  // If this is one of the 10 Base Avatars and the image hasn't errored, render the 3D asset directly
-  if (assetPath && !imgError) {
+  // If this is one of the 10 Base Avatars or a Shop Uniform with a direct image asset, render the asset directly
+  if (imgSrc && !imgError) {
     return (
       <div
         style={{ width, height }}
         className={`relative overflow-hidden flex items-center justify-center select-none ${className}`}
       >
         <img
-          src={assetPath}
+          src={imgSrc}
           alt={id}
           className="w-full h-full object-cover select-none pointer-events-none"
-          onError={() => setImgError(true)}
+          onError={handleImageError}
         />
       </div>
     );
