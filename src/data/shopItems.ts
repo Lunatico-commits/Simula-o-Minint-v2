@@ -46,6 +46,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-cyan-950 via-slate-900 to-slate-950',
     isPopular: true,
     type: 'avatar_farda',
+    assetPath: '/avatars/sic_forensic_male.png',
   },
   // SME: Verde esmeralda, Controlo de fronteiras e Teal marítimo/aeroportuário
   {

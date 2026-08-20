@@ -126,6 +126,7 @@ export const getAvatarAssetPath = (id?: string, branch?: string): string => {
   // Backward compatibility mappings
   if (id) {
     if (id === 'pna_pir_tactical' || id === 'pna_pir_male') return '/avatars/pna_pir_male.png';
+    if (id === 'sic_forensic_expert' || id === 'sic_forensic' || id === 'sic_forensic_male') return '/avatars/sic_forensic_male.png';
     if (id === 'pna_1' || id === 'pna_male') return '/avatars/pna_male.png';
     if (id === 'pna_female') return '/avatars/pna_female.png';
     if (id === 'sic_1' || id === 'sic_male') return '/avatars/sic_male.png';

@@ -41,6 +41,11 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
       setImgSrc('/avatars/pna_male.png');
       return;
     }
+    // If SIC forensic uniform fails to load, fallback smoothly to sic_male.png
+    if ((imgSrc === '/avatars/sic_forensic_male.png' || id === 'sic_forensic_expert' || id === 'sic_forensic') && imgSrc !== '/avatars/sic_male.png') {
+      setImgSrc('/avatars/sic_male.png');
+      return;
+    }
     setImgError(true);
   };
 
