@@ -1,0 +1,92 @@
+[
+  {
+    "id": "pna_female",
+    "organ": "PNA",
+    "gender": "female",
+    "title": "PNA - Agente Feminina",
+    "subtitle": "Polícia Nacional de Angola",
+    "assetPath": "/avatars/pna_female.png",
+    "accentColor": "#1E3A8A"
+  },
+  {
+    "id": "pna_male",
+    "organ": "PNA",
+    "gender": "male",
+    "title": "PNA - Agente Masculino",
+    "subtitle": "Polícia Nacional de Angola",
+    "assetPath": "/avatars/pna_male.png",
+    "accentColor": "#1E3A8A"
+  },
+  {
+    "id": "sic_female",
+    "organ": "SIC",
+    "gender": "female",
+    "title": "SIC - Investigadora",
+    "subtitle": "Serviço de Investigação Criminal",
+    "assetPath": "/avatars/sic_female.png",
+    "accentColor": "#111827"
+  },
+  {
+    "id": "sic_male",
+    "organ": "SIC",
+    "gender": "male",
+    "title": "SIC - Investigador",
+    "subtitle": "Serviço de Investigação Criminal",
+    "assetPath": "/avatars/sic_male.png",
+    "accentColor": "#111827"
+  },
+  {
+    "id": "sme_female",
+    "organ": "SME",
+    "gender": "female",
+    "title": "SME - Agente Feminina",
+    "subtitle": "Serviço de Migração e Estrangeiros",
+    "assetPath": "/avatars/sme_female.png",
+    "accentColor": "#D97706"
+  },
+  {
+    "id": "sme_male",
+    "organ": "SME",
+    "gender": "male",
+    "title": "SME - Agente Masculino",
+    "subtitle": "Serviço de Migração e Estrangeiros",
+    "assetPath": "/avatars/sme_male.png",
+    "accentColor": "#D97706"
+  },
+  {
+    "id": "spcb_female",
+    "organ": "SPCB",
+    "gender": "female",
+    "title": "SPCB - Bombeira",
+    "subtitle": "Protecção Civil e Bombeiros",
+    "assetPath": "/avatars/spcb_female.png",
+    "accentColor": "#DC2626"
+  },
+  {
+    "id": "spcb_male",
+    "organ": "SPCB",
+    "gender": "male",
+    "title": "SPCB - Bombeiro",
+    "subtitle": "Protecção Civil e Bombeiros",
+    "assetPath": "/avatars/spcb_male.png",
+    "accentColor": "#DC2626"
+  },
+  {
+    "id": "sp_female",
+    "organ": "SP",
+    "gender": "female",
+    "title": "SP - Agente Feminina",
+    "subtitle": "Serviço Penitenciário",
+    "assetPath": "/avatars/sp_female.png",
+    "accentColor": "#15803D"
+  },
+  {
+    "id": "sp_male",
+    "organ": "SP",
+    "gender": "male",
+    "title": "SP - Agente Masculino",
+    "subtitle": "Serviço Penitenciário",
+    "assetPath": "/avatars/sp_male.png",
+    "accentColor": "#15803D"
+  }
+]

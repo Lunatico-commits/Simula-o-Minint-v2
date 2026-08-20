@@ -6,6 +6,8 @@ import {
   Sparkles, 
   Zap, 
   Shield, 
+  ShieldCheck,
+  ShieldAlert,
   Flame, 
   Check, 
   Gift, 
@@ -23,7 +25,14 @@ import {
   RotateCcw,
   Palette,
   Layers,
-  Sparkle
+  Sparkle,
+  AlertCircle,
+  X,
+  Scale,
+  Microscope,
+  Compass,
+  Globe,
+  Rocket
 } from 'lucide-react';
 import { UserProfile, AvatarAccessories, MININTBranch } from '../types';
 import { SHOP_ITEMS, ShopItem } from '../data/shopItems';
@@ -31,14 +40,17 @@ import {
   ACCESSORY_FRAMES, 
   ACCESSORY_BACKGROUNDS, 
   ACCESSORY_BADGES, 
+  ACCESSORY_FACE_ITEMS,
   AccessoryItem 
 } from '../data/avatarAccessories';
 import { getAvatarOption } from '../data/branches';
+import { getAvatarAssetPath, BASE_AVATARS, getAvatarById } from '../data/avatars';
 import { ReactiveAvatar } from './ReactiveAvatar';
+import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { fireConfetti } from '../utils/confetti';
 import { playCorrectSound, playClickSound } from '../utils/audio';
 
-export type UnifiedShopCategory = 'all' | 'fardas' | 'molduras' | 'fundos' | 'badges' | 'streak' | 'powerups' | 'boosters';
+export type UnifiedShopCategory = 'all' | 'fardas' | 'face' | 'molduras' | 'fundos' | 'badges' | 'streak' | 'powerups' | 'boosters';
 
 export interface UnifiedShopItem {
   id: string;
@@ -51,7 +63,7 @@ export interface UnifiedShopItem {
   badgeBg?: string;
   isPopular?: boolean;
   isExclusive?: boolean;
-  type: 'avatar_farda' | 'frame' | 'background' | 'badge' | 'streak_freeze' | 'hint_powerup' | 'xp_booster';
+  type: 'avatar_farda' | 'frame' | 'background' | 'badge' | 'faceAccessory' | 'streak_freeze' | 'hint_powerup' | 'xp_booster';
   amount?: number;
   imageUrl?: string;
   layerClass?: string;
@@ -72,6 +84,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<UnifiedShopCategory>('all');
   const [previewItem, setPreviewItem] = useState<UnifiedShopItem | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [insufficientFundsItem, setInsufficientFundsItem] = useState<UnifiedShopItem | null>(null);
 
   const userCoins = profile.minintCoins || 0;
   const purchasedItems = profile.purchasedItems || [];
@@ -155,23 +168,49 @@ export const ShopView: React.FC<ShopViewProps> = ({
       });
     });
 
+    // 5. Acessórios de Rosto & Cabeça (NVG Goggles, Radio Communicator)
+    ACCESSORY_FACE_ITEMS.filter(f => f.id !== 'face_none').forEach((f) => {
+      items.push({
+        id: f.id,
+        name: f.name,
+        category: 'face',
+        cost: f.cost,
+        description: f.description,
+        symbol: f.icon,
+        isPopular: f.id === 'face_nvg_tactical',
+        isExclusive: f.id === 'face_radio_communicator',
+        type: 'faceAccessory',
+        imageUrl: f.imageUrl,
+        rawItem: f,
+      });
+    });
+
     return items;
   }, []);
 
+  const currentBaseAvatar = getAvatarById(profile.avatarId) || BASE_AVATARS.find((a) => a.id === profile.avatarId);
   const equippedShopItem = SHOP_ITEMS.find((item) => item.id === profile.avatarId);
   const currentAvatarInfo = getAvatarOption(profile.avatarId, profile.branch, profile.displayName);
-  const currentUniformName = equippedShopItem?.name || currentAvatarInfo.label || `Oficial ${profile.branch || 'PNA'}`;
+  const currentUniformName = currentBaseAvatar?.title || equippedShopItem?.name || currentAvatarInfo.label || `Oficial ${profile.branch || 'PNA'}`;
 
   // Current accessories setup
-  const currentAccessories = profile.avatarAccessories || { frame: 'frame_none', background: 'bg_default', badge: 'badge_none' };
+  const currentAccessories = profile.avatarAccessories || {
+    frame: profile.equippedFrame || 'frame_none',
+    background: profile.equippedBackground || 'bg_default',
+    badge: 'badge_none',
+    faceAccessory: profile.equippedFaceAccessory || 'face_none',
+  };
 
-  // Calculate live simulated avatar appearance based on hovered/selected previewItem
-  const simulatedAvatarId = previewItem?.type === 'avatar_farda' ? previewItem.id : profile.avatarId;
+  // Calculate live simulated avatar appearance based on tested previewItem
+  // The base avatar remains the user's selected 3D avatar; tested special uniforms overlay on top!
+  const simulatedAvatarId = profile.avatarId || 'pna_male';
+  const simulatedUniform = previewItem?.type === 'avatar_farda' ? previewItem.id : (SHOP_ITEMS.some(s => s.id === profile.avatarId) ? profile.avatarId : undefined);
   const simulatedAccessories: AvatarAccessories = {
     ...currentAccessories,
-    frame: previewItem?.type === 'frame' ? previewItem.id : (currentAccessories.frame || 'frame_none'),
-    background: previewItem?.type === 'background' ? previewItem.id : (currentAccessories.background || 'bg_default'),
+    frame: previewItem?.type === 'frame' ? previewItem.id : (currentAccessories.frame || profile.equippedFrame || 'frame_none'),
+    background: previewItem?.type === 'background' ? previewItem.id : (currentAccessories.background || profile.equippedBackground || 'bg_default'),
     badge: previewItem?.type === 'badge' ? previewItem.id : (currentAccessories.badge || 'badge_none'),
+    faceAccessory: previewItem?.type === 'faceAccessory' ? previewItem.id : (currentAccessories.faceAccessory || profile.equippedFaceAccessory || 'face_none'),
   };
 
   // Helper to check if an item is equipped
@@ -180,13 +219,16 @@ export const ShopView: React.FC<ShopViewProps> = ({
       return profile.avatarId === item.id;
     }
     if (item.type === 'frame') {
-      return currentAccessories.frame === item.id;
+      return (currentAccessories.frame || profile.equippedFrame) === item.id;
     }
     if (item.type === 'background') {
-      return currentAccessories.background === item.id;
+      return (currentAccessories.background || profile.equippedBackground) === item.id;
     }
     if (item.type === 'badge') {
       return currentAccessories.badge === item.id;
+    }
+    if (item.type === 'faceAccessory') {
+      return (currentAccessories.faceAccessory || profile.equippedFaceAccessory) === item.id;
     }
     return false;
   };
@@ -202,24 +244,27 @@ export const ShopView: React.FC<ShopViewProps> = ({
   const handlePurchase = (item: UnifiedShopItem) => {
     playClickSound();
 
-    // Check if user has enough coins
-    if (userCoins < item.cost) {
+    // Verificação rigorosa de saldo de 'minintCoins' antes de permitir a aquisição
+    const currentCoins = profile.minintCoins ?? 0;
+    if (currentCoins < item.cost) {
+      setInsufficientFundsItem(item);
       setFeedbackMessage({
-        text: `Créditos insuficientes! Precisa de mais ${item.cost - userCoins} Moedas. Cumpra missões diárias para ganhar mais.`,
+        text: `Saldo insuficiente! O seu saldo actual é de ${currentCoins} Moedas. Precisa de mais ${item.cost - currentCoins} Moedas para adquirir "${item.name}".`,
         type: 'error',
       });
-      setTimeout(() => setFeedbackMessage(null), 4000);
+      setTimeout(() => setFeedbackMessage(null), 5000);
       return;
     }
 
     // Deduct coins
-    const newCoins = userCoins - item.cost;
+    const newCoins = currentCoins - item.cost;
     let newPurchasedItems = [...purchasedItems];
     let newStreakFreeze = streakFreezeCount;
     let newExtraHints = extraHintsCount;
     let newAvatarId = profile.avatarId;
     let newAccessories: AvatarAccessories = { ...currentAccessories };
     let newEquippedFrame = profile.equippedFrame;
+    let newEquippedFaceAccessory = profile.equippedFaceAccessory;
 
     if (item.type === 'avatar_farda') {
       if (!newPurchasedItems.includes(item.id)) {
@@ -243,6 +288,12 @@ export const ShopView: React.FC<ShopViewProps> = ({
         newPurchasedItems.push(item.id);
       }
       newAccessories.badge = item.id;
+    } else if (item.type === 'faceAccessory') {
+      if (!newPurchasedItems.includes(item.id)) {
+        newPurchasedItems.push(item.id);
+      }
+      newAccessories.faceAccessory = item.id;
+      newEquippedFaceAccessory = item.id;
     } else if (item.type === 'streak_freeze') {
       newStreakFreeze += (item.amount || 1);
     } else if (item.type === 'hint_powerup') {
@@ -257,6 +308,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
       extraHintsCount: newExtraHints,
       avatarId: newAvatarId,
       equippedFrame: newEquippedFrame,
+      equippedFaceAccessory: newEquippedFaceAccessory,
       avatarAccessories: newAccessories,
       updatedAt: new Date().toISOString(),
     };
@@ -274,6 +326,8 @@ export const ShopView: React.FC<ShopViewProps> = ({
       successMsg = `Fundo "${item.name}" comprado e aplicado ao seu avatar! 🎨`;
     } else if (item.type === 'badge') {
       successMsg = `Distintivo "${item.name}" adicionado ao seu avatar! 🎖️`;
+    } else if (item.type === 'faceAccessory') {
+      successMsg = `Acessório "${item.name}" comprado e equipado no seu avatar! 🥽`;
     } else if (item.type === 'streak_freeze') {
       successMsg = `Congelamento de Sequência adicionado ao seu inventário! 🧊`;
     } else if (item.type === 'hint_powerup') {
@@ -289,6 +343,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
     let newAvatarId = profile.avatarId;
     let newAccessories: AvatarAccessories = { ...currentAccessories };
     let newEquippedFrame = profile.equippedFrame;
+    let newEquippedFaceAccessory = profile.equippedFaceAccessory;
 
     if (item.type === 'avatar_farda') {
       newAvatarId = item.id;
@@ -299,12 +354,16 @@ export const ShopView: React.FC<ShopViewProps> = ({
       newAccessories.background = item.id;
     } else if (item.type === 'badge') {
       newAccessories.badge = item.id;
+    } else if (item.type === 'faceAccessory') {
+      newAccessories.faceAccessory = item.id;
+      newEquippedFaceAccessory = item.id;
     }
 
     const updatedProfile: UserProfile = {
       ...profile,
       avatarId: newAvatarId,
       equippedFrame: newEquippedFrame,
+      equippedFaceAccessory: newEquippedFaceAccessory,
       avatarAccessories: newAccessories,
       updatedAt: new Date().toISOString(),
     };
@@ -336,8 +395,79 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
     return item.category === selectedCategory;
   });
 
+  const handleTestItem = (item: UnifiedShopItem) => {
+    playClickSound();
+    if (previewItem?.id === item.id) {
+      setPreviewItem(null);
+    } else {
+      setPreviewItem(item);
+    }
+  };
+
+  const renderShopItemIcon = (item: UnifiedShopItem) => {
+    // 1. If item is an avatar_farda (Special Fardas per Organ):
+    // Use the 3D Base Avatar for that organ as background
+    if (item.type === 'avatar_farda') {
+      const organBranch = (item.branch || profile.branch || 'PNA') as MININTBranch;
+      const userIsFemale = profile.avatarId?.includes('female');
+      const baseAvatarAsset = getAvatarAssetPath(
+        userIsFemale ? `${organBranch.toLowerCase()}_female` : `${organBranch.toLowerCase()}_male`,
+        organBranch
+      );
+
+      return (
+        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative bg-slate-950/90 border border-white/10 group">
+          {/* Base 3D Avatar Image of the organ as thumbnail background */}
+          <img
+            src={baseAvatarAsset}
+            alt={item.name}
+            className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 group-hover:opacity-95 transition-opacity"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          {/* Tactical darken overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/35 pointer-events-none" />
+          
+          {/* Special uniform tactical illustration overlay on top */}
+          <div className="relative z-10 w-full h-full flex items-center justify-center pointer-events-none">
+            <TacticalAvatarIllustration
+              id={item.id}
+              branch={item.branch}
+              size={48}
+              className="w-full h-full object-cover drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    // 2. If item has an explicit SVG Image (Frames, NVG goggles, Comms headset)
+    if (item.imageUrl) {
+      return (
+        <img
+          src={item.imageUrl}
+          alt={item.name}
+          className="w-12 h-12 object-contain pointer-events-none drop-shadow-md"
+        />
+      );
+    }
+
+    // 3. Specialized custom vector tactical avatars & illustrations
+    return (
+      <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center bg-slate-950/80 border border-white/10">
+        <TacticalAvatarIllustration
+          id={item.id}
+          branch={item.branch}
+          size={48}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-4 pb-8">
+    <div className="space-y-4 pb-32 sm:pb-36 pr-1 sm:pr-0">
       {/* Top Banner / Store Title */}
       <div className="bg-gradient-to-br from-[#0F1115] via-[#16181D] to-[#0A0C0E] border border-amber-500/30 rounded-2xl p-4 sm:p-5 text-white shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -407,135 +537,286 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             {feedbackMessage.type === 'success' ? (
               <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
             ) : (
-              <Info size={18} className="text-rose-500 shrink-0" />
+              <AlertCircle size={18} className="text-rose-500 shrink-0" />
             )}
             <span className="flex-1">{feedbackMessage.text}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 🌟 1. PRÉ-VISUALIZAÇÃO AO VIVO NA LOJA (LIVE PREVIEW POD) */}
-      <motion.div 
-        layout
-        className={`rounded-2xl border transition-all duration-300 p-4 sm:p-5 relative overflow-hidden shadow-lg ${
-          previewItem
-            ? 'bg-gradient-to-br from-amber-500/15 via-slate-900 to-amber-950/40 border-amber-500/80 shadow-[0_0_25px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/50'
-            : 'bg-white dark:bg-[#0F1115] border-slate-200 dark:border-white/10'
-        }`}
-      >
-        <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* ⚠️ Alerta Visual de Saldo Insuficiente (Modal / Dialog) */}
+      <AnimatePresence>
+        {insufficientFundsItem && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+            onClick={() => setInsufficientFundsItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0F1115] border-2 border-rose-500/80 rounded-2xl max-w-md w-full p-5 sm:p-6 text-white shadow-2xl shadow-rose-950/60 relative overflow-hidden ring-1 ring-rose-500/30"
+            >
+              {/* Ambient Glow */}
+              <div className="absolute top-0 right-0 w-40 h-40 bg-rose-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-amber-500/15 rounded-full blur-2xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-4">
-          {/* Avatar Preview Visual Area */}
-          <div className="flex items-center gap-4 w-full md:w-auto">
-            <div className="relative shrink-0 flex items-center justify-center p-1">
-              <ReactiveAvatar
-                avatarId={simulatedAvatarId}
-                branch={previewItem?.branch || profile.branch}
-                displayName={profile.displayName}
-                photoURL={profile.photoURL}
-                accessories={simulatedAccessories}
-                equippedFrame={simulatedAccessories.frame}
-                size="xl"
-                reaction={previewItem ? 'celebrate' : 'idle'}
-                showBranchBadge={true}
-                showLevelBadge={true}
-                level={profile.level || 1}
-                isVipSupporter={profile.isVipSupporter}
-                interactive={true}
-              />
-            </div>
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setInsufficientFundsItem(null)}
+                className="absolute top-4 right-4 p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="Fechar alerta"
+              >
+                <X size={18} />
+              </button>
 
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-1">
-                {previewItem ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] uppercase tracking-wider animate-pulse shadow-sm">
-                    <Eye size={12} />
-                    <span>Pré-Visualização ao Vivo</span>
+              {/* Header Icon & Title */}
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-amber-600 p-0.5 shadow-lg shadow-rose-500/25 shrink-0 flex items-center justify-center">
+                  <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+                    <AlertCircle size={26} className="text-rose-400 animate-pulse" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 font-mono">
+                    Aviso de Créditos MININT
                   </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider">
-                    <Check size={12} />
-                    <span>Equipamento Actual</span>
-                  </span>
-                )}
-
-                {previewItem && (
-                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">
-                    {previewItem.category.toUpperCase()}
-                  </span>
-                )}
+                  <h3 className="text-lg font-black text-slate-100 tracking-tight">
+                    Saldo Insuficiente
+                  </h3>
+                </div>
               </div>
 
-              <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white tracking-tight truncate">
-                {previewItem ? previewItem.name : currentUniformName}
-              </h3>
-              
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">
-                {previewItem
-                  ? previewItem.description
-                  : 'Passe o cursor ou toque em qualquer Farda, Moldura ou Fundo abaixo para testar instantaneamente no seu avatar.'}
-              </p>
-            </div>
-          </div>
+              {/* Item Card Details */}
+              <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3.5 mb-4 flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-2xl shrink-0">
+                  {insufficientFundsItem.imageUrl ? (
+                    <img src={insufficientFundsItem.imageUrl} alt={insufficientFundsItem.name} className="w-10 h-10 object-contain" />
+                  ) : (
+                    <span>{insufficientFundsItem.symbol}</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-black text-slate-200 truncate">{insufficientFundsItem.name}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-mono font-bold text-yellow-400 flex items-center gap-1">
+                      <Coins size={13} className="text-yellow-400 fill-yellow-400/80" />
+                      Preço: {insufficientFundsItem.cost} Moedas
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-          {/* Quick Actions in Live Preview Pod */}
-          <div className="flex items-center gap-2.5 w-full md:w-auto justify-end shrink-0 border-t md:border-t-0 pt-3 md:pt-0 border-slate-200 dark:border-white/10">
-            {previewItem ? (
-              <>
+              {/* Balance Comparison Grid */}
+              <div className="grid grid-cols-2 gap-2.5 mb-4">
+                <div className="bg-slate-900/80 border border-white/5 rounded-xl p-3 text-center">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Seu Saldo Actual</p>
+                  <p className="text-base font-black font-mono text-yellow-400 mt-0.5">
+                    {userCoins} <span className="text-xs text-slate-400">Moedas</span>
+                  </p>
+                </div>
+                <div className="bg-rose-500/15 border border-rose-500/40 rounded-xl p-3 text-center">
+                  <p className="text-[10px] font-bold text-rose-400 uppercase tracking-wider font-mono">Faltam</p>
+                  <p className="text-base font-black font-mono text-rose-400 mt-0.5">
+                    {Math.max(0, insufficientFundsItem.cost - userCoins)} <span className="text-xs text-rose-300">Moedas</span>
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 mb-5 leading-relaxed">
+                Você não possui moedas suficientes para desbloquear este item. Resolva simulados diários, cumpra missões ou vença duelos 1v1 para acumular créditos!
+              </p>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                {onNavigateTab && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInsufficientFundsItem(null);
+                      onNavigateTab('quiz');
+                    }}
+                    className="w-full sm:flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Zap size={15} />
+                    <span>Ganhar Moedas nos Simulados</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    playClickSound();
-                    setPreviewItem(null);
-                  }}
-                  className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                  title="Voltar ao avatar original"
+                  onClick={() => setInsufficientFundsItem(null)}
+                  className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-colors cursor-pointer"
                 >
-                  <RotateCcw size={13} />
-                  <span>Limpar</span>
+                  Fechar
                 </button>
-
-                {isItemEquipped(previewItem) ? (
-                  <span className="px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
-                    <Check size={14} />
-                    <span>Equipado</span>
-                  </span>
-                ) : isItemOwned(previewItem) ? (
-                  <button
-                    type="button"
-                    onClick={() => handleEquipItem(previewItem)}
-                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
-                  >
-                    <Check size={14} />
-                    <span>Equipar Agora</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handlePurchase(previewItem)}
-                    disabled={userCoins < previewItem.cost}
-                    className={`px-4 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
-                      userCoins >= previewItem.cost
-                        ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 shadow-md shadow-yellow-500/25'
-                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-75'
-                    }`}
-                  >
-                    <Coins size={14} className="text-yellow-400 fill-yellow-400/90" />
-                    <span>Comprar ({previewItem.cost} M)</span>
-                  </button>
-                )}
-              </>
-            ) : (
-              <div className="text-right hidden md:block">
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">
-                  Toque num item para pré-visualizar
-                </span>
               </div>
-            )}
+            </motion.div>
           </div>
-        </div>
-      </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 🌟 1. PRÉ-VISUALIZAÇÃO AO VIVO NA LOJA (LIVE PREVIEW POD) - STICKY TOP */}
+      <div className="sticky top-0 z-40 pt-1 pb-1.5 bg-slate-100/90 dark:bg-[#07090E]/90 backdrop-blur-md">
+        <motion.div 
+          layout
+          id="live-avatar-preview-pod"
+          className={`rounded-2xl border transition-all duration-300 p-2.5 sm:p-4 md:p-5 relative overflow-hidden shadow-xl backdrop-blur-md ${
+            previewItem
+              ? 'bg-gradient-to-br from-slate-950/95 via-slate-900/95 to-amber-950/95 border-amber-500/90 shadow-[0_4px_25px_rgba(245,158,11,0.3)] ring-1 ring-amber-500/60'
+              : 'bg-white/95 dark:bg-[#0F1115]/95 border-slate-200 dark:border-white/15'
+          }`}
+        >
+          <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-2.5 sm:gap-4">
+            {/* Avatar Preview Visual Area */}
+            <div className="flex items-center gap-2.5 sm:gap-4 w-full md:w-auto">
+              <div className="relative shrink-0 flex items-center justify-center p-0.5 sm:p-1">
+                {/* Mobile compact avatar */}
+                <div className="block sm:hidden">
+                  <ReactiveAvatar
+                    avatarId={simulatedAvatarId}
+                    branch={profile.branch}
+                    displayName={profile.displayName}
+                    photoURL={previewItem?.type === 'avatar_farda' ? undefined : profile.photoURL}
+                    accessories={simulatedAccessories}
+                    equippedFrame={simulatedAccessories.frame}
+                    equippedBackground={simulatedAccessories.background}
+                    equippedFaceAccessory={simulatedAccessories.faceAccessory}
+                    equippedUniform={simulatedUniform}
+                    size="lg"
+                    reaction="idle"
+                    showBranchBadge={true}
+                    showLevelBadge={true}
+                    level={profile.level || 1}
+                    isVipSupporter={profile.isVipSupporter}
+                    interactive={false}
+                  />
+                </div>
+                {/* Desktop/Tablet size */}
+                <div className="hidden sm:block">
+                  <ReactiveAvatar
+                    avatarId={simulatedAvatarId}
+                    branch={profile.branch}
+                    displayName={profile.displayName}
+                    photoURL={previewItem?.type === 'avatar_farda' ? undefined : profile.photoURL}
+                    accessories={simulatedAccessories}
+                    equippedFrame={simulatedAccessories.frame}
+                    equippedBackground={simulatedAccessories.background}
+                    equippedFaceAccessory={simulatedAccessories.faceAccessory}
+                    equippedUniform={simulatedUniform}
+                    size="xl"
+                    reaction="idle"
+                    showBranchBadge={true}
+                    showLevelBadge={true}
+                    level={profile.level || 1}
+                    isVipSupporter={profile.isVipSupporter}
+                    interactive={true}
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap mb-0.5 sm:mb-1">
+                  {previewItem ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[10px] uppercase tracking-wider animate-pulse shadow-xs">
+                      <Eye size={12} />
+                      <span>Pré-Visualização ao Vivo</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider">
+                      <Check size={12} />
+                      <span>Equipamento Actual</span>
+                    </span>
+                  )}
+
+                  {previewItem && (
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 font-mono">
+                      {previewItem.category.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+
+                <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white tracking-tight truncate">
+                  {previewItem ? previewItem.name : currentUniformName}
+                </h3>
+                
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">
+                  {previewItem
+                    ? previewItem.description
+                    : 'Passe o cursor ou clique em "Testar" em qualquer Farda, Moldura ou Acessório abaixo para ver a alteração no avatar em tempo real.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Actions in Live Preview Pod */}
+            <div className="flex items-center gap-2 w-full md:w-auto justify-end shrink-0 border-t md:border-t-0 pt-2.5 md:pt-0 border-slate-200 dark:border-white/10">
+              {previewItem ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playClickSound();
+                      setPreviewItem(null);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                    title="Voltar ao avatar original"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Limpar</span>
+                  </button>
+
+                  {isItemEquipped(previewItem) ? (
+                    <span className="px-3.5 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Check size={14} />
+                      <span>Equipado</span>
+                    </span>
+                  ) : isItemOwned(previewItem) ? (
+                    <button
+                      type="button"
+                      onClick={() => handleEquipItem(previewItem)}
+                      className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+                    >
+                      <Check size={14} />
+                      <span>Equipar Agora</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handlePurchase(previewItem)}
+                      className={`px-3.5 py-2 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 ${
+                        userCoins >= previewItem.cost
+                          ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 shadow-md shadow-yellow-500/25'
+                          : 'bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 shadow-xs'
+                      }`}
+                    >
+                      {userCoins >= previewItem.cost ? (
+                        <>
+                          <Coins size={14} className="text-yellow-400 fill-yellow-400/90" />
+                          <span>Comprar ({previewItem.cost} M)</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={14} className="text-rose-400" />
+                          <span>Saldo Insuficiente ({previewItem.cost} M)</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div className="text-right hidden md:block">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block">
+                    Toque em "Testar" num item para pré-visualizar
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </div>
 
       {/* User Active Inventory Overview Bar */}
       <div className="bg-slate-100 dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl p-3.5 grid grid-cols-3 gap-2 text-center shadow-xs">
@@ -649,6 +930,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
         {[
           { id: 'all', label: 'Todos os Itens', icon: ShoppingBag },
           { id: 'fardas', label: 'Fardas Especiais', icon: Shirt },
+          { id: 'face', label: 'Rosto & Cabeça', icon: Eye },
           { id: 'molduras', label: 'Molduras de Avatar', icon: Sparkle },
           { id: 'fundos', label: 'Fundos & Cores', icon: Palette },
           { id: 'badges', label: 'Pins & Distintivos', icon: Award },
@@ -687,12 +969,75 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
           const isCurrentPreview = previewItem?.id === item.id;
           const canAfford = userCoins >= item.cost;
 
+          // Compute max 2 badges per card (without 'Em Teste' tag)
+          const cardBadges: { key: string; label: string; icon?: React.ReactNode; bg: string; text: string; border?: string }[] = [];
+          
+          if (isEquipped) {
+            cardBadges.push({
+              key: 'equipped',
+              label: 'Equipado',
+              icon: <Check size={10} />,
+              bg: 'bg-emerald-500/20',
+              text: 'text-emerald-600 dark:text-emerald-400',
+              border: 'border-emerald-500/40',
+            });
+          } else if (isOwned) {
+            cardBadges.push({
+              key: 'owned',
+              label: 'Desbloqueado',
+              icon: <Check size={10} />,
+              bg: 'bg-emerald-500/10',
+              text: 'text-emerald-600 dark:text-emerald-400',
+              border: 'border-emerald-500/20',
+            });
+          }
+
+          if (item.branch && cardBadges.length < 2) {
+            cardBadges.push({
+              key: 'branch',
+              label: item.branch,
+              bg: item.branch === 'PNA'
+                ? 'bg-blue-500/20 text-blue-600 dark:text-blue-400'
+                : item.branch === 'SIC'
+                ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400'
+                : item.branch === 'SME'
+                ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                : item.branch === 'SPCB'
+                ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                : 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
+              text: '',
+              border: 'border-white/10',
+            });
+          }
+
+          if (item.isPopular && cardBadges.length < 2) {
+            cardBadges.push({
+              key: 'popular',
+              label: 'Popular',
+              icon: <Sparkles size={10} />,
+              bg: 'bg-amber-500/20',
+              text: 'text-amber-600 dark:text-amber-400',
+              border: 'border-amber-500/40',
+            });
+          }
+
+          if (item.isExclusive && cardBadges.length < 2) {
+            cardBadges.push({
+              key: 'exclusive',
+              label: 'Exclusivo',
+              icon: <Crown size={10} />,
+              bg: 'bg-purple-500/20',
+              text: 'text-purple-600 dark:text-purple-300',
+              border: 'border-purple-500/40',
+            });
+          }
+
+          const visibleBadges = cardBadges.slice(0, 2);
+
           return (
             <div
               key={item.id}
-              onMouseEnter={() => setPreviewItem(item)}
-              onClick={() => setPreviewItem(item)}
-              className={`bg-white dark:bg-[#0F1115] border rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden transition-all shadow-sm cursor-pointer ${
+              className={`bg-white dark:bg-[#0F1115] border rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden transition-all shadow-xs ${
                 isCurrentPreview
                   ? 'border-amber-500 ring-2 ring-amber-500/50 bg-gradient-to-br from-amber-500/10 to-transparent shadow-md'
                   : isEquipped
@@ -700,111 +1045,127 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                   : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
               }`}
             >
-              {/* Badges / Tag overlay */}
+              {/* Badges / Tag overlay - Maximum 2 Badges */}
               <div className="flex items-center justify-between gap-1 mb-2">
-                <div className="flex items-center gap-1">
-                  {isCurrentPreview && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500 text-slate-950 font-mono text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
-                      <Eye size={9} />
-                      <span>Em Teste</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {visibleBadges.map((badge) => (
+                    <span
+                      key={badge.key}
+                      className={`px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider flex items-center gap-1 border ${badge.bg} ${badge.text} ${badge.border || 'border-transparent'}`}
+                    >
+                      {badge.icon}
+                      <span>{badge.label}</span>
                     </span>
-                  )}
-                  {item.isPopular && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-600 dark:text-amber-400 font-mono text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
-                      <Sparkles size={9} />
-                      <span>Popular</span>
-                    </span>
-                  )}
-                  {item.isExclusive && (
-                    <span className="px-2 py-0.5 rounded-md bg-purple-500/20 border border-purple-500/40 text-purple-600 dark:text-purple-300 font-mono text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
-                      <Crown size={9} />
-                      <span>Exclusivo</span>
-                    </span>
-                  )}
-                  {item.branch && (
-                    <span className="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[9px] font-bold uppercase">
-                      {item.branch}
-                    </span>
-                  )}
+                  ))}
                 </div>
 
-                {/* Stock or Owned Indicator */}
-                {isOwned && (
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
-                    <Check size={11} />
-                    <span>Desbloqueado</span>
-                  </span>
-                )}
+                {/* Price indicator badge */}
+                <div className="flex items-center gap-1 font-mono text-xs font-black text-amber-500 dark:text-amber-400">
+                  <Coins size={14} className="text-yellow-400 fill-yellow-400/80 shrink-0" />
+                  <span>{item.cost} M</span>
+                </div>
               </div>
 
               {/* Item Card Body */}
               <div className="flex items-start gap-3 my-1">
-                {/* Visual Icon Box */}
-                <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${item.badgeBg || item.layerClass || 'from-amber-500/20 to-amber-600/10'} border border-amber-500/30 flex items-center justify-center text-3xl shadow-inner shrink-0 relative overflow-hidden`}>
-                  {item.imageUrl ? (
-                    <img src={item.imageUrl} alt={item.name} className="w-12 h-12 object-contain" />
-                  ) : (
-                    <span>{item.symbol}</span>
-                  )}
+                {/* Visual Icon Box - Real Organ Styling & Palette */}
+                <div
+                  className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${
+                    item.badgeBg || item.layerClass || 'from-amber-500/20 to-amber-600/10'
+                  } border ${
+                    item.branch === 'PNA'
+                      ? 'border-blue-500/40 shadow-[0_0_12px_rgba(59,130,246,0.15)]'
+                      : item.branch === 'SIC'
+                      ? 'border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.15)]'
+                      : item.branch === 'SME'
+                      ? 'border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
+                      : item.branch === 'SPCB'
+                      ? 'border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                      : item.branch === 'SP'
+                      ? 'border-purple-500/40 shadow-[0_0_12px_rgba(168,85,247,0.15)]'
+                      : 'border-amber-500/30'
+                  } flex items-center justify-center text-3xl shadow-inner shrink-0 relative overflow-hidden`}
+                >
+                  {renderShopItemIcon(item)}
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <h3 className="text-xs sm:text-sm font-black text-slate-900 dark:text-slate-100 leading-tight">
                     {item.name}
                   </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed line-clamp-2">
                     {item.description}
                   </p>
                 </div>
               </div>
 
-              {/* Card Footer Action */}
-              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
-                {/* Cost Pill */}
-                <div className="flex items-center gap-1.5">
-                  <Coins size={16} className="text-yellow-400 fill-yellow-400/80 shrink-0" />
-                  <span className="text-sm font-black font-mono text-slate-900 dark:text-yellow-300">
-                    {item.cost} <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">Moedas</span>
-                  </span>
-                </div>
+              {/* Card Footer Action: Testar + Comprar / Equipar */}
+              <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/5 flex items-center justify-between gap-2">
+                {/* Dedicated Testar Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTestItem(item);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer ${
+                    isCurrentPreview
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-xs ring-1 ring-amber-400'
+                      : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-white/5'
+                  }`}
+                  title="Testar este item no avatar"
+                >
+                  <Eye size={12} />
+                  <span>{isCurrentPreview ? 'A Testar' : 'Testar'}</span>
+                </button>
 
                 {/* Purchase or Equip Button */}
-                {isOwned ? (
-                  isEquipped ? (
-                    <span className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-[11px] uppercase tracking-wider border border-emerald-500/40 flex items-center gap-1">
-                      <Check size={13} />
-                      <span>Equipado</span>
-                    </span>
+                <div className="flex items-center gap-1.5">
+                  {isOwned ? (
+                    isEquipped ? (
+                      <span className="px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-[11px] uppercase tracking-wider border border-emerald-500/40 flex items-center gap-1">
+                        <Check size={13} />
+                        <span>Equipado</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEquipItem(item);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-xs"
+                      >
+                        Equipar
+                      </button>
+                    )
                   ) : (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleEquipItem(item);
+                        handlePurchase(item);
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider transition-all cursor-pointer active:scale-95 shadow-xs"
+                      className={`px-3 py-1.5 rounded-xl font-black text-[11px] uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer active:scale-95 ${
+                        canAfford
+                          ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 shadow-md shadow-yellow-500/20'
+                          : 'bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300'
+                      }`}
                     >
-                      Equipar
+                      {canAfford ? (
+                        <>
+                          <ShoppingBag size={13} />
+                          <span>Comprar</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle size={13} className="text-rose-400" />
+                          <span>Saldo Insuficiente</span>
+                        </>
+                      )}
                     </button>
-                  )
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePurchase(item);
-                    }}
-                    disabled={!canAfford}
-                    className={`px-3 py-1.5 rounded-xl font-black text-[11px] uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer active:scale-95 ${
-                      canAfford
-                        ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 shadow-md shadow-yellow-500/20'
-                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-70'
-                    }`}
-                  >
-                    <ShoppingBag size={13} />
-                    <span>Comprar</span>
-                  </button>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           );

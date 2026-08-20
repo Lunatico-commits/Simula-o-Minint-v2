@@ -94,6 +94,9 @@ export interface AvatarAccessories {
   frame?: string;
   background?: string;
   badge?: string;
+  faceAccessory?: string;
+  headAccessory?: string;
+  face?: string;
   frames?: string;
   backgrounds?: string;
   badges?: string;
@@ -107,6 +110,7 @@ export interface UserProfile {
   equippedUniform?: string;
   equippedFrame?: string;
   equippedBackground?: string;
+  equippedFaceAccessory?: string;
   avatarAccessories?: AvatarAccessories;
   province: string;
   academicLevel?: AcademicLevel;
@@ -164,6 +168,7 @@ export interface DailyChallengeEntry {
   equippedFrame?: string;
   equippedBackground?: string;
   equippedUniform?: string;
+  equippedFaceAccessory?: string;
   avatarAccessories?: AvatarAccessories;
   date: string;
   score: number;
@@ -202,6 +207,7 @@ export interface SavedAccount {
   equippedFrame?: string;
   equippedBackground?: string;
   equippedUniform?: string;
+  equippedFaceAccessory?: string;
   avatarAccessories?: AvatarAccessories;
   lastLoginAt: string;
 }
@@ -218,6 +224,7 @@ export interface DuelPlayer {
   equippedFrame?: string;
   equippedBackground?: string;
   equippedUniform?: string;
+  equippedFaceAccessory?: string;
   avatarAccessories?: AvatarAccessories;
   score: number;
   currentQuestionIndex: number;

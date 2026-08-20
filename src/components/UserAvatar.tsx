@@ -12,6 +12,7 @@ export interface UserAvatarProps {
   equippedFrame?: string;
   equippedBackground?: string;
   equippedUniform?: string;
+  equippedFaceAccessory?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
   reaction?: AvatarReactionType;
   triggerReaction?: number | string | boolean;
@@ -42,6 +43,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   equippedFrame,
   equippedBackground,
   equippedUniform,
+  equippedFaceAccessory,
   size = 'md',
   reaction = 'idle',
   triggerReaction,
@@ -67,11 +69,13 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
     frame: user?.equippedFrame || 'frame_none',
     background: user?.equippedBackground || 'bg_default',
     badge: 'badge_none',
+    faceAccessory: user?.equippedFaceAccessory || 'face_none',
   };
 
   const resolvedEquippedFrame = equippedFrame || user?.equippedFrame || resolvedAccessories?.frame || (resolvedAccessories as any)?.frames;
   const resolvedEquippedBackground = equippedBackground || user?.equippedBackground || resolvedAccessories?.background || (resolvedAccessories as any)?.backgrounds;
   const resolvedEquippedUniform = equippedUniform || user?.equippedUniform;
+  const resolvedEquippedFaceAccessory = equippedFaceAccessory || user?.equippedFaceAccessory || resolvedAccessories?.faceAccessory || resolvedAccessories?.face;
   const resolvedLevel = level ?? user?.level;
   const resolvedIsVipSupporter = isVipSupporter ?? Boolean(user?.isVipSupporter);
   const resolvedIsFirstPlace = isFirstPlace ?? Boolean(user?.isFirstPlace);
@@ -86,6 +90,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
       equippedFrame={resolvedEquippedFrame}
       equippedBackground={resolvedEquippedBackground}
       equippedUniform={resolvedEquippedUniform}
+      equippedFaceAccessory={resolvedEquippedFaceAccessory}
       size={size}
       reaction={reaction}
       triggerReaction={triggerReaction}

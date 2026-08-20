@@ -5,6 +5,7 @@ import { MININTBranch, AvatarAccessories } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { getAccessoryItem } from '../data/avatarAccessories';
 import { BranchIllustration } from './BranchIllustration';
+import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 
 export type AvatarReactionType = 'idle' | 'victory' | 'quizComplete' | 'levelUp' | 'celebrate';
 
@@ -17,6 +18,7 @@ export interface ReactiveAvatarProps {
   equippedFrame?: string;
   equippedBackground?: string;
   equippedUniform?: string;
+  equippedFaceAccessory?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
   reaction?: AvatarReactionType;
   triggerReaction?: number | string | boolean;
@@ -114,6 +116,7 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
   equippedFrame,
   equippedBackground,
   equippedUniform,
+  equippedFaceAccessory,
   size = 'md',
   reaction = 'idle',
   triggerReaction,
@@ -196,20 +199,23 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
 
   const isReacting = activeReaction !== 'idle';
 
-  // 3 Guaranteed Accessory Layers: Background, Frame, Pin/Badge (resolving singular & plural keys)
+  // 4 Guaranteed Accessory Layers: Background, Frame, Pin/Badge, Face Accessory (resolving singular & plural keys)
   const resolvedFrameId = equippedFrame || accessories?.frame || (accessories as any)?.frames;
   const resolvedBgId = equippedBackground || accessories?.background || (accessories as any)?.backgrounds;
   const resolvedBadgeId = accessories?.badge || (accessories as any)?.badges;
+  const resolvedFaceId = equippedFaceAccessory || accessories?.faceAccessory || (accessories as any)?.face;
 
   const bgItem = getAccessoryItem(resolvedBgId);
   const frameItem = getAccessoryItem(resolvedFrameId);
   const badgeItem = getAccessoryItem(resolvedBadgeId);
+  const faceItem = getAccessoryItem(resolvedFaceId);
 
   const bgGradient = bgItem?.layerClass
     ? `bg-gradient-to-br ${bgItem.layerClass}`
     : `bg-gradient-to-br ${branchInfo.badgeBg}`;
 
   const hasSpecialFrame = frameItem && frameItem.id !== 'frame_none';
+  const hasFaceAccessory = faceItem && faceItem.id !== 'face_none';
 
   // Reaction-based custom symbols and badges
   const getReactionSymbol = () => {
@@ -220,8 +226,6 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
         return '👑';
       case 'quizComplete':
         return '💯';
-      case 'celebrate':
-        return '🥳';
       default:
         return avatarOption.symbol;
     }
@@ -401,9 +405,9 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
           {/* Layer 1: [Fundo / Gradiente] (z-0) */}
           <div className={`absolute inset-0 rounded-full z-0 pointer-events-none select-none ${bgGradient}`} />
 
-          {/* Layer 2: [Avatar / Farda Base / Imagem do Avatar] (z-10) */}
+          {/* Layer 2: [Avatar / Farda Base / Tactical Vector Illustration] (z-10) */}
           <div className="relative z-10 w-full h-full flex items-center justify-center pointer-events-none select-none">
-            {photoURL ? (
+            {photoURL && !avatarOption.isSpecialShopItem && !equippedUniform ? (
               <img
                 src={photoURL}
                 alt={displayName}
@@ -412,26 +416,62 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
                   e.currentTarget.style.display = 'none';
                 }}
               />
-            ) : null}
-
-            {/* Base Emoji / Symbol / Initials (if no photo or fallback) */}
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={`sym-${getReactionSymbol()}-${avatarOption.id}`}
-                initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-                animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                exit={{ scale: 0.5, opacity: 0, rotate: 15 }}
-                transition={{ type: 'spring', stiffness: 450, damping: 20 }}
-                className={`font-black select-none pointer-events-none ${sizeConfig.text} ${
-                  avatarOption.isCustomInitials
-                    ? 'font-mono tracking-wider text-amber-300 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]'
-                    : 'drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]'
-                }`}
-              >
-                {getReactionSymbol()}
-              </motion.span>
-            </AnimatePresence>
+            ) : avatarOption.isCustomInitials ? (
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/80 flex items-center justify-center border border-amber-500/50">
+                <span className={`font-mono font-black tracking-wider text-amber-300 drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)] ${sizeConfig.text}`}>
+                  {avatarOption.symbol || 'CM'}
+                </span>
+              </div>
+            ) : equippedUniform ? (
+              <div className="relative w-full h-full flex items-center justify-center">
+                {/* Base 3D Avatar of user underneath */}
+                <TacticalAvatarIllustration
+                  id={avatarOption.id || avatarId || 'pna_male'}
+                  branch={branch}
+                  className="w-full h-full object-cover"
+                />
+                {/* Equipped / Tested Special Tactical Farda Overlay */}
+                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                  <TacticalAvatarIllustration
+                    id={equippedUniform}
+                    branch={branch}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            ) : (
+              <TacticalAvatarIllustration
+                id={avatarOption.id || avatarId || 'pna_male'}
+                branch={branch}
+                className="w-full h-full object-cover"
+              />
+            )}
           </div>
+
+          {/* Layer: [Acessório de Rosto / Face Gear Overlay (NVG Goggles / Headset)] (z-15) */}
+          {hasFaceAccessory && faceItem && (
+            <div className="absolute inset-0 pointer-events-none select-none z-15 flex items-center justify-center">
+              {faceItem.imageUrl ? (
+                <img
+                  src={faceItem.imageUrl}
+                  alt={faceItem.name}
+                  className="w-full h-full object-contain pointer-events-none select-none transition-transform duration-300"
+                  style={{
+                    filter: faceItem.glowColor ? `drop-shadow(0 0 6px ${faceItem.glowColor})` : undefined,
+                  }}
+                />
+              ) : (
+                <span
+                  className={`select-none pointer-events-none ${sizeConfig.text}`}
+                  style={{
+                    filter: faceItem.glowColor ? `drop-shadow(0 0 6px ${faceItem.glowColor})` : undefined,
+                  }}
+                >
+                  {faceItem.icon}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Shimmer Streak Effect when Celebrating */}
           {isReacting && (

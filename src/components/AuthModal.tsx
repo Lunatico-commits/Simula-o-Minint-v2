@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SavedAccount, MININTBranch, AcademicLevel, ACADEMIC_LEVELS } from '../types';
 import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, RANKS_MININT, getAvatarOption } from '../data/branches';
+import { BASE_AVATARS, getAvatarById, getAvatarAssetPath } from '../data/avatars';
 import { generateReferralCode, processReferralReward } from '../utils/referral';
 import { getCurrentISOWeek } from '../utils/league';
 import { registerWithFirebaseAuth, loginWithFirebaseAuth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { 
   Shield, 
   UserPlus, 
@@ -597,7 +599,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 onChange={(e) => {
                   const b = e.target.value as MININTBranch;
                   setBranch(b);
-                  const av = AVATAR_OPTIONS.find(a => a.branch === b);
+                  const av = BASE_AVATARS.find(a => a.organ === b) || AVATAR_OPTIONS.find(a => a.branch === b);
                   if (av) setAvatarId(av.id);
                 }}
                 className="w-full bg-slate-50 dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 shadow-sm"
@@ -608,6 +610,57 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* 4.1 Escolha do Avatar Oficial (10 Avatares 3D Masculino/Feminino) */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[11px] uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400 font-bold">
+                  Avatar Oficial de Candidato *
+                </label>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                  10 Fardas Oficiais
+                </span>
+              </div>
+              <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1 no-scrollbar p-1 bg-slate-100 dark:bg-[#0F1115] rounded-xl border border-slate-200 dark:border-white/5">
+                {BASE_AVATARS.map((av) => {
+                  const isSelected = avatarId === av.id;
+                  return (
+                    <button
+                      key={av.id}
+                      type="button"
+                      onClick={() => {
+                        setAvatarId(av.id);
+                        if (av.organ) setBranch(av.organ as MININTBranch);
+                      }}
+                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center relative ${
+                        isSelected
+                          ? 'bg-amber-500/20 border-amber-500 ring-2 ring-amber-500 shadow-sm'
+                          : 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 hover:border-amber-500/40'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full overflow-hidden mb-1 flex items-center justify-center bg-slate-900/50 relative">
+                        <TacticalAvatarIllustration
+                          id={av.id}
+                          branch={av.organ as MININTBranch}
+                          className="w-full h-full object-cover"
+                        />
+                        {isSelected && (
+                          <div className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-[8px] font-black shadow-xs">
+                            ✓
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black leading-tight text-slate-900 dark:text-slate-100 truncate w-full">
+                        {av.title.split(' - ')[1] || av.title}
+                      </span>
+                      <span className="text-[8.5px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                        {av.organ} ({av.gender === 'female' ? 'Fem' : 'Masc'})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* 5. Província de Candidatura */}

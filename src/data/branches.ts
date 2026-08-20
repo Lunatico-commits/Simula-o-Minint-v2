@@ -1,4 +1,9 @@
 import { BranchInfo, MININTBranch } from '../types';
+import { BASE_AVATARS, AvatarDefinition, getAvatarById, getAvatarAssetPath, getAvatarsByOrgan } from './avatars';
+
+export type BaseOfficialAvatar = AvatarDefinition;
+export const BASE_OFFICIAL_AVATARS: AvatarDefinition[] = BASE_AVATARS;
+export { BASE_AVATARS, getAvatarById, getAvatarAssetPath, getAvatarsByOrgan };
 
 export const MININT_BRANCHES: Record<MININTBranch, BranchInfo> = {
   PNA: {
@@ -123,10 +128,44 @@ export const getCandidateInitials = (displayName?: string): string => {
   return (first + last).toUpperCase();
 };
 
-export const BASIC_FREE_AVATARS = ['pna_1', 'sic_1', 'sme_1', 'sp_1', 'spcb_1', 'custom_initials'];
+export const BASIC_FREE_AVATARS = [
+  'pna_male',
+  'pna_female',
+  'sic_male',
+  'sic_female',
+  'sme_male',
+  'sme_female',
+  'spcb_male',
+  'spcb_female',
+  'sp_male',
+  'sp_female',
+  'pna_1',
+  'sic_1',
+  'sme_1',
+  'sp_1',
+  'spcb_1',
+  'custom_initials'
+];
 
 export const AVATAR_OPTIONS = [
-  // 1. Basic Free Avatars (1 per branch + custom)
+  // 1. 10 Base Official Avatars (Male & Female for each Branch)
+  // PNA
+  { id: 'pna_male', branch: 'PNA' as MININTBranch, label: 'PNA - Agente Masculino', symbol: '👮‍♂️' },
+  { id: 'pna_female', branch: 'PNA' as MININTBranch, label: 'PNA - Agente Feminina', symbol: '👮‍♀️' },
+  // SIC
+  { id: 'sic_male', branch: 'SIC' as MININTBranch, label: 'SIC - Investigador', symbol: '🕵️‍♂️' },
+  { id: 'sic_female', branch: 'SIC' as MININTBranch, label: 'SIC - Investigadora', symbol: '🕵️‍♀️' },
+  // SME
+  { id: 'sme_male', branch: 'SME' as MININTBranch, label: 'SME - Agente Masculino', symbol: '🛂' },
+  { id: 'sme_female', branch: 'SME' as MININTBranch, label: 'SME - Agente Feminina', symbol: '🛂' },
+  // SPCB
+  { id: 'spcb_male', branch: 'SPCB' as MININTBranch, label: 'SPCB - Bombeiro', symbol: '🧑‍🚒' },
+  { id: 'spcb_female', branch: 'SPCB' as MININTBranch, label: 'SPCB - Bombeira', symbol: '👩‍🚒' },
+  // SP
+  { id: 'sp_male', branch: 'SP' as MININTBranch, label: 'SP - Agente Masculino', symbol: '⚖️' },
+  { id: 'sp_female', branch: 'SP' as MININTBranch, label: 'SP - Agente Feminina', symbol: '⚖️' },
+
+  // Legacy mappings for backward compatibility
   { id: 'pna_1', branch: 'PNA' as MININTBranch, label: 'Oficial PNA', symbol: '👮‍♂️' },
   { id: 'sic_1', branch: 'SIC' as MININTBranch, label: 'Oficial SIC', symbol: '🕵️‍♂️' },
   { id: 'sme_1', branch: 'SME' as MININTBranch, label: 'Oficial SME', symbol: '🛂' },
@@ -136,26 +175,30 @@ export const AVATAR_OPTIONS = [
 
   // 2. Special & Themed Shop Fardas (Lockable)
   // PNA
+  { id: 'pna_pir_tactical', branch: 'PNA' as MININTBranch, label: 'Farda Tática PIR (PNA)', symbol: '💂‍♂️', isSpecialShopItem: true },
   { id: 'pna_gala', branch: 'PNA' as MININTBranch, label: 'Farda de Gala PNA (Comando)', symbol: '🦅', isSpecialShopItem: true },
-  { id: 'pna_intervencao', branch: 'PNA' as MININTBranch, label: 'Operativo PIR (Intervenção)', symbol: '🚓', isSpecialShopItem: true },
-  { id: 'pna_transito', branch: 'PNA' as MININTBranch, label: 'Oficial de Trânsito PNA', symbol: '🚦', isSpecialShopItem: true },
+  { id: 'pna_intervencao', branch: 'PNA' as MININTBranch, label: 'Operativo PIR (Intervenção)', symbol: '👮‍♂️', isSpecialShopItem: true },
+  { id: 'pna_transito', branch: 'PNA' as MININTBranch, label: 'Oficial de Trânsito PNA', symbol: '👮‍♂️', isSpecialShopItem: true },
   { id: 'pna_2', branch: 'PNA' as MININTBranch, label: 'Escudo Dourado PNA', symbol: '🛡️', isSpecialShopItem: true },
 
   // SIC
-  { id: 'sic_tactical', branch: 'SIC' as MININTBranch, label: 'Farda Táctica SIC (Elite)', symbol: '🕶️', isSpecialShopItem: true },
-  { id: 'sic_perito', branch: 'SIC' as MININTBranch, label: 'Perito Criminalística SIC', symbol: '🧬', isSpecialShopItem: true },
-  { id: 'sic_2', branch: 'SIC' as MININTBranch, label: 'Crachá Prata SIC', symbol: '🔍', isSpecialShopItem: true },
+  { id: 'sic_forensic_expert', branch: 'SIC' as MININTBranch, label: 'Perito Forense (SIC)', symbol: '🔬', isSpecialShopItem: true },
+  { id: 'sic_tactical', branch: 'SIC' as MININTBranch, label: 'Farda Táctica SIC (Elite)', symbol: '🕵️‍♂️', isSpecialShopItem: true },
+  { id: 'sic_perito', branch: 'SIC' as MININTBranch, label: 'Perito Criminalística SIC', symbol: '🔬', isSpecialShopItem: true },
+  { id: 'sic_2', branch: 'SIC' as MININTBranch, label: 'Crachá Prata SIC', symbol: '🛡️', isSpecialShopItem: true },
 
   // SME
-  { id: 'sme_frontier', branch: 'SME' as MININTBranch, label: 'Farda Aeroportuária SME', symbol: '🛃', isSpecialShopItem: true },
+  { id: 'sme_border_operator', branch: 'SME' as MININTBranch, label: 'Operador de Fronteira (SME)', symbol: '🧭', isSpecialShopItem: true },
+  { id: 'sme_frontier', branch: 'SME' as MININTBranch, label: 'Farda Aeroportuária SME', symbol: '🛂', isSpecialShopItem: true },
   { id: 'sme_2', branch: 'SME' as MININTBranch, label: 'Selo Fronteiriço SME', symbol: '🌐', isSpecialShopItem: true },
 
   // SP
-  { id: 'sp_honra', branch: 'SP' as MININTBranch, label: 'Farda de Honra SP', symbol: '⛓️', isSpecialShopItem: true },
-  { id: 'sp_2', branch: 'SP' as MININTBranch, label: 'Balança SP', symbol: '🔐', isSpecialShopItem: true },
+  { id: 'sp_honra', branch: 'SP' as MININTBranch, label: 'Farda de Honra SP', symbol: '🦺', isSpecialShopItem: true },
+  { id: 'sp_2', branch: 'SP' as MININTBranch, label: 'Balança de Justiça SP', symbol: '⚖️', isSpecialShopItem: true },
 
   // SPCB
-  { id: 'spcb_rescue', branch: 'SPCB' as MININTBranch, label: 'Farda de Resgate SPCB', symbol: '🦺', isSpecialShopItem: true },
+  { id: 'spcb_elite_rescue', branch: 'SPCB' as MININTBranch, label: 'Resgate de Elite (SPCB)', symbol: '🚒', isSpecialShopItem: true },
+  { id: 'spcb_rescue', branch: 'SPCB' as MININTBranch, label: 'Farda de Resgate SPCB', symbol: '🧑‍🚒', isSpecialShopItem: true },
   { id: 'spcb_2', branch: 'SPCB' as MININTBranch, label: 'Chama de Protecção', symbol: '🔥', isSpecialShopItem: true },
 
   // MININT Geral / Lendários

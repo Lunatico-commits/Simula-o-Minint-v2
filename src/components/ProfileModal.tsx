@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, MININTBranch, AcademicLevel, ACADEMIC_LEVELS, AvatarAccessories } from '../types';
 import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, BASIC_FREE_AVATARS, RANKS_MININT, getAvatarOption, getCandidateInitials } from '../data/branches';
+import { BASE_AVATARS, getAvatarById, getAvatarAssetPath } from '../data/avatars';
+import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { BADGES_LIST } from '../data/badges';
 import { 
   ACCESSORY_FRAMES, 
@@ -963,6 +965,58 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               </button>
             </div>
 
+            {/* 10 Base Avatars Selection */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10.5px] uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400 font-bold">
+                  Avatar Base Oficial (10 Fardas 3D)
+                </label>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                  Masc / Fem
+                </span>
+              </div>
+              <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1 no-scrollbar p-1.5 bg-slate-100 dark:bg-[#0F1115] rounded-xl border border-slate-200 dark:border-white/5">
+                {BASE_AVATARS.map((av) => {
+                  const isSelected = avatarId === av.id;
+                  return (
+                    <button
+                      key={av.id}
+                      type="button"
+                      onClick={() => {
+                        playClickSound();
+                        setAvatarId(av.id);
+                        if (av.organ) handleUpdateBranch(av.organ as MININTBranch);
+                      }}
+                      className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center relative ${
+                        isSelected
+                          ? 'bg-amber-500/20 border-amber-500 ring-2 ring-amber-500 shadow-sm'
+                          : 'bg-white dark:bg-slate-900/80 border-slate-200 dark:border-white/10 hover:border-amber-500/40'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full overflow-hidden mb-1 flex items-center justify-center bg-slate-900/50 relative">
+                        <TacticalAvatarIllustration
+                          id={av.id}
+                          branch={av.organ as MININTBranch}
+                          className="w-full h-full object-cover"
+                        />
+                        {isSelected && (
+                          <div className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center text-[8px] font-black shadow-xs">
+                            ✓
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black leading-tight text-slate-900 dark:text-slate-100 truncate w-full">
+                        {av.title.split(' - ')[1] || av.title}
+                      </span>
+                      <span className="text-[8.5px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                        {av.organ} ({av.gender === 'female' ? 'Fem' : 'Masc'})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* MININT Branch Selection */}
             <div>
               <label className="block text-[10.5px] uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400 font-bold mb-1">
@@ -1002,6 +1056,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 })}
               </div>
             </div>
+
 
             {/* Academic Level Selection */}
             <div>
