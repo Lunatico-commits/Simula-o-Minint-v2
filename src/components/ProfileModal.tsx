@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, MININTBranch, AcademicLevel, ACADEMIC_LEVELS, AvatarAccessories } from '../types';
 import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, BASIC_FREE_AVATARS, RANKS_MININT, getAvatarOption, getCandidateInitials } from '../data/branches';
-import { BASE_AVATARS, getAvatarById, getAvatarAssetPath } from '../data/avatars';
+import { BASE_AVATARS, AvatarBase, getAvatarById, getAvatarAssetPath, getUserGender, getAvatarDisplayTitle } from '../data/avatars';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { BADGES_LIST } from '../data/badges';
 import { 
@@ -89,8 +89,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [activeTab, setActiveTab] = useState<'stats' | 'customizer' | 'settings'>('stats');
   const [displayName, setDisplayName] = useState(profile.displayName || '');
   const [branch, setBranch] = useState<MININTBranch>(profile.branch || 'PNA');
+  const [gender, setGender] = useState<'male' | 'female'>(() => getUserGender(profile));
   const [province, setProvince] = useState(profile.province || 'Luanda');
   const [avatarId, setAvatarId] = useState(profile.avatarId || 'pna_1');
+  const [avatarGenderFilter, setAvatarGenderFilter] = useState<'all' | 'female' | 'male'>('all');
   const [academicLevel, setAcademicLevel] = useState<AcademicLevel>(profile.academicLevel || 'high_school');
   const [copied, setCopied] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => getSoundEnabled());
@@ -107,23 +109,38 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     setDisplayName(profile.displayName || '');
     setBranch(profile.branch || 'PNA');
     setProvince(profile.province || 'Luanda');
-    setAvatarId(profile.avatarId || 'pna_1');
+    const resolvedGender = getUserGender(profile);
+    setGender(resolvedGender);
+    setAvatarId(profile.avatarId || `${(profile.branch || 'PNA').toLowerCase()}_${resolvedGender}`);
     setAcademicLevel(profile.academicLevel || 'high_school');
     setAccessories(
       profile.avatarAccessories || { frame: 'frame_none', background: 'bg_default', badge: 'badge_none' }
     );
-  }, [profile.displayName, profile.branch, profile.province, profile.avatarId, profile.academicLevel, profile.avatarAccessories]);
+  }, [profile.displayName, profile.branch, profile.province, profile.avatarId, profile.gender, profile.academicLevel, profile.avatarAccessories]);
 
   const handleUpdateBranch = (newBranch: MININTBranch) => {
     setBranch(newBranch);
-    const defaultAvatar = AVATAR_OPTIONS.find(a => a.branch === newBranch);
-    const newAvatarId = defaultAvatar ? defaultAvatar.id : avatarId;
-    if (defaultAvatar) {
-      setAvatarId(newAvatarId);
-    }
+    const activeGender = gender || getUserGender(profile);
+    // Preserva rigorosamente o género ativo ao alterar o ramo
+    const newAvatarId = `${newBranch.toLowerCase()}_${activeGender}`;
+    setAvatarId(newAvatarId);
     onSaveProfile({
       branch: newBranch,
       avatarId: newAvatarId,
+      gender: activeGender,
+    });
+  };
+
+  const handleSelectBaseAvatar = (av: AvatarBase) => {
+    playClickSound();
+    setAvatarId(av.id);
+    setGender(av.gender);
+    const newBranch = (av.organ || branch) as MININTBranch;
+    setBranch(newBranch);
+    onSaveProfile({
+      avatarId: av.id,
+      gender: av.gender,
+      branch: newBranch,
     });
   };
 
@@ -140,12 +157,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
   const currentBranch = MININT_BRANCHES[branch];
   const currentRank = RANKS_MININT.slice().reverse().find(r => profile.totalXp >= r.minXp) || RANKS_MININT[0];
-  const selectedAvatar = getAvatarOption(avatarId, branch, displayName);
   const userReferralCode = profile.referralCode || generateReferralCode(profile.displayName || 'CANDIDATO');
 
-  // Equipped Uniform Name from Shop Items or Branch Defaults
-  const equippedShopItem = SHOP_ITEMS.find((item) => item.id === avatarId);
-  const currentUniformName = equippedShopItem?.name || selectedAvatar.label || `Farda Oficial ${branch}`;
+  // Equipped Uniform Name from Shop Items or Official Base Titles with strict gender awareness
+  const currentUniformName = getAvatarDisplayTitle(avatarId, branch, gender);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(userReferralCode);
@@ -173,6 +188,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       branch,
       province,
       avatarId,
+      gender,
       avatarAccessories: accessories,
       academicLevel,
       rankTitle: currentRank.title,
@@ -316,6 +332,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="relative mb-1 flex flex-col items-center justify-center pt-8">
             <ReactiveAvatar
               avatarId={avatarId}
+              gender={gender}
               branch={branch}
               displayName={displayName}
               photoURL={profile.photoURL}
@@ -967,26 +984,67 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
             {/* 10 Base Avatars Selection */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                 <label className="block text-[10.5px] uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400 font-bold">
                   Avatar Base Oficial (10 Fardas 3D)
                 </label>
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
-                  Masc / Fem
-                </span>
+                {/* Gender filter pills */}
+                <div className="flex items-center gap-1 bg-slate-200/80 dark:bg-slate-800/80 p-0.5 rounded-lg text-[9.5px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playClickSound();
+                      setAvatarGenderFilter('all');
+                    }}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      avatarGenderFilter === 'all'
+                        ? 'bg-amber-500 text-slate-950 font-black shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    Todos (10)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playClickSound();
+                      setAvatarGenderFilter('female');
+                    }}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      avatarGenderFilter === 'female'
+                        ? 'bg-pink-500 text-white font-black shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-pink-500'
+                    }`}
+                  >
+                    Fem ♀
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playClickSound();
+                      setAvatarGenderFilter('male');
+                    }}
+                    className={`px-1.5 py-0.5 rounded-md transition-all cursor-pointer ${
+                      avatarGenderFilter === 'male'
+                        ? 'bg-sky-500 text-white font-black shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-sky-500'
+                    }`}
+                  >
+                    Masc ♂
+                  </button>
+                </div>
               </div>
-              <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto pr-1 no-scrollbar p-1.5 bg-slate-100 dark:bg-[#0F1115] rounded-xl border border-slate-200 dark:border-white/5">
-                {BASE_AVATARS.map((av) => {
-                  const isSelected = avatarId === av.id;
+              <div className="grid grid-cols-2 xs:grid-cols-2 sm:grid-cols-5 gap-1.5 max-h-56 overflow-y-auto pr-1 no-scrollbar p-1.5 bg-slate-100 dark:bg-[#0F1115] rounded-xl border border-slate-200 dark:border-white/5">
+                {BASE_AVATARS.filter(av => avatarGenderFilter === 'all' || av.gender === avatarGenderFilter).map((av) => {
+                  const isSelected = avatarId === av.id || (
+                    (branch === av.organ && gender === av.gender) &&
+                    (avatarId === `${av.organ.toLowerCase()}_${av.gender}` || avatarId === `${av.organ.toLowerCase()}_1` || avatarId === av.organ.toLowerCase() || avatarId === 'custom_initials')
+                  );
                   return (
                     <button
                       key={av.id}
                       type="button"
-                      onClick={() => {
-                        playClickSound();
-                        setAvatarId(av.id);
-                        if (av.organ) handleUpdateBranch(av.organ as MININTBranch);
-                      }}
+                      onClick={() => handleSelectBaseAvatar(av)}
                       className={`p-1.5 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center relative ${
                         isSelected
                           ? 'bg-amber-500/20 border-amber-500 ring-2 ring-amber-500 shadow-sm'
@@ -996,6 +1054,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <div className="w-10 h-10 rounded-full overflow-hidden mb-1 flex items-center justify-center bg-slate-900/50 relative">
                         <TacticalAvatarIllustration
                           id={av.id}
+                          gender={av.gender}
                           branch={av.organ as MININTBranch}
                           className="w-full h-full object-cover"
                         />
@@ -1008,7 +1067,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       <span className="text-[10px] font-black leading-tight text-slate-900 dark:text-slate-100 truncate w-full">
                         {av.title.split(' - ')[1] || av.title}
                       </span>
-                      <span className="text-[8.5px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                      <span className={`text-[8.5px] font-mono font-bold ${av.gender === 'female' ? 'text-pink-600 dark:text-pink-400' : 'text-sky-600 dark:text-sky-400'}`}>
                         {av.organ} ({av.gender === 'female' ? 'Fem' : 'Masc'})
                       </span>
                     </button>

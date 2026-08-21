@@ -46,7 +46,7 @@ export const MemeGeneratorModal: React.FC<MemeGeneratorModalProps> = ({
   // Get branch info correctly using profile.branch or profile.selectedBranch fallback
   const userBranch: MININTBranch = profile.branch || (profile as any).selectedBranch || 'PNA';
   const branchObj = MININT_BRANCHES[userBranch] || MININT_BRANCHES.PNA;
-  const avatarObj = getAvatarOption(profile.avatarId, userBranch, profile.displayName);
+  const avatarObj = getAvatarOption(profile.avatarId, userBranch, profile.displayName, profile.gender);
 
   // Load meme caption instantly on open
   useEffect(() => {

@@ -839,7 +839,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 const isFollowing = Boolean(candidate.uid && followingList.includes(candidate.uid));
                 const rankChange = rankDeltasMap[candUid] ?? 0;
                 const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-                const candAvatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
+                const candAvatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName, candidate.gender);
                 const levelLabel = getAcademicLevelLabel(candidate.academicLevel);
 
                 return (
@@ -1367,7 +1367,7 @@ const PodiumCard: React.FC<{
   onSelectCandidate?: (candidate: UserProfile) => void;
 }> = ({ candidate, rank, rankChange = 0, isMe, elementRef, onSelectCandidate }) => {
   const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-  const avatarOpt = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
+  const avatarOpt = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName, candidate.gender);
   const levelLabel = getAcademicLevelLabel(candidate.academicLevel);
 
   let medalEmoji = '🥇';

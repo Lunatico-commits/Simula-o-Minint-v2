@@ -106,6 +106,7 @@ export interface UserProfile {
   uid: string;
   displayName: string;
   branch: MININTBranch;
+  gender?: 'male' | 'female';
   avatarId: string;
   equippedUniform?: string;
   equippedFrame?: string;
@@ -231,6 +232,7 @@ export interface DuelPlayer {
   answers: Record<number, { chosenIndex: number; isCorrect: boolean; timeSeconds: number }>;
   isReady: boolean;
   isConnected: boolean;
+  lastActive?: number;
 }
 
 export type DuelStatus = 'waiting' | 'active' | 'finished' | 'cancelled' | 'abandoned';
@@ -253,6 +255,7 @@ export interface DuelRoom {
   player2?: DuelPlayer;
   winnerUid?: string | 'draw';
   createdAt: number | any;
+  presence?: Record<string, { isConnected: boolean; lastActive: number; disconnectedAt?: number }>;
   forfeitedBy?: string;
   forfeitReason?: 'opponent_left' | 'inactivity' | 'timeout' | string;
   isForfeit?: boolean;

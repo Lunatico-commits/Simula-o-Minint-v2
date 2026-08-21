@@ -78,6 +78,7 @@ const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): Due
     answers: {},
     isReady: true,
     isConnected: true,
+    lastActive: Date.now(),
     ...overrides,
   };
 };
@@ -270,6 +271,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
   // Host Room Closed Notification Modal State
   const [isRoomClosedModalOpen, setIsRoomClosedModalOpen] = useState(false);
+  // Forfeit Victory Alert Modal State
+  const [isForfeitModalOpen, setIsForfeitModalOpen] = useState(false);
+
+  // Opponent Inactivity & Connection State for active multiplayer matches
+  const [opponentInactivitySeconds, setOpponentInactivitySeconds] = useState<number>(0);
+  const opponentLastActiveRef = useRef<number>(Date.now());
+  const processedForfeitRef = useRef<string | null>(null);
 
   // Keep a reference to currentRoom for auto-cleanup on component unmount
   const currentRoomRef = useRef<DuelRoom | null>(null);
@@ -277,40 +285,134 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // RTDB Presence Tracker for 1v1 multiplayer matches
+  // RTDB Presence Tracker, Heartbeat, and 15-Second Inactivity/AFK Detector
   useEffect(() => {
-    if (!currentRoom?.id || currentRoom.player2?.isBot || viewState !== 'room') return;
+    if (!currentRoom?.id || currentRoom.player2?.isBot || viewState !== 'room') {
+      setOpponentInactivitySeconds(0);
+      return;
+    }
 
     const roomId = currentRoom.id;
     const isHost = currentRoom.player1.uid === profile.uid;
     const myKey = isHost ? 'player1' : 'player2';
-    const presenceRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/isConnected`);
+    const opponentUid = isHost ? currentRoom.player2?.uid : currentRoom.player1?.uid;
 
+    const presenceRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/isConnected`);
+    const lastActiveRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/lastActive`);
+    const userPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${profile.uid}`);
+
+    // Set initial presence and RTDB onDisconnect hook
     try {
       const discon = rtdbOnDisconnect(presenceRef);
       discon.set(false);
+
+      const userDiscon = rtdbOnDisconnect(userPresenceRef);
+      userDiscon.set({
+        isConnected: false,
+        lastActive: Date.now(),
+        disconnectedAt: Date.now(),
+      });
+
       rtdbSet(presenceRef, true);
+      rtdbSet(lastActiveRef, Date.now());
+      rtdbSet(userPresenceRef, {
+        isConnected: true,
+        lastActive: Date.now(),
+      });
     } catch (e) {
       console.warn('Erro ao configurar presença no RTDB:', e);
     }
 
+    // 1. Heartbeat loop: update timestamp every 3 seconds
+    const heartbeatInterval = setInterval(() => {
+      try {
+        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}/${myKey}`), {
+          isConnected: true,
+          lastActive: Date.now(),
+        });
+        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}/presence/${profile.uid}`), {
+          isConnected: true,
+          lastActive: Date.now(),
+        });
+      } catch (e) {}
+    }, 3000);
+
+    // 2. Listen to Opponent's RTDB presence & heartbeat
+    let oppPresenceUnsub = () => {};
+    if (opponentUid) {
+      const oppPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${opponentUid}`);
+      oppPresenceUnsub = rtdbOnValue(oppPresenceRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          if (typeof val?.lastActive === 'number') {
+            opponentLastActiveRef.current = Math.max(opponentLastActiveRef.current, val.lastActive);
+          }
+          if (val?.isConnected === false && currentRoomRef.current?.status === 'active') {
+            // Immediate forfeit on explicit disconnect
+            const room = currentRoomRef.current;
+            if (room && room.status === 'active' && !room.player2?.isBot) {
+              const forfeitKey = `${roomId}_${opponentUid}_disconnect`;
+              if (processedForfeitRef.current !== forfeitKey) {
+                processedForfeitRef.current = forfeitKey;
+                handleForfeitVictory(room, profile.uid, opponentUid, 'opponent_left');
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // 3. 15-Second Inactivity & AFK Watcher: Checks every second
+    const afkInterval = setInterval(() => {
+      const room = currentRoomRef.current;
+      if (!room || room.status !== 'active' || room.player2?.isBot || !opponentUid) return;
+
+      const oppPlayer = isHost ? room.player2 : room.player1;
+      const effectiveOppLastActive = Math.max(
+        opponentLastActiveRef.current,
+        oppPlayer?.lastActive || 0,
+        room.questionStartTime || 0
+      );
+
+      const now = Date.now();
+      const inactiveSeconds = Math.max(0, Math.floor((now - effectiveOppLastActive) / 1000));
+      setOpponentInactivitySeconds(inactiveSeconds);
+
+      // If opponent has been inactive for 15 seconds or more, declare automatic forfeit victory
+      if (inactiveSeconds >= 15) {
+        const forfeitKey = `${roomId}_${opponentUid}_afk`;
+        if (processedForfeitRef.current !== forfeitKey) {
+          processedForfeitRef.current = forfeitKey;
+          console.warn(`[DUEL AFK] Adversário ${opponentUid} inativo há ${inactiveSeconds}s (>= 15s). Vitória por desistência!`);
+          handleForfeitVictory(room, profile.uid, opponentUid, 'inactivity');
+        }
+      }
+    }, 1000);
+
     return () => {
+      clearInterval(heartbeatInterval);
+      clearInterval(afkInterval);
+      oppPresenceUnsub();
       try {
         rtdbSet(presenceRef, false);
+        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}/presence/${profile.uid}`), {
+          isConnected: false,
+          lastActive: Date.now(),
+        });
       } catch (e) {}
     };
-  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, profile?.uid]);
+  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, currentRoom?.status, profile?.uid]);
 
   // Auto-cleanup on unmount / window close: if in active multiplayer duel, award forfeit victory to opponent
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnloadOrPageHide = () => {
       const room = currentRoomRef.current;
       if (room && room.status === 'active' && !room.player2?.isBot && room.player2) {
         const roomId = room.id || room.roomCode;
         const isHost = room.player1.uid === profile?.uid;
         const opponentUid = isHost ? room.player2.uid : room.player1.uid;
         try {
-          rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
+          const forfeitPayload = {
             status: 'finished',
             winnerUid: opponentUid,
             forfeitedBy: profile?.uid,
@@ -318,15 +420,19 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             isForfeit: true,
             rewardClaimed: true,
             [`rewardClaimedBy/${opponentUid}`]: true,
-          }).catch(() => {});
+          };
+          rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), forfeitPayload).catch(() => {});
+          setDoc(doc(db, 'duels', roomId), forfeitPayload, { merge: true }).catch(() => {});
         } catch (e) {}
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('beforeunload', handleBeforeUnloadOrPageHide);
+    window.addEventListener('pagehide', handleBeforeUnloadOrPageHide);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', handleBeforeUnloadOrPageHide);
+      window.removeEventListener('pagehide', handleBeforeUnloadOrPageHide);
       const room = currentRoomRef.current;
       if (room && !room.player2?.isBot) {
         const roomId = room.id || room.roomCode;
@@ -335,7 +441,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           const opponentUid = isHost ? room.player2.uid : room.player1.uid;
           try {
             const roomRef = doc(db, 'duels', roomId);
-            setDoc(roomRef, {
+            const forfeitPayload = {
               status: 'finished',
               winnerUid: opponentUid,
               forfeitedBy: profile?.uid,
@@ -343,17 +449,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               isForfeit: true,
               rewardClaimed: true,
               rewardClaimedBy: { [opponentUid]: true },
-            }, { merge: true }).catch(() => {});
-
-            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
-              status: 'finished',
-              winnerUid: opponentUid,
-              forfeitedBy: profile?.uid,
-              forfeitReason: 'opponent_left',
-              isForfeit: true,
-              rewardClaimed: true,
-              [`rewardClaimedBy/${opponentUid}`]: true,
-            }).catch(() => {});
+            };
+            setDoc(roomRef, forfeitPayload, { merge: true }).catch(() => {});
+            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), forfeitPayload).catch(() => {});
           } catch (e) {
             console.warn('Erro ao finalizar duelo por abandono no unmount:', e);
           }
@@ -602,6 +700,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setCurrentRoom(finishedRoom);
     setViewState('finished');
 
+    if (winnerUid === profile.uid) {
+      setIsForfeitModalOpen(true);
+    }
+
     if (processedDuelId !== finishedRoom.id) {
       setProcessedDuelId(finishedRoom.id);
       handleDuelFinished(finishedRoom);
@@ -693,6 +795,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           setViewState('room');
         } else if (roomData.status === 'finished' && viewState !== 'finished') {
           setViewState('finished');
+          if (roomData.isForfeit && roomData.winnerUid === profile?.uid) {
+            setIsForfeitModalOpen(true);
+          }
           if (processedDuelId !== roomData.id) {
             setProcessedDuelId(roomData.id);
             handleDuelFinished(roomData);
@@ -751,6 +856,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           setViewState('room');
         } else if (roomData.status === 'finished' && viewState !== 'finished') {
           setViewState('finished');
+          if (roomData.isForfeit && roomData.winnerUid === profile?.uid) {
+            setIsForfeitModalOpen(true);
+          }
           if (processedDuelId !== roomData.id) {
             setProcessedDuelId(roomData.id);
             handleDuelFinished(roomData);
@@ -879,18 +987,26 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   };
 
-  // Automated Question Timeout Handler (Forces round to advance when time expires or players are inactive)
+  // Automated Question Timeout Handler (Forces round to advance immediately when time expires)
   const handleForcedQuestionTimeout = (room: DuelRoom, qIndex: number) => {
     const timeoutKey = `${room.id}_q${qIndex}`;
     if (processedTimeoutRef.current === timeoutKey) return;
     processedTimeoutRef.current = timeoutKey;
 
     const totalTime = room.timePerQuestion || (room.mode === 'relampago' ? 30 : 20);
-    const isBot = room.player2?.isBot;
 
     // Check existing answers
     const p1Answered = Boolean(room.player1.answers && room.player1.answers[qIndex] !== undefined);
     const p2Answered = Boolean(room.player2?.answers && room.player2.answers[qIndex] !== undefined);
+
+    const isHost = room.player1.uid === profile.uid;
+    const opp = isHost ? room.player2 : room.player1;
+    const oppAnswered = isHost ? p2Answered : p1Answered;
+
+    // Real-time toast alert if opponent timed out without answering
+    if (opp && !opp.isBot && !oppAnswered) {
+      showToast('Adversário sem resposta - tempo esgotado', true);
+    }
 
     let newP1Answers = { ...(room.player1.answers || {}) };
     let newP1Score = room.player1.score || 0;
@@ -926,22 +1042,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       } : undefined,
     };
 
-    // Disconnection & Inactivity Check for Online Multiplayer
-    if (!isBot && room.player2) {
-      const p1ConsecutiveTimeouts = countConsecutiveTimeouts(newP1Answers, qIndex);
-      const p2ConsecutiveTimeouts = countConsecutiveTimeouts(newP2Answers, qIndex);
-
-      // If Player 2 timed out 2 times consecutively while Player 1 is active (or vice versa):
-      if (p2ConsecutiveTimeouts >= 2 && p1ConsecutiveTimeouts < 2) {
-        handleForfeitVictory(updatedRoom, room.player1.uid, room.player2.uid, 'inactivity');
-        return;
-      } else if (p1ConsecutiveTimeouts >= 2 && p2ConsecutiveTimeouts < 2) {
-        handleForfeitVictory(updatedRoom, room.player2.uid, room.player1.uid, 'inactivity');
-        return;
-      }
-    }
-
-    // Advance to next question or finish
+    // Advance immediately to next question or finish - NEVER blocks for opponent response
     advanceOrFinishDuel(updatedRoom, qIndex);
   };
 
@@ -1012,7 +1113,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setViewState('lobby');
   };
 
-  // Synchronized Question Timer with Automatic Forced Timeout
+  // Synchronized Question Timer with Rigid 0s Timeout Advancement
   useEffect(() => {
     if (viewState !== 'room' || !currentRoom || currentRoom.status !== 'active') return;
 
@@ -1022,8 +1123,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const interval = setInterval(() => {
       if (!currentRoom.questionStartTime) return;
       const now = Date.now();
-      const elapsed = Math.floor((now - currentRoom.questionStartTime) / 1000);
-      const remaining = Math.max(0, timeLimit - elapsed);
+      const elapsed = (now - currentRoom.questionStartTime) / 1000;
+      const remaining = Math.max(0, Math.ceil(timeLimit - elapsed));
       setQuestionTimer(remaining);
 
       // Play progressive sound alert if player has not answered yet
@@ -1040,17 +1141,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }
 
       // 1. If my personal timer hit 0 and I have not answered yet, auto-submit timeout answer (-1)
-      if (remaining === 0 && player && !hasAnswered) {
+      if (remaining <= 0 && player && !hasAnswered) {
         handleAnswerQuestion(-1);
       }
 
-      // 2. Global Timeout Enforcement for the Round:
-      // If elapsed time has passed the timeLimit (+ 1.5s grace period), force the round to advance
-      // even if one or both players disconnected or ignored the question.
-      if (elapsed >= timeLimit + 1.5) {
+      // 2. Rigid Question Timer Enforcement:
+      // When timer reaches 0s (elapsed >= timeLimit), AUTOMATICALLY advance the round for both players.
+      // The game NEVER stays blocked waiting for opponent response payload!
+      if (remaining <= 0 || elapsed >= timeLimit) {
         handleForcedQuestionTimeout(currentRoom, qIdx);
       }
-    }, 500);
+    }, 250);
 
     return () => clearInterval(interval);
   }, [
@@ -3038,6 +3139,16 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                               <WifiOff size={10} className="text-rose-400" />
                               <span>Desconectado</span>
                             </span>
+                          ) : !opponent?.isBot && opponentInactivitySeconds >= 10 ? (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/50 text-rose-300 font-extrabold text-[9px] flex items-center gap-1 shadow-xs animate-pulse">
+                              <Hourglass size={10} className="text-rose-400" />
+                              <span>Inativo ({opponentInactivitySeconds}s / 15s)</span>
+                            </span>
+                          ) : !opponent?.isBot && opponentInactivitySeconds >= 5 ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold text-[9px] flex items-center gap-1 shadow-xs animate-pulse">
+                              <Hourglass size={10} className="text-amber-400" />
+                              <span>A aguardar ({opponentInactivitySeconds}s)</span>
+                            </span>
                           ) : oppAnswered ? (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 font-extrabold text-[9px] flex items-center gap-1 shadow-xs">
                               <CheckCircle2 size={10} className="text-emerald-400" />
@@ -3284,8 +3395,25 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                       <span>Explicar com IA</span>
                     </button>
 
-                    <span className="text-[11px] text-slate-400">
-                      {opponentAnswer !== undefined ? 'A transitar...' : 'A aguardar oponente...'}
+                    <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5">
+                      {opponentAnswer !== undefined ? (
+                        <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+                          <CheckCircle2 size={12} />
+                          <span>Ambos responderam! A avançar...</span>
+                        </span>
+                      ) : questionTimer <= 0 ? (
+                        <span className="text-rose-400 flex items-center gap-1 font-semibold animate-pulse">
+                          <Clock size={12} />
+                          <span>Adversário sem resposta - tempo esgotado</span>
+                        </span>
+                      ) : opponentInactivitySeconds >= 6 ? (
+                        <span className="text-amber-400 flex items-center gap-1 font-semibold animate-pulse">
+                          <Hourglass size={12} />
+                          <span>Adversário demorado ({opponentInactivitySeconds}s / 15s)</span>
+                        </span>
+                      ) : (
+                        <span>A aguardar oponente ({questionTimer}s)...</span>
+                      )}
                     </span>
                   </div>
                 )}
@@ -4007,6 +4135,95 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               >
                 <LogOut size={16} />
                 <span>Retornar ao Menu Principal</span>
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal / Pop-up de Alerta: Vitória por Desistência */}
+      <AnimatePresence>
+        {isForfeitModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto"
+          >
+            <motion.div
+              initial={{ scale: 0.85, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.85, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 300 }}
+              className="bg-slate-900 border-2 border-amber-500/80 rounded-3xl p-6 sm:p-7 max-w-md w-full text-center space-y-5 shadow-[0_0_50px_rgba(245,158,11,0.35)] relative overflow-hidden my-auto"
+            >
+              {/* Top Golden Ambient Glow */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-gradient-to-b from-amber-500/25 to-transparent blur-xl pointer-events-none" />
+
+              {/* Trophy Icon */}
+              <motion.div
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', damping: 15, stiffness: 200 }}
+                className="w-16 h-16 rounded-2xl bg-amber-500/20 border-2 border-amber-500/60 text-amber-400 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20"
+              >
+                <Trophy size={34} />
+              </motion.div>
+
+              {/* Header & Exact Text */}
+              <div className="space-y-2.5">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] uppercase tracking-wider">
+                  <Sparkles size={13} className="text-amber-400 fill-amber-400" />
+                  <span>Duelo 1v1 • MININT Angola</span>
+                </div>
+
+                <h3 className="text-xl sm:text-2xl font-black text-slate-100 uppercase tracking-tight">
+                  Vitória por Desistência
+                </h3>
+
+                <p className="text-sm font-bold text-amber-300/95 leading-relaxed bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 shadow-xs">
+                  O seu adversário abandonou a partida! Vitória por desistência.
+                </p>
+              </div>
+
+              {/* Reward Highlights */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 text-left space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                    <Zap size={14} className="text-amber-400" /> Experiência (XP):
+                  </span>
+                  <span className="font-mono font-black text-emerald-400">+{xpBreakdown?.totalXp || 50} XP</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                    <Swords size={14} className="text-amber-400" /> Ranking de Duelos:
+                  </span>
+                  <span className="font-mono font-black text-amber-400">+1 Vitória PvP</span>
+                </div>
+                {opponent && (
+                  <div className="flex items-center justify-between text-xs border-t border-slate-800/80 pt-1.5">
+                    <span className="text-slate-400 font-medium">Adversário:</span>
+                    <span className="font-semibold text-slate-200 truncate max-w-[160px]">
+                      {opponent.displayName} ({opponent.branch || 'PNA'})
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Continuar Action Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsForfeitModalOpen(false);
+                  setShowHonorVictoryOverlay(false);
+                  setCurrentRoom(null);
+                  setProcessedDuelId(null);
+                  setViewState('lobby');
+                }}
+                className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-sm uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+              >
+                <span>Continuar</span>
+                <ArrowRight size={18} />
               </button>
             </motion.div>
           </motion.div>

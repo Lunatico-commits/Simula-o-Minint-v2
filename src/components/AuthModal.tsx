@@ -161,6 +161,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     const newUid = authUserUid || `candidato_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const myReferralCode = generateReferralCode(cleanName);
     const defaultRank = RANKS_MININT[0];
+    const selectedGender = BASE_AVATARS.find(a => a.id === avatarId)?.gender || (avatarId.includes('female') ? 'female' : 'male');
 
     // Build new profile
     const newProfile: UserProfile = {
@@ -169,6 +170,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       emailOrPhone: cleanEmailOrPhone,
       password: cleanPassword,
       branch,
+      gender: selectedGender,
       avatarId,
       province,
       academicLevel,
@@ -642,6 +644,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <div className="w-10 h-10 rounded-full overflow-hidden mb-1 flex items-center justify-center bg-slate-900/50 relative">
                         <TacticalAvatarIllustration
                           id={av.id}
+                          gender={av.gender}
                           branch={av.organ as MININTBranch}
                           className="w-full h-full object-cover"
                         />

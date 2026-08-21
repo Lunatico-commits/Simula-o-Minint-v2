@@ -174,7 +174,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
       });
     });
 
-    // 5. Acessórios de Rosto & Cabeça (NVG Goggles, Radio Communicator)
+    // 5. Acessórios de Rosto & Cabeça
     ACCESSORY_FACE_ITEMS.filter(f => f.id !== 'face_none').forEach((f) => {
       items.push({
         id: f.id,
@@ -183,8 +183,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
         cost: f.cost,
         description: f.description,
         symbol: f.icon,
-        isPopular: f.id === 'face_nvg_tactical',
-        isExclusive: f.id === 'face_radio_communicator',
         type: 'faceAccessory',
         imageUrl: f.imageUrl,
         rawItem: f,
@@ -196,7 +194,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
 
   const currentBaseAvatar = getAvatarById(profile.avatarId) || BASE_AVATARS.find((a) => a.id === profile.avatarId);
   const equippedShopItem = SHOP_ITEMS.find((item) => item.id === profile.avatarId);
-  const currentAvatarInfo = getAvatarOption(profile.avatarId, profile.branch, profile.displayName);
+  const currentAvatarInfo = getAvatarOption(profile.avatarId, profile.branch, profile.displayName, profile.gender);
   const currentUniformName = currentBaseAvatar?.title || equippedShopItem?.name || currentAvatarInfo.label || `Oficial ${profile.branch || 'PNA'}`;
 
   // Current accessories setup
@@ -424,7 +422,8 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
             onError={(e) => {
               const organ = (item.branch || 'pna').toLowerCase();
-              e.currentTarget.src = `/avatars/${organ}_male.png`;
+              const cleanOrgan = ['pna', 'sic', 'sme', 'spcb', 'sp'].includes(organ) ? organ : 'pna';
+              e.currentTarget.src = `/avatars/${cleanOrgan}_${activeGender}.png`;
             }}
           />
         </div>
@@ -441,7 +440,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             alt={item.name}
             className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
             onError={(e) => {
-              e.currentTarget.src = '/avatars/pna_male.png';
+              e.currentTarget.src = `/avatars/pna_${userProfileGender}.png`;
             }}
           />
         </div>
@@ -893,6 +892,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                 <div className="block sm:hidden">
                   <ReactiveAvatar
                     avatarId={simulatedAvatarId}
+                    gender={userProfileGender}
                     branch={profile.branch}
                     displayName={profile.displayName}
                     photoURL={previewItem?.type === 'avatar_farda' ? undefined : profile.photoURL}
@@ -914,6 +914,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                 <div className="hidden sm:block">
                   <ReactiveAvatar
                     avatarId={simulatedAvatarId}
+                    gender={userProfileGender}
                     branch={profile.branch}
                     displayName={profile.displayName}
                     photoURL={previewItem?.type === 'avatar_farda' ? undefined : profile.photoURL}
@@ -1145,7 +1146,6 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
         {[
           { id: 'all', label: 'Todos os Itens', icon: ShoppingBag },
           { id: 'fardas', label: 'Fardas Especiais', icon: Shirt },
-          { id: 'face', label: 'Rosto & Cabeça', icon: Eye },
           { id: 'molduras', label: 'Molduras de Avatar', icon: Sparkle },
           { id: 'fundos', label: 'Fundos & Cores', icon: Palette },
           { id: 'badges', label: 'Pins & Distintivos', icon: Award },

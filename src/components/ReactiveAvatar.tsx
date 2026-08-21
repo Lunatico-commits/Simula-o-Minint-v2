@@ -4,6 +4,7 @@ import { Sparkles, Trophy, Crown, CheckCircle2, Zap } from 'lucide-react';
 import { MININTBranch, AvatarAccessories } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { getAccessoryItem } from '../data/avatarAccessories';
+import { getUserGender } from '../data/avatars';
 import { BranchIllustration } from './BranchIllustration';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 
@@ -11,6 +12,7 @@ export type AvatarReactionType = 'idle' | 'victory' | 'quizComplete' | 'levelUp'
 
 export interface ReactiveAvatarProps {
   avatarId?: string;
+  gender?: 'male' | 'female';
   branch?: MININTBranch;
   displayName?: string;
   photoURL?: string;
@@ -109,6 +111,7 @@ const SIZE_MAP = {
 
 export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
   avatarId = 'pna_1',
+  gender,
   branch = 'PNA',
   displayName = 'Candidato',
   photoURL,
@@ -131,6 +134,7 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
   onReactionComplete,
   onClick,
 }) => {
+  const resolvedGender = gender || getUserGender(avatarId);
   const [activeReaction, setActiveReaction] = useState<AvatarReactionType>(reaction);
   const [particleKey, setParticleKey] = useState<number>(0);
   const [clickMessage, setClickMessage] = useState<string | null>(null);
@@ -192,7 +196,7 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
     }, reactionDurationMs);
   };
 
-  const avatarOption = getAvatarOption(avatarId, branch as MININTBranch, displayName);
+  const avatarOption = getAvatarOption(avatarId, branch as MININTBranch, displayName, gender);
   const safeBranch = (branch as MININTBranch) || 'PNA';
   const branchInfo = MININT_BRANCHES[safeBranch] || MININT_BRANCHES.PNA;
   const sizeConfig = SIZE_MAP[size] || SIZE_MAP.md;
@@ -426,8 +430,9 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
               <div className="relative w-full h-full flex items-center justify-center">
                 {/* Base 3D Avatar of user underneath */}
                 <TacticalAvatarIllustration
-                  id={avatarOption.id || avatarId || 'pna_male'}
+                  id={avatarOption.id || avatarId || (resolvedGender === 'female' ? 'pna_female' : 'pna_male')}
                   branch={branch}
+                  gender={resolvedGender}
                   className="w-full h-full object-cover"
                 />
                 {/* Equipped / Tested Special Tactical Farda Overlay */}
@@ -435,14 +440,16 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
                   <TacticalAvatarIllustration
                     id={equippedUniform}
                     branch={branch}
+                    gender={resolvedGender}
                     className="w-full h-full object-cover"
                   />
                 </div>
               </div>
             ) : (
               <TacticalAvatarIllustration
-                id={avatarOption.id || avatarId || 'pna_male'}
+                id={avatarOption.id || avatarId || (resolvedGender === 'female' ? 'pna_female' : 'pna_male')}
                 branch={branch}
+                gender={resolvedGender}
                 className="w-full h-full object-cover"
               />
             )}

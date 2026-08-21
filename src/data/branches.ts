@@ -213,7 +213,12 @@ export const AVATAR_OPTIONS = [
   { id: 'minint_gala_gold', branch: 'Personalizado' as any, label: 'Farda Dourada Comissário-Geral', symbol: '👑', isSpecialShopItem: true },
 ];
 
-export const getAvatarOption = (avatarId?: string, branch?: MININTBranch, displayName?: string) => {
+export const getAvatarOption = (
+  avatarId?: string,
+  branch?: MININTBranch,
+  displayName?: string,
+  gender?: 'female' | 'male' | string
+) => {
   if (avatarId === 'custom_initials') {
     const initials = getCandidateInitials(displayName);
     return {
@@ -225,14 +230,31 @@ export const getAvatarOption = (avatarId?: string, branch?: MININTBranch, displa
     };
   }
 
+  const resolvedGender = gender === 'female' || (typeof avatarId === 'string' && avatarId.toLowerCase().includes('female')) ? 'female' : (gender === 'male' ? 'male' : undefined);
+
   if (avatarId) {
+    if (resolvedGender === 'female' && (avatarId.endsWith('_male') || avatarId.endsWith('_1'))) {
+      const cleanBranch = avatarId.split('_')[0].toLowerCase();
+      const femaleId = `${cleanBranch}_female`;
+      const foundFemale = AVATAR_OPTIONS.find(a => a.id === femaleId);
+      if (foundFemale) return foundFemale;
+    }
     const found = AVATAR_OPTIONS.find(a => a.id === avatarId);
     if (found) return found;
   }
 
   if (branch) {
+    if (resolvedGender === 'female') {
+      const femaleId = `${branch.toLowerCase()}_female`;
+      const foundFemale = AVATAR_OPTIONS.find(a => a.id === femaleId);
+      if (foundFemale) return foundFemale;
+    }
     const foundBranchAvatar = AVATAR_OPTIONS.find(a => a.branch === branch);
     if (foundBranchAvatar) return foundBranchAvatar;
+  }
+
+  if (resolvedGender === 'female') {
+    return AVATAR_OPTIONS.find(a => a.id === 'pna_female') || AVATAR_OPTIONS[0];
   }
 
   return AVATAR_OPTIONS[0];

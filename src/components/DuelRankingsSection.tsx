@@ -588,7 +588,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                 );
                 const isTop10 = rankPos <= 10;
                 const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-                const avatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
+                const avatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName, candidate.gender);
                 const leagueInfo = LEAGUES_CONFIG[candidate.duelLeague || 'bronze'] || LEAGUES_CONFIG.bronze;
 
                 return (

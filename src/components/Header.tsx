@@ -141,7 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
   const xpForNext = nextRank.minXp - currentRank.minXp;
   const currentXpInRank = profile.totalXp - currentRank.minXp;
   const xpProgress = xpForNext > 0 ? Math.min(100, Math.round((currentXpInRank / xpForNext) * 100)) : 100;
-  const userAvatar = getAvatarOption(profile.avatarId, profile.branch, profile.displayName);
+  const userAvatar = getAvatarOption(profile.avatarId, profile.branch, profile.displayName, profile.gender);
   const navRef = useRef<HTMLElement>(null);
 
   const centerTab = (tabId: string) => {

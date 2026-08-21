@@ -17,73 +17,6 @@ export interface AccessoryItem {
   imageUrl?: string;
 }
 
-// Inline SVG Data URLs for Face Accessories (NVG Goggles & Radio Communicator)
-const SVG_FACE_NVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
-  <defs>
-    <radialGradient id="nvgLensGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#4ade80" stop-opacity="0.95"/>
-      <stop offset="60%" stop-color="#22c55e" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#15803d" stop-opacity="0.9"/>
-    </radialGradient>
-    <filter id="greenGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="2.2" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-  </defs>
-  <!-- Strap around head -->
-  <path d="M18 52 C35 48, 85 48, 102 52" stroke="#0f172a" stroke-width="4.5" stroke-linecap="round"/>
-  <!-- Tactical Goggle Frame -->
-  <rect x="24" y="41" width="72" height="27" rx="10" fill="#090d16" stroke="#1e293b" stroke-width="2.5"/>
-  <!-- Dual Luminous Night Vision Lenses with Glow -->
-  <g filter="url(#greenGlow)">
-    <!-- Left Lens -->
-    <circle cx="43" cy="54.5" r="10.5" fill="url(#nvgLensGlow)" stroke="#86efac" stroke-width="1.8"/>
-    <circle cx="43" cy="54.5" r="5" stroke="#bbf7d0" stroke-width="0.8" stroke-dasharray="2 2"/>
-    <line x1="43" y1="46" x2="43" y2="63" stroke="#dcfce7" stroke-width="0.8"/>
-    <line x1="34.5" y1="54.5" x2="51.5" y2="54.5" stroke="#dcfce7" stroke-width="0.8"/>
-    <circle cx="40" cy="51" r="1.8" fill="#ffffff" opacity="0.95"/>
-
-    <!-- Right Lens -->
-    <circle cx="77" cy="54.5" r="10.5" fill="url(#nvgLensGlow)" stroke="#86efac" stroke-width="1.8"/>
-    <circle cx="77" cy="54.5" r="5" stroke="#bbf7d0" stroke-width="0.8" stroke-dasharray="2 2"/>
-    <line x1="77" y1="46" x2="77" y2="63" stroke="#dcfce7" stroke-width="0.8"/>
-    <line x1="68.5" y1="54.5" x2="85.5" y2="54.5" stroke="#dcfce7" stroke-width="0.8"/>
-    <circle cx="74" cy="51" r="1.8" fill="#ffffff" opacity="0.95"/>
-  </g>
-  <!-- Center Bridge Sensor -->
-  <rect x="56.5" y="49" width="7" height="11" rx="2" fill="#1e293b" stroke="#334155" stroke-width="1.2"/>
-  <circle cx="60" cy="54.5" r="1.8" fill="#22c55e"/>
-</svg>
-`)}`;
-
-const SVG_FACE_RADIO = `data:image/svg+xml;utf8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
-  <defs>
-    <filter id="cyanGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="2" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-  </defs>
-  <!-- Over-head tactical band -->
-  <path d="M94 48 C92 24, 38 22, 26 40" stroke="#0f172a" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-  <!-- Earpiece on right side -->
-  <rect x="88" y="44" width="13" height="24" rx="6" fill="#090d16" stroke="#334155" stroke-width="2"/>
-  <rect x="91" y="48" width="7" height="16" rx="3.5" fill="#1e293b"/>
-  <!-- Boom Microphone curved toward front of mouth -->
-  <path d="M93 62 Q80 82, 58 83" stroke="#090d16" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M93 62 Q80 82, 58 83" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2 3" fill="none"/>
-  <!-- Mic head -->
-  <rect x="50" y="78" width="11" height="10" rx="3" fill="#020617" stroke="#38bdf8" stroke-width="1.2"/>
-  <rect x="52" y="80" width="7" height="6" rx="1.5" fill="#1e293b"/>
-  <!-- Glowing Comms Status LED on mic tip -->
-  <g filter="url(#cyanGlow)">
-    <circle cx="48" cy="83" r="2.5" fill="#06b6d4"/>
-    <circle cx="48" cy="83" r="1.2" fill="#e0f2fe"/>
-  </g>
-</svg>
-`)}`;
-
 // Inline SVG Data URLs for ultra-sharp, self-contained Vector Frames
 const SVG_FRAME_FLAME = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
@@ -452,28 +385,6 @@ export const ACCESSORY_FACE_ITEMS: AccessoryItem[] = [
     description: 'Sem acessórios adicionais no rosto do avatar.',
     icon: '➖',
     isDefault: true,
-  },
-  {
-    id: 'face_nvg_tactical',
-    name: 'Óculos Táticos NVG',
-    category: 'face',
-    type: 'faceAccessory',
-    cost: 45,
-    description: 'Óculos de visão noturna com brilho verde tático e HUD de operações noturnas.',
-    icon: '🥽',
-    imageUrl: SVG_FACE_NVG,
-    glowColor: '#22c55e',
-  },
-  {
-    id: 'face_radio_communicator',
-    name: 'Radio Communicator',
-    category: 'face',
-    type: 'faceAccessory',
-    cost: 35,
-    description: 'Auricular tático militar com microfone frontal e LED de transmissão ativo.',
-    icon: '🎧',
-    imageUrl: SVG_FACE_RADIO,
-    glowColor: '#06b6d4',
   },
 ];
 

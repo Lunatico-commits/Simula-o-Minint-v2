@@ -632,7 +632,7 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                   (candidate.id && currentProfile.uid && candidate.id === currentProfile.uid)
                 );
                 const candidateBranch = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-                const avatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName);
+                const avatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName, candidate.gender);
                 const zone = getCandidateLeagueZone(rank, leagueCandidates.length, selectedLeague, candidate.weeklyDuelPoints || 0);
 
                 let rankBadgeStyle = 'bg-slate-800 text-slate-400 border-slate-700';

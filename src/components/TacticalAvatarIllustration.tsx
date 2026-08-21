@@ -37,17 +37,17 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     const rawOrgan = (branch || id?.split('_')[0] || 'pna').toLowerCase();
     const cleanOrgan = ['pna', 'sic', 'sme', 'spcb', 'sp'].includes(rawOrgan) ? rawOrgan : 'pna';
     
-    // If female version failed, try base organ female avatar first
-    if (resolvedGender === 'female' && imgSrc !== `/avatars/${cleanOrgan}_female.png`) {
-      setImgSrc(`/avatars/${cleanOrgan}_female.png`);
+    // If female version failed, try base organ female avatar and NEVER fallback to male
+    if (resolvedGender === 'female') {
+      if (imgSrc !== `/avatars/${cleanOrgan}_female.png`) {
+        setImgSrc(`/avatars/${cleanOrgan}_female.png`);
+        return;
+      }
+      setImgError(true);
       return;
     }
-    // Then try male uniform or base organ male avatar
-    const maleAsset = getAvatarImagePath(id, 'male', branch);
-    if (imgSrc !== maleAsset && imgSrc !== `/avatars/${cleanOrgan}_male.png`) {
-      setImgSrc(maleAsset);
-      return;
-    }
+
+    // If male version failed, fallback to base organ male avatar
     if (imgSrc !== `/avatars/${cleanOrgan}_male.png`) {
       setImgSrc(`/avatars/${cleanOrgan}_male.png`);
       return;

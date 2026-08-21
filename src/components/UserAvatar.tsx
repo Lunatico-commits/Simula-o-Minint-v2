@@ -1,10 +1,12 @@
 import React from 'react';
 import { UserProfile, DuelPlayer, SavedAccount, MININTBranch, AvatarAccessories } from '../types';
+import { getUserGender } from '../data/avatars';
 import { ReactiveAvatar, AvatarReactionType } from './ReactiveAvatar';
 
 export interface UserAvatarProps {
   user?: Partial<UserProfile> | Partial<DuelPlayer> | Partial<SavedAccount> | any;
   avatarId?: string;
+  gender?: 'male' | 'female';
   branch?: MININTBranch;
   displayName?: string;
   photoURL?: string;
@@ -36,6 +38,7 @@ export interface UserAvatarProps {
 export const UserAvatar: React.FC<UserAvatarProps> = ({
   user,
   avatarId,
+  gender,
   branch,
   displayName,
   photoURL,
@@ -60,6 +63,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
 }) => {
   // Extract and prioritize values from user object if provided
   const resolvedAvatarId = avatarId || user?.avatarId || user?.avatar || (user?.photoURL ? undefined : 'pna_1');
+  const resolvedGender = gender || user?.gender || getUserGender(user || resolvedAvatarId);
   const resolvedBranch = (branch || user?.branch || 'PNA') as MININTBranch;
   const resolvedDisplayName = displayName || user?.displayName || user?.name || 'Candidato';
   const resolvedPhotoURL = photoURL || user?.photoURL || (typeof user?.avatar === 'string' && user.avatar.startsWith('http') ? user.avatar : undefined);
@@ -83,6 +87,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   return (
     <ReactiveAvatar
       avatarId={resolvedAvatarId}
+      gender={resolvedGender}
       branch={resolvedBranch}
       displayName={resolvedDisplayName}
       photoURL={resolvedPhotoURL}
