@@ -44,7 +44,7 @@ import {
   AccessoryItem 
 } from '../data/avatarAccessories';
 import { getAvatarOption } from '../data/branches';
-import { getAvatarAssetPath, BASE_AVATARS, getAvatarById } from '../data/avatars';
+import { getAvatarAssetPath, BASE_AVATARS, getAvatarById, getAvatarImagePath, getUserGender, normalizeUniformId } from '../data/avatars';
 import { ReactiveAvatar } from './ReactiveAvatar';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { fireConfetti } from '../utils/confetti';
@@ -82,8 +82,10 @@ export const ShopView: React.FC<ShopViewProps> = ({
   onUpdateProfile,
   onNavigateTab,
 }) => {
+  const userProfileGender = getUserGender(profile.avatarId);
   const [selectedCategory, setSelectedCategory] = useState<UnifiedShopCategory>('all');
   const [previewItem, setPreviewItem] = useState<UnifiedShopItem | null>(null);
+  const [previewGender, setPreviewGender] = useState<'male' | 'female'>(userProfileGender);
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [insufficientFundsItem, setInsufficientFundsItem] = useState<UnifiedShopItem | null>(null);
   const [selectedDetailItem, setSelectedDetailItem] = useState<UnifiedShopItem | null>(null);
@@ -408,8 +410,28 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
     }
   };
 
-  const renderShopItemIcon = (item: UnifiedShopItem) => {
-    // 1. Explicit asset path or image URL (e.g. WebP assets like /avatars/shop/pna_pir_male.webp)
+  const renderShopItemIcon = (item: UnifiedShopItem, genderOverride?: 'male' | 'female') => {
+    // 1. If item is an avatar farda, resolve dynamically with gender support
+    if (item.type === 'avatar_farda') {
+      const activeGender = genderOverride || userProfileGender;
+      const avatarImagePath = getAvatarImagePath(item.id, activeGender, item.branch);
+
+      return (
+        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative bg-slate-950/90 border border-white/10 group">
+          <img
+            src={avatarImagePath}
+            alt={item.name}
+            className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
+            onError={(e) => {
+              const organ = (item.branch || 'pna').toLowerCase();
+              e.currentTarget.src = `/avatars/${organ}_male.png`;
+            }}
+          />
+        </div>
+      );
+    }
+
+    // 2. Explicit asset path or image URL for accessories
     const directAsset = item.assetPath || item.imageUrl;
     if (directAsset) {
       return (
@@ -426,48 +448,13 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
       );
     }
 
-    // 2. If item is an avatar_farda without direct assetPath:
-    if (item.type === 'avatar_farda') {
-      const organBranch = (item.branch || profile.branch || 'PNA') as MININTBranch;
-      const userIsFemale = profile.avatarId?.includes('female');
-      const baseAvatarAsset = getAvatarAssetPath(
-        userIsFemale ? `${organBranch.toLowerCase()}_female` : `${organBranch.toLowerCase()}_male`,
-        organBranch
-      );
-
-      return (
-        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative bg-slate-950/90 border border-white/10 group">
-          {/* Base 3D Avatar Image of the organ as thumbnail background */}
-          <img
-            src={baseAvatarAsset}
-            alt={item.name}
-            className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none opacity-80 group-hover:opacity-95 transition-opacity"
-            onError={(e) => {
-              e.currentTarget.src = '/avatars/pna_male.png';
-            }}
-          />
-          {/* Tactical darken overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/35 pointer-events-none" />
-          
-          {/* Special uniform tactical illustration overlay on top */}
-          <div className="relative z-10 w-full h-full flex items-center justify-center pointer-events-none">
-            <TacticalAvatarIllustration
-              id={item.id}
-              branch={item.branch}
-              size={48}
-              className="w-full h-full object-cover drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
-            />
-          </div>
-        </div>
-      );
-    }
-
     // 3. Specialized custom vector tactical avatars & illustrations
     return (
       <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center bg-slate-950/80 border border-white/10">
         <TacticalAvatarIllustration
           id={item.id}
           branch={item.branch}
+          gender={genderOverride || userProfileGender}
           size={48}
           className="w-full h-full object-cover"
         />
@@ -584,7 +571,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
               {/* Header Title & Category */}
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-slate-900 border border-amber-500/40 p-1 flex items-center justify-center text-3xl shrink-0 shadow-lg shadow-black/50">
-                  {renderShopItemIcon(selectedDetailItem)}
+                  {renderShopItemIcon(selectedDetailItem, previewGender)}
                 </div>
                 <div className="flex-1 min-w-0 pr-6">
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -611,6 +598,42 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                   </h3>
                 </div>
               </div>
+
+              {/* Gender Selector Toggle for Fardas (M / F Preview) */}
+              {selectedDetailItem.type === 'avatar_farda' && (
+                <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-3 mb-4 flex items-center justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Modelo de Farda</span>
+                    <span className="text-xs font-bold text-slate-200">
+                      {previewGender === 'male' ? 'Versão Masculina' : 'Versão Feminina'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-white/10">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('male')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        previewGender === 'male'
+                          ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-1 ring-blue-400'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>👨 Masc (M)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewGender('female')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                        previewGender === 'female'
+                          ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20 ring-1 ring-rose-400'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>👩 Fem (F)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Price & Status Banner */}
               <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3">
@@ -788,18 +811,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
               {/* Item Card Details */}
               <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3.5 mb-4 flex items-center gap-3">
                 <div className="w-12 h-12 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-2xl shrink-0 overflow-hidden">
-                  {(insufficientFundsItem.assetPath || insufficientFundsItem.imageUrl) ? (
-                    <img
-                      src={insufficientFundsItem.assetPath || insufficientFundsItem.imageUrl}
-                      alt={insufficientFundsItem.name}
-                      className="w-10 h-10 object-contain rounded-lg"
-                      onError={(e) => {
-                        e.currentTarget.src = '/avatars/pna_male.png';
-                      }}
-                    />
-                  ) : (
-                    <span>{insufficientFundsItem.symbol}</span>
-                  )}
+                  {renderShopItemIcon(insufficientFundsItem, previewGender)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-black text-slate-200 truncate">{insufficientFundsItem.name}</p>

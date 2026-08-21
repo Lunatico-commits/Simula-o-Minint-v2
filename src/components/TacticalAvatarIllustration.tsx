@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { MININTBranch } from '../types';
-import { getAvatarAssetPath, BASE_AVATARS } from '../data/avatars';
-import { SHOP_ITEMS } from '../data/shopItems';
+import { getAvatarImagePath, getUserGender, normalizeUniformId } from '../data/avatars';
 
 export interface TacticalAvatarIllustrationProps {
   id: string;
   branch?: MININTBranch;
+  gender?: 'male' | 'female';
   size?: number | string;
   className?: string;
   isAnimated?: boolean;
@@ -14,15 +14,13 @@ export interface TacticalAvatarIllustrationProps {
 export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProps> = ({
   id,
   branch = 'PNA',
+  gender,
   size = '100%',
   className = '',
   isAnimated = false,
 }) => {
-  const isDirectBaseAvatar = BASE_AVATARS.some((a) => a.id === id);
-  const shopItem = SHOP_ITEMS.find((s) => s.id === id);
-  const initialAssetPath = isDirectBaseAvatar
-    ? getAvatarAssetPath(id, branch as MININTBranch)
-    : shopItem?.assetPath;
+  const resolvedGender = gender || getUserGender(id);
+  const initialAssetPath = getAvatarImagePath(id, resolvedGender, branch);
 
   const [imgSrc, setImgSrc] = useState<string | undefined>(initialAssetPath);
   const [imgError, setImgError] = useState(false);
@@ -30,48 +28,29 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
   React.useEffect(() => {
     setImgSrc(initialAssetPath);
     setImgError(false);
-  }, [initialAssetPath, id]);
+  }, [initialAssetPath, id, resolvedGender]);
 
   const width = typeof size === 'number' ? `${size}px` : size;
   const height = typeof size === 'number' ? `${size}px` : size;
 
   const handleImageError = () => {
-    // If PIR uniform fails to load, fallback smoothly to pna_male.png
-    if ((imgSrc === '/avatars/pna_pir_male.png' || imgSrc === '/avatars/pna_pir_male.webp' || imgSrc === '/avatars/shop/pna_pir_male.webp' || id === 'pna_pir_tactical' || id === 'pna_intervencao') && imgSrc !== '/avatars/pna_male.png') {
-      setImgSrc('/avatars/pna_male.png');
+    const rawOrgan = (branch || id?.split('_')[0] || 'pna').toLowerCase();
+    const cleanOrgan = ['pna', 'sic', 'sme', 'spcb', 'sp'].includes(rawOrgan) ? rawOrgan : 'pna';
+    
+    // If female version failed, try base organ female avatar first
+    if (resolvedGender === 'female' && imgSrc !== `/avatars/${cleanOrgan}_female.png`) {
+      setImgSrc(`/avatars/${cleanOrgan}_female.png`);
       return;
     }
-    // If SIC forensic uniform fails to load, fallback smoothly to sic_male.png
-    if ((imgSrc === '/avatars/sic_forensic_male.png' || id === 'sic_forensic_expert' || id === 'sic_forensic' || id === 'sic_perito') && imgSrc !== '/avatars/sic_male.png') {
-      setImgSrc('/avatars/sic_male.png');
+    // Then try male uniform or base organ male avatar
+    const maleAsset = getAvatarImagePath(id, 'male', branch);
+    if (imgSrc !== maleAsset && imgSrc !== `/avatars/${cleanOrgan}_male.png`) {
+      setImgSrc(maleAsset);
       return;
     }
-    // General organ branch fallback if a shop uniform asset is not found
-    if (branch === 'PNA' || id?.startsWith('pna_')) {
-      if (imgSrc !== '/avatars/pna_male.png') {
-        setImgSrc('/avatars/pna_male.png');
-        return;
-      }
-    } else if (branch === 'SIC' || id?.startsWith('sic_')) {
-      if (imgSrc !== '/avatars/sic_male.png') {
-        setImgSrc('/avatars/sic_male.png');
-        return;
-      }
-    } else if (branch === 'SME' || id?.startsWith('sme_')) {
-      if (imgSrc !== '/avatars/sme_male.png') {
-        setImgSrc('/avatars/sme_male.png');
-        return;
-      }
-    } else if (branch === 'SPCB' || id?.startsWith('spcb_')) {
-      if (imgSrc !== '/avatars/spcb_male.png') {
-        setImgSrc('/avatars/spcb_male.png');
-        return;
-      }
-    } else if (branch === 'SP' || id?.startsWith('sp_')) {
-      if (imgSrc !== '/avatars/sp_male.png') {
-        setImgSrc('/avatars/sp_male.png');
-        return;
-      }
+    if (imgSrc !== `/avatars/${cleanOrgan}_male.png`) {
+      setImgSrc(`/avatars/${cleanOrgan}_male.png`);
+      return;
     }
     setImgError(true);
   };
@@ -98,6 +77,7 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     // ==========================================
     // 💂‍♂️ 1. PNA PIR TACTICAL / PNA MALE
     // ==========================================
+    case 'pna_pir':
     case 'pna_pir_tactical':
     case 'pna_male':
       return (
@@ -257,6 +237,7 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     // ==========================================
     // 🔬 3. SIC FORENSIC EXPERT / SIC FEMALE (Perito Forense)
     // ==========================================
+    case 'sic_forensic':
     case 'sic_forensic_expert':
     case 'sic_perito':
     case 'sic_female':
@@ -427,7 +408,9 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     // ==========================================
     // 🧭 6. SME BORDER OPERATOR / SME MALE (Fronteira & Imigração)
     // ==========================================
+    case 'sme_border':
     case 'sme_border_operator':
+    case 'sme_airport':
     case 'sme_frontier':
     case 'sme_1':
     case 'sme_male':
@@ -640,6 +623,7 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     // ==========================================
     // 🦺 10. SP HONRA & SP MALE / SP FEMALE (Serviço Penitenciário)
     // ==========================================
+    case 'sp_honor':
     case 'sp_honra':
     case 'sp_1':
     case 'sp_2':
@@ -704,6 +688,7 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     // ==========================================
     // 👑 11. MININT GALA GOLD (Comissário-Geral Lendário)
     // ==========================================
+    case 'minint_commissar':
     case 'minint_gala_gold':
       return (
         <svg viewBox="0 0 128 128" width={width} height={height} className={`select-none ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -785,6 +770,7 @@ export const TacticalAvatarIllustration: React.FC<TacticalAvatarIllustrationProp
     // ==========================================
     // 👮‍♂️ 13. PNA TRANSITO / PNA INTERVENCAO / PNA 1
     // ==========================================
+    case 'pna_traffic':
     case 'pna_transito':
     case 'pna_intervencao':
     case 'pna_1':

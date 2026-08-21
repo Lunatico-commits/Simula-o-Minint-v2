@@ -22,7 +22,7 @@ export const SHOP_ITEMS: ShopItem[] = [
   // 1. Fardas & Avatares Especiais dos Órgãos (PNA, SIC, SME, SP, SPCB + Lendários)
   // PNA: Azul tático, Marinho profundo, Preto tático e Boina Vermelha
   {
-    id: 'pna_pir_tactical',
+    id: 'pna_pir',
     name: 'Farda Tática PIR (PNA)',
     category: 'fardas',
     cost: 140,
@@ -32,11 +32,10 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-slate-950 via-slate-900 to-red-950',
     isPopular: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/pna_pir_male.png',
   },
   // SIC: Cinza chumbo, Perícia Forense ciano, Crachá prata e Laboratório
   {
-    id: 'sic_forensic_expert',
+    id: 'sic_forensic',
     name: 'Perito Forense (SIC)',
     category: 'fardas',
     cost: 135,
@@ -46,11 +45,10 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-cyan-950 via-slate-900 to-slate-950',
     isPopular: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/sic_forensic_male.png',
   },
   // SME: Verde esmeralda, Controlo de fronteiras e Teal marítimo/aeroportuário
   {
-    id: 'sme_border_operator',
+    id: 'sme_border',
     name: 'Operador de Fronteira (SME)',
     category: 'fardas',
     cost: 130,
@@ -60,21 +58,19 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-emerald-950 via-teal-950 to-slate-950',
     isPopular: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/sme_border_male.png',
   },
-  // SPCB: Vermelho resgate, Chama, Capacete dourado e Protecção civil
+  // SPCB: Vermelho resgate, Chama, Capacete vermelho e Protecção civil
   {
-    id: 'spcb_elite_rescue',
+    id: 'spcb_rescue',
     name: 'Resgate de Elite (SPCB)',
     category: 'fardas',
     cost: 140,
-    description: 'Traje de bombeiro de alto impacto com capacete dourado e proteção térmica reforçada.',
+    description: 'Traje de bombeiro de alto impacto com capacete vermelho e proteção térmica reforçada.',
     symbol: '🚒',
     branch: 'SPCB',
     badgeBg: 'from-amber-950 via-red-950 to-orange-950',
     isPopular: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/spcb_rescue_male.png',
   },
   {
     id: 'pna_gala',
@@ -86,22 +82,9 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'PNA',
     badgeBg: 'from-blue-950 via-blue-900 to-indigo-950',
     type: 'avatar_farda',
-    assetPath: '/avatars/pna_gala_male.png',
   },
   {
-    id: 'pna_intervencao',
-    name: 'Operativo PIR (Intervenção)',
-    category: 'fardas',
-    cost: 120,
-    description: 'Uniforme da Polícia de Intervenção Rápida para missões tácticas de alta segurança.',
-    symbol: '🚓',
-    branch: 'PNA',
-    badgeBg: 'from-slate-950 via-blue-950 to-neutral-950',
-    type: 'avatar_farda',
-    assetPath: '/avatars/pna_pir_male.png',
-  },
-  {
-    id: 'pna_transito',
+    id: 'pna_traffic',
     name: 'Oficial de Trânsito PNA',
     category: 'fardas',
     cost: 100,
@@ -110,7 +93,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'PNA',
     badgeBg: 'from-sky-950 via-blue-900 to-slate-900',
     type: 'avatar_farda',
-    assetPath: '/avatars/pna_traffic_male.png',
   },
   {
     id: 'pna_2',
@@ -134,19 +116,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-slate-950 via-neutral-900 to-slate-900',
     isPopular: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/sic_tactical_male.png',
-  },
-  {
-    id: 'sic_perito',
-    name: 'Perito Criminalística SIC',
-    category: 'fardas',
-    cost: 120,
-    description: 'Traje de Peritagem e Análise Forense do Serviço de Investigação Criminal.',
-    symbol: '🔬',
-    branch: 'SIC',
-    badgeBg: 'from-teal-950 via-slate-900 to-cyan-950',
-    type: 'avatar_farda',
-    assetPath: '/avatars/sic_forensic_male.png',
   },
   {
     id: 'sic_2',
@@ -160,7 +129,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     type: 'avatar_farda',
   },
   {
-    id: 'sme_frontier',
+    id: 'sme_airport',
     name: 'Farda Aeroportuária SME',
     category: 'fardas',
     cost: 120,
@@ -169,7 +138,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SME',
     badgeBg: 'from-teal-950 via-emerald-900 to-slate-900',
     type: 'avatar_farda',
-    assetPath: '/avatars/sme_airport_male.png',
   },
   {
     id: 'sme_2',
@@ -183,7 +151,7 @@ export const SHOP_ITEMS: ShopItem[] = [
     type: 'avatar_farda',
   },
   {
-    id: 'sp_honra',
+    id: 'sp_honor',
     name: 'Farda de Honra SP',
     category: 'fardas',
     cost: 120,
@@ -192,7 +160,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SP',
     badgeBg: 'from-purple-950 via-slate-900 to-slate-950',
     type: 'avatar_farda',
-    assetPath: '/avatars/sp_honor_male.png',
   },
   {
     id: 'sp_2',
@@ -204,18 +171,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     branch: 'SP',
     badgeBg: 'from-slate-900 via-purple-950 to-zinc-950',
     type: 'avatar_farda',
-  },
-  {
-    id: 'spcb_rescue',
-    name: 'Farda de Resgate SPCB',
-    category: 'fardas',
-    cost: 120,
-    description: 'Traje de Protecção Civil e Resgate Pesado do Serviço de Bombeiros.',
-    symbol: '🧑‍🚒',
-    branch: 'SPCB',
-    badgeBg: 'from-orange-950 via-amber-900 to-red-950',
-    type: 'avatar_farda',
-    assetPath: '/avatars/spcb_rescue_male.png',
   },
   {
     id: 'spcb_2',
@@ -238,10 +193,9 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-indigo-950 via-slate-900 to-amber-950',
     isExclusive: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/minint_commissar_male.png',
   },
   {
-    id: 'minint_gala_gold',
+    id: 'minint_commissar',
     name: 'Farda Dourada Comissário-Geral',
     category: 'fardas',
     cost: 300,
@@ -250,7 +204,6 @@ export const SHOP_ITEMS: ShopItem[] = [
     badgeBg: 'from-amber-700 via-yellow-600 to-amber-900',
     isExclusive: true,
     type: 'avatar_farda',
-    assetPath: '/avatars/minint_commissar_male.png',
   },
 
   // 2. Congelamento de Sequência (Streak Freeze)

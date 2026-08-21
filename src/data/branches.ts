@@ -175,34 +175,41 @@ export const AVATAR_OPTIONS = [
 
   // 2. Special & Themed Shop Fardas (Lockable)
   // PNA
+  { id: 'pna_pir', branch: 'PNA' as MININTBranch, label: 'Farda Tática PIR (PNA)', symbol: '💂‍♂️', isSpecialShopItem: true },
   { id: 'pna_pir_tactical', branch: 'PNA' as MININTBranch, label: 'Farda Tática PIR (PNA)', symbol: '💂‍♂️', isSpecialShopItem: true },
   { id: 'pna_gala', branch: 'PNA' as MININTBranch, label: 'Farda de Gala PNA (Comando)', symbol: '🦅', isSpecialShopItem: true },
   { id: 'pna_intervencao', branch: 'PNA' as MININTBranch, label: 'Operativo PIR (Intervenção)', symbol: '👮‍♂️', isSpecialShopItem: true },
+  { id: 'pna_traffic', branch: 'PNA' as MININTBranch, label: 'Oficial de Trânsito PNA', symbol: '👮‍♂️', isSpecialShopItem: true },
   { id: 'pna_transito', branch: 'PNA' as MININTBranch, label: 'Oficial de Trânsito PNA', symbol: '👮‍♂️', isSpecialShopItem: true },
   { id: 'pna_2', branch: 'PNA' as MININTBranch, label: 'Escudo Dourado PNA', symbol: '🛡️', isSpecialShopItem: true },
 
   // SIC
+  { id: 'sic_forensic', branch: 'SIC' as MININTBranch, label: 'Perito Forense (SIC)', symbol: '🔬', isSpecialShopItem: true },
   { id: 'sic_forensic_expert', branch: 'SIC' as MININTBranch, label: 'Perito Forense (SIC)', symbol: '🔬', isSpecialShopItem: true },
   { id: 'sic_tactical', branch: 'SIC' as MININTBranch, label: 'Farda Táctica SIC (Elite)', symbol: '🕵️‍♂️', isSpecialShopItem: true },
   { id: 'sic_perito', branch: 'SIC' as MININTBranch, label: 'Perito Criminalística SIC', symbol: '🔬', isSpecialShopItem: true },
   { id: 'sic_2', branch: 'SIC' as MININTBranch, label: 'Crachá Prata SIC', symbol: '🛡️', isSpecialShopItem: true },
 
   // SME
+  { id: 'sme_border', branch: 'SME' as MININTBranch, label: 'Operador de Fronteira (SME)', symbol: '🧭', isSpecialShopItem: true },
   { id: 'sme_border_operator', branch: 'SME' as MININTBranch, label: 'Operador de Fronteira (SME)', symbol: '🧭', isSpecialShopItem: true },
+  { id: 'sme_airport', branch: 'SME' as MININTBranch, label: 'Farda Aeroportuária SME', symbol: '🛂', isSpecialShopItem: true },
   { id: 'sme_frontier', branch: 'SME' as MININTBranch, label: 'Farda Aeroportuária SME', symbol: '🛂', isSpecialShopItem: true },
   { id: 'sme_2', branch: 'SME' as MININTBranch, label: 'Selo Fronteiriço SME', symbol: '🌐', isSpecialShopItem: true },
 
   // SP
+  { id: 'sp_honor', branch: 'SP' as MININTBranch, label: 'Farda de Honra SP', symbol: '🦺', isSpecialShopItem: true },
   { id: 'sp_honra', branch: 'SP' as MININTBranch, label: 'Farda de Honra SP', symbol: '🦺', isSpecialShopItem: true },
   { id: 'sp_2', branch: 'SP' as MININTBranch, label: 'Balança de Justiça SP', symbol: '⚖️', isSpecialShopItem: true },
 
   // SPCB
+  { id: 'spcb_rescue', branch: 'SPCB' as MININTBranch, label: 'Resgate de Elite (SPCB)', symbol: '🚒', isSpecialShopItem: true },
   { id: 'spcb_elite_rescue', branch: 'SPCB' as MININTBranch, label: 'Resgate de Elite (SPCB)', symbol: '🚒', isSpecialShopItem: true },
-  { id: 'spcb_rescue', branch: 'SPCB' as MININTBranch, label: 'Farda de Resgate SPCB', symbol: '🧑‍🚒', isSpecialShopItem: true },
   { id: 'spcb_2', branch: 'SPCB' as MININTBranch, label: 'Chama de Protecção', symbol: '🔥', isSpecialShopItem: true },
 
   // MININT Geral / Lendários
   { id: 'minint_instrutor', branch: 'Personalizado' as any, label: 'Instrutor de Academia MININT', symbol: '🎓', isSpecialShopItem: true },
+  { id: 'minint_commissar', branch: 'Personalizado' as any, label: 'Farda Dourada Comissário-Geral', symbol: '👑', isSpecialShopItem: true },
   { id: 'minint_gala_gold', branch: 'Personalizado' as any, label: 'Farda Dourada Comissário-Geral', symbol: '👑', isSpecialShopItem: true },
 ];
 
