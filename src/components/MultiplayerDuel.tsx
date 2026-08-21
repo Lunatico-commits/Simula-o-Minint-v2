@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserProfile, DuelRoom, DuelPlayer, MININTBranch, Question, QuestionCategory, AIExplanationResponse, normalizeCategory, DuelHistoryEntry } from '../types';
 import { db, rtdb } from '../lib/firebase';
 import { 
@@ -503,16 +503,60 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   }, [viewState, onSessionActiveChange]);
 
-  // Duel History State & Filter
+  // Duel History State & User-Exclusive Filter
   const [duelHistory, setDuelHistory] = useState<DuelHistoryEntry[]>(() => {
     try {
       const key = `minint_duel_history_${profile.uid}`;
-      const saved = localStorage.getItem(key) || localStorage.getItem('minint_duel_history');
-      return saved ? JSON.parse(saved) : [];
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed: DuelHistoryEntry[] = JSON.parse(saved);
+        return parsed.filter(d => !d.userId || d.userId === profile.uid || d.player1Id === profile.uid || d.player2Id === profile.uid || d.myUid === profile.uid);
+      }
+      const legacySaved = localStorage.getItem('minint_duel_history');
+      if (legacySaved) {
+        const parsed: DuelHistoryEntry[] = JSON.parse(legacySaved);
+        return parsed.filter(d => (d.userId && d.userId === profile.uid) || d.player1Id === profile.uid || d.player2Id === profile.uid || d.myUid === profile.uid);
+      }
+      return [];
     } catch (e) {
       return [];
     }
   });
+
+  // Reload history exclusively for the active account when profile changes
+  useEffect(() => {
+    if (!profile?.uid) return;
+    try {
+      const key = `minint_duel_history_${profile.uid}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed: DuelHistoryEntry[] = JSON.parse(saved);
+        setDuelHistory(parsed.filter(d => !d.userId || d.userId === profile.uid || d.player1Id === profile.uid || d.player2Id === profile.uid || d.myUid === profile.uid));
+      } else {
+        setDuelHistory([]);
+      }
+    } catch (e) {
+      setDuelHistory([]);
+    }
+  }, [profile?.uid]);
+
+  // Strict user-exclusive filtered list of duels
+  const userDuelHistory = useMemo(() => {
+    if (!profile?.uid) return [];
+    return duelHistory.filter((duel) => {
+      if (duel.player1Id || duel.player2Id) {
+        return duel.player1Id === profile.uid || duel.player2Id === profile.uid;
+      }
+      if (duel.userId) {
+        return duel.userId === profile.uid;
+      }
+      if (duel.myUid) {
+        return duel.myUid === profile.uid;
+      }
+      return true;
+    });
+  }, [duelHistory, profile?.uid]);
+
   const [historyFilter, setHistoryFilter] = useState<'all' | 'win' | 'loss'>('all');
   const [isClearHistoryModalOpen, setIsClearHistoryModalOpen] = useState(false);
   const [isMemeModalOpen, setIsMemeModalOpen] = useState(false);
@@ -545,12 +589,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }, 4000);
   };
 
-  // Save history changes to localStorage
+  // Save history changes to user-specific localStorage key
   useEffect(() => {
     if (profile?.uid) {
       try {
         const key = `minint_duel_history_${profile.uid}`;
-        localStorage.setItem(key, JSON.stringify(duelHistory));
+        const userOnly = duelHistory.filter(d => !d.userId || d.userId === profile.uid || d.player1Id === profile.uid || d.player2Id === profile.uid || d.myUid === profile.uid);
+        localStorage.setItem(key, JSON.stringify(userOnly));
       } catch (e) {
         console.warn('Erro ao persitir histórico de duelos:', e);
       }
@@ -1831,6 +1876,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }),
       category: roomData.category,
       categoryName: catLabel,
+      userId: profile.uid,
+      myUid: profile.uid,
+      player1Id: roomData.player1?.uid,
+      player2Id: roomData.player2?.uid,
       myScore: myPlayer?.score || 0,
       opponentScore: opponent?.score || 0,
       opponentUid: opponent?.uid || 'bot',
@@ -1851,7 +1900,6 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       try {
         const key = `minint_duel_history_${profile.uid}`;
         localStorage.setItem(key, JSON.stringify(updated));
-        localStorage.setItem('minint_duel_history', JSON.stringify(updated));
       } catch (e) {
         console.warn('Erro ao salvar no localStorage:', e);
       }
@@ -2436,14 +2484,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 <History size={16} className="text-amber-500" />
                 <span>Histórico de Duelos</span>
-                {duelHistory.length > 0 && (
+                {userDuelHistory.length > 0 && (
                   <span className="text-[10px] font-mono bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full">
-                    {duelHistory.length}
+                    {userDuelHistory.length}
                   </span>
                 )}
               </h3>
 
-              {duelHistory.length > 0 && (
+              {userDuelHistory.length > 0 && (
                 <button
                   onClick={handleClearHistory}
                   title="Limpar Histórico"
@@ -2455,11 +2503,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             </div>
 
             {/* Filters / Stats Summary */}
-            {duelHistory.length > 0 && (
+            {userDuelHistory.length > 0 && (
               <div className="flex items-center justify-between text-[11px] bg-slate-50 dark:bg-slate-900/80 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-1.5 font-bold">
                   <span className="text-slate-500 dark:text-slate-400">Total:</span>
-                  <span className="text-slate-900 dark:text-slate-200 font-mono">{duelHistory.length} Batalhas</span>
+                  <span className="text-slate-900 dark:text-slate-200 font-mono">{userDuelHistory.length} Batalhas</span>
                 </div>
                 <div className="flex items-center gap-1 font-semibold">
                   <button
@@ -2480,7 +2528,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
-                    Vitórias ({duelHistory.filter((h) => h.result === 'win').length})
+                    Vitórias ({userDuelHistory.filter((h) => h.result === 'win').length})
                   </button>
                   <button
                     onClick={() => setHistoryFilter('loss')}
@@ -2490,14 +2538,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
                     }`}
                   >
-                    Derrotas ({duelHistory.filter((h) => h.result === 'loss').length})
+                    Derrotas ({userDuelHistory.filter((h) => h.result === 'loss').length})
                   </button>
                 </div>
               </div>
             )}
 
             {/* History List */}
-            {duelHistory.length === 0 ? (
+            {userDuelHistory.length === 0 ? (
               <div className="bg-slate-50 dark:bg-slate-900/50 border border-dashed border-slate-300 dark:border-slate-800 rounded-xl p-5 text-center text-xs text-slate-500 dark:text-slate-400 space-y-2">
                 <Swords size={28} className="mx-auto text-amber-500/50" />
                 <p className="font-semibold text-slate-700 dark:text-slate-300">Sem duelos recentes</p>
@@ -2505,7 +2553,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               </div>
             ) : (
               <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                {duelHistory
+                {userDuelHistory
                   .filter((entry) => {
                     if (historyFilter === 'win') return entry.result === 'win';
                     if (historyFilter === 'loss') return entry.result === 'loss';

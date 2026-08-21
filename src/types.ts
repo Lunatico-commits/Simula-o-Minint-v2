@@ -195,6 +195,7 @@ export interface SavedAccount {
   uid: string;
   displayName: string;
   branch: MININTBranch;
+  gender?: 'male' | 'female';
   avatarId: string;
   province: string;
   academicLevel?: AcademicLevel;
@@ -270,6 +271,10 @@ export interface DuelHistoryEntry {
   dateFormatted: string;
   category: QuestionCategory | 'misto';
   categoryName: string;
+  userId?: string;
+  myUid?: string;
+  player1Id?: string;
+  player2Id?: string;
   myScore: number;
   opponentScore: number;
   opponentUid: string;

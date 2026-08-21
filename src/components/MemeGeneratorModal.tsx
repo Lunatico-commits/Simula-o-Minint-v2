@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { toPng } from 'html-to-image';
 import { UserProfile, MININTBranch } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
+import { getAvatarImagePath, getUserGender } from '../data/avatars';
+import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { generateMemeCaption, generateDynamicMemeText, MemeDataResponse } from '../services/apiService';
 import { 
   Sparkles, Share2, Download, RefreshCw, X, Shield, Award, 
@@ -335,8 +337,13 @@ export const MemeGeneratorModal: React.FC<MemeGeneratorModalProps> = ({
 
             {/* Candidate Identity Strip */}
             <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-2.5">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xl shrink-0">
-                {avatarObj?.symbol || '👮'}
+              <div className="w-11 h-11 rounded-xl bg-slate-900 border border-amber-500/40 overflow-hidden flex items-center justify-center shrink-0 shadow-inner relative">
+                <TacticalAvatarIllustration
+                  id={profile.equippedUniform || profile.avatarId}
+                  branch={userBranch}
+                  gender={profile.gender || getUserGender(profile.avatarId)}
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-black text-slate-100 truncate">

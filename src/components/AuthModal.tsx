@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, SavedAccount, MININTBranch, AcademicLevel, ACADEMIC_LEVELS } from '../types';
 import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, RANKS_MININT, getAvatarOption } from '../data/branches';
-import { BASE_AVATARS, getAvatarById, getAvatarAssetPath } from '../data/avatars';
+import { BASE_AVATARS, getAvatarById, getAvatarAssetPath, getAvatarImagePath, getUserGender } from '../data/avatars';
 import { generateReferralCode, processReferralReward } from '../utils/referral';
 import { getCurrentISOWeek } from '../utils/league';
 import { registerWithFirebaseAuth, loginWithFirebaseAuth, db } from '../lib/firebase';
@@ -446,7 +446,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 savedAccounts.map((acc, idx) => {
                   const bInfo = MININT_BRANCHES[acc.branch] || MININT_BRANCHES.PNA;
                   const isCurrent = acc.uid === currentProfile.uid;
-                  const accAvatar = getAvatarOption(acc.avatarId, acc.branch, acc.displayName);
+                  const activeGender = acc.gender || getUserGender(acc.avatarId);
+                  const activeAvatarId = acc.equippedUniform || acc.avatarId;
 
                   return (
                     <div
@@ -459,9 +460,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        {/* Branch / Avatar Badge */}
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bInfo.badgeBg} flex items-center justify-center text-lg border border-amber-500/30 shadow-sm shrink-0`}>
-                          {accAvatar.symbol}
+                        {/* Dynamic Tactical PNG Avatar Badge */}
+                        <div className="w-11 h-11 rounded-xl bg-slate-900 border border-amber-500/30 overflow-hidden flex items-center justify-center shadow-sm shrink-0 relative">
+                          <TacticalAvatarIllustration
+                            id={activeAvatarId}
+                            gender={activeGender}
+                            branch={acc.branch}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
 
                         <div>
