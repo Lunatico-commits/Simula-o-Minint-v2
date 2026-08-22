@@ -2,6 +2,10 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initAssetValidatorInDev } from './utils/assetValidator';
+
+// Initialize asset validation diagnostics for development mode
+initAssetValidatorInDev();
 
 // Ensure OffscreenCanvas and HTMLCanvasElement instances always have getBoundingClientRect defined
 if (typeof window !== 'undefined') {

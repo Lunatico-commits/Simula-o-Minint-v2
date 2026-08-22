@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Coins, 
@@ -27,6 +27,7 @@ import {
   Layers,
   Sparkle,
   AlertCircle,
+  HelpCircle,
   X,
   Scale,
   Microscope,
@@ -47,6 +48,8 @@ import { getAvatarOption } from '../data/branches';
 import { getAvatarAssetPath, BASE_AVATARS, getAvatarById, getAvatarImagePath, getUserGender, normalizeUniformId } from '../data/avatars';
 import { ReactiveAvatar } from './ReactiveAvatar';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
+import { AvatarImage } from './AvatarImage';
+import { ShopItemIcon } from './ShopItemIcon';
 import { fireConfetti } from '../utils/confetti';
 import { playCorrectSound, playClickSound } from '../utils/audio';
 
@@ -60,10 +63,11 @@ export interface UnifiedShopItem {
   description: string;
   symbol: string;
   branch?: MININTBranch;
+  organ?: MININTBranch;
   badgeBg?: string;
   isPopular?: boolean;
   isExclusive?: boolean;
-  type: 'avatar_farda' | 'frame' | 'background' | 'badge' | 'faceAccessory' | 'streak_freeze' | 'hint_powerup' | 'xp_booster';
+  type: 'avatar' | 'avatar_farda' | 'badge' | 'pin' | 'booster' | 'xp_booster' | 'frame' | 'background' | 'faceAccessory' | 'streak_freeze' | 'hint_powerup';
   amount?: number;
   imageUrl?: string;
   assetPath?: string;
@@ -84,11 +88,20 @@ export const ShopView: React.FC<ShopViewProps> = ({
 }) => {
   const userProfileGender = getUserGender(profile.avatarId);
   const [selectedCategory, setSelectedCategory] = useState<UnifiedShopCategory>('all');
+  const [selectedOrgan, setSelectedOrgan] = useState<MININTBranch | 'all'>(profile.branch || 'PNA');
   const [previewItem, setPreviewItem] = useState<UnifiedShopItem | null>(null);
   const [previewGender, setPreviewGender] = useState<'male' | 'female'>(userProfileGender);
   const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [insufficientFundsItem, setInsufficientFundsItem] = useState<UnifiedShopItem | null>(null);
   const [selectedDetailItem, setSelectedDetailItem] = useState<UnifiedShopItem | null>(null);
+  const [confirmPurchaseItem, setConfirmPurchaseItem] = useState<UnifiedShopItem | null>(null);
+
+  // Sync filter if user profile branch changes
+  useEffect(() => {
+    if (profile.branch) {
+      setSelectedOrgan(profile.branch);
+    }
+  }, [profile.branch]);
 
   const userCoins = profile.minintCoins || 0;
   const purchasedItems = profile.purchasedItems || [];
@@ -105,6 +118,10 @@ export const ShopView: React.FC<ShopViewProps> = ({
       if (si.category === 'streak') cat = 'streak';
       else if (si.category === 'powerups') cat = 'powerups';
       else if (si.category === 'boosters') cat = 'boosters';
+      else if (si.category === 'badges') cat = 'badges';
+      else if (si.category === 'molduras') cat = 'molduras';
+      else if (si.category === 'fundos') cat = 'fundos';
+      else if (si.category === 'face') cat = 'face';
 
       items.push({
         id: si.id,
@@ -113,7 +130,8 @@ export const ShopView: React.FC<ShopViewProps> = ({
         cost: si.cost,
         description: si.description,
         symbol: si.symbol,
-        branch: si.branch,
+        branch: si.branch || si.organ,
+        organ: si.organ || si.branch,
         badgeBg: si.badgeBg,
         isPopular: si.isPopular,
         isExclusive: si.isExclusive,
@@ -208,18 +226,18 @@ export const ShopView: React.FC<ShopViewProps> = ({
   // Calculate live simulated avatar appearance based on tested previewItem
   // The base avatar remains the user's selected 3D avatar; tested special uniforms overlay on top!
   const simulatedAvatarId = profile.avatarId || 'pna_male';
-  const simulatedUniform = previewItem?.type === 'avatar_farda' ? previewItem.id : (SHOP_ITEMS.some(s => s.id === profile.avatarId) ? profile.avatarId : undefined);
+  const simulatedUniform = (previewItem?.type === 'avatar_farda' || previewItem?.type === 'avatar') ? previewItem.id : (SHOP_ITEMS.some(s => s.id === profile.avatarId) ? profile.avatarId : undefined);
   const simulatedAccessories: AvatarAccessories = {
     ...currentAccessories,
     frame: previewItem?.type === 'frame' ? previewItem.id : (currentAccessories.frame || profile.equippedFrame || 'frame_none'),
     background: previewItem?.type === 'background' ? previewItem.id : (currentAccessories.background || profile.equippedBackground || 'bg_default'),
-    badge: previewItem?.type === 'badge' ? previewItem.id : (currentAccessories.badge || 'badge_none'),
+    badge: (previewItem?.type === 'badge' || previewItem?.type === 'pin') ? previewItem.id : (currentAccessories.badge || 'badge_none'),
     faceAccessory: previewItem?.type === 'faceAccessory' ? previewItem.id : (currentAccessories.faceAccessory || profile.equippedFaceAccessory || 'face_none'),
   };
 
   // Helper to check if an item is equipped
   const isItemEquipped = (item: UnifiedShopItem): boolean => {
-    if (item.type === 'avatar_farda') {
+    if (item.type === 'avatar_farda' || item.type === 'avatar') {
       return profile.avatarId === item.id;
     }
     if (item.type === 'frame') {
@@ -228,7 +246,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
     if (item.type === 'background') {
       return (currentAccessories.background || profile.equippedBackground) === item.id;
     }
-    if (item.type === 'badge') {
+    if (item.type === 'badge' || item.type === 'pin') {
       return currentAccessories.badge === item.id;
     }
     if (item.type === 'faceAccessory') {
@@ -239,16 +257,17 @@ export const ShopView: React.FC<ShopViewProps> = ({
 
   // Helper to check if an item is owned
   const isItemOwned = (item: UnifiedShopItem): boolean => {
-    if (item.type === 'streak_freeze' || item.type === 'hint_powerup' || item.type === 'xp_booster') {
+    if (item.type === 'streak_freeze' || item.type === 'hint_powerup' || item.type === 'xp_booster' || item.type === 'booster') {
       return false; // Consumables are purchased to add to stock
     }
     return purchasedItems.includes(item.id);
   };
 
+  // Inicia o processo de compra abrindo o diálogo de confirmação ('Are you sure?')
   const handlePurchase = (item: UnifiedShopItem) => {
     playClickSound();
 
-    // Verificação rigorosa de saldo de 'minintCoins' antes de permitir a aquisição
+    // Verificação rigorosa de saldo de 'minintCoins' antes de prosseguir
     const currentCoins = profile.minintCoins ?? 0;
     if (currentCoins < item.cost) {
       setInsufficientFundsItem(item);
@@ -257,6 +276,23 @@ export const ShopView: React.FC<ShopViewProps> = ({
         type: 'error',
       });
       setTimeout(() => setFeedbackMessage(null), 5000);
+      return;
+    }
+
+    // Abre a caixa de diálogo de confirmação para prevenir compras acidentais
+    setConfirmPurchaseItem(item);
+  };
+
+  // Executa a compra confirmada
+  const confirmAndExecutePurchase = () => {
+    if (!confirmPurchaseItem) return;
+    const item = confirmPurchaseItem;
+    playClickSound();
+
+    const currentCoins = profile.minintCoins ?? 0;
+    if (currentCoins < item.cost) {
+      setConfirmPurchaseItem(null);
+      setInsufficientFundsItem(item);
       return;
     }
 
@@ -270,7 +306,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
     let newEquippedFrame = profile.equippedFrame;
     let newEquippedFaceAccessory = profile.equippedFaceAccessory;
 
-    if (item.type === 'avatar_farda') {
+    if (item.type === 'avatar_farda' || item.type === 'avatar') {
       if (!newPurchasedItems.includes(item.id)) {
         newPurchasedItems.push(item.id);
       }
@@ -287,7 +323,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
         newPurchasedItems.push(item.id);
       }
       newAccessories.background = item.id;
-    } else if (item.type === 'badge') {
+    } else if (item.type === 'badge' || item.type === 'pin') {
       if (!newPurchasedItems.includes(item.id)) {
         newPurchasedItems.push(item.id);
       }
@@ -302,6 +338,8 @@ export const ShopView: React.FC<ShopViewProps> = ({
       newStreakFreeze += (item.amount || 1);
     } else if (item.type === 'hint_powerup') {
       newExtraHints += (item.amount || 3);
+    } else if (item.type === 'booster' || item.type === 'xp_booster') {
+      // Booster activated
     }
 
     const updatedProfile: UserProfile = {
@@ -322,13 +360,13 @@ export const ShopView: React.FC<ShopViewProps> = ({
     playCorrectSound();
 
     let successMsg = `Comprado com sucesso!`;
-    if (item.type === 'avatar_farda') {
+    if (item.type === 'avatar_farda' || item.type === 'avatar') {
       successMsg = `Farda "${item.name}" comprada e equipada com sucesso! 🎖️`;
     } else if (item.type === 'frame') {
       successMsg = `Moldura "${item.name}" comprada e equipada ao redor do seu perfil! 🖼️`;
     } else if (item.type === 'background') {
       successMsg = `Fundo "${item.name}" comprado e aplicado ao seu avatar! 🎨`;
-    } else if (item.type === 'badge') {
+    } else if (item.type === 'badge' || item.type === 'pin') {
       successMsg = `Distintivo "${item.name}" adicionado ao seu avatar! 🎖️`;
     } else if (item.type === 'faceAccessory') {
       successMsg = `Acessório "${item.name}" comprado e equipado no seu avatar! 🥽`;
@@ -336,10 +374,16 @@ export const ShopView: React.FC<ShopViewProps> = ({
       successMsg = `Congelamento de Sequência adicionado ao seu inventário! 🧊`;
     } else if (item.type === 'hint_powerup') {
       successMsg = `+${item.amount} Dicas 50:50 adicionadas! Use-as nos seus simulados. ⚡`;
+    } else if (item.type === 'booster' || item.type === 'xp_booster') {
+      successMsg = `Booster XP Duplo de 1 Hora activado com sucesso! 🚀`;
     }
 
     setFeedbackMessage({ text: successMsg, type: 'success' });
     setTimeout(() => setFeedbackMessage(null), 4500);
+
+    // Fechar caixas de diálogo
+    setConfirmPurchaseItem(null);
+    setSelectedDetailItem(null);
   };
 
   const handleEquipItem = (item: UnifiedShopItem) => {
@@ -349,14 +393,14 @@ export const ShopView: React.FC<ShopViewProps> = ({
     let newEquippedFrame = profile.equippedFrame;
     let newEquippedFaceAccessory = profile.equippedFaceAccessory;
 
-    if (item.type === 'avatar_farda') {
+    if (item.type === 'avatar_farda' || item.type === 'avatar') {
       newAvatarId = item.id;
     } else if (item.type === 'frame') {
       newAccessories.frame = item.id;
       newEquippedFrame = item.id;
     } else if (item.type === 'background') {
       newAccessories.background = item.id;
-    } else if (item.type === 'badge') {
+    } else if (item.type === 'badge' || item.type === 'pin') {
       newAccessories.badge = item.id;
     } else if (item.type === 'faceAccessory') {
       newAccessories.faceAccessory = item.id;
@@ -394,10 +438,28 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const filteredItems = catalog.filter((item) => {
-    if (selectedCategory === 'all') return true;
-    return item.category === selectedCategory;
-  });
+  const filteredItems = useMemo(() => {
+    return catalog.filter((item) => {
+      // 1. Category Tab Filter
+      if (selectedCategory !== 'all' && item.category !== selectedCategory) {
+        return false;
+      }
+
+      // 2. Organ / Branch Filter
+      if (selectedOrgan === 'all') {
+        return true;
+      }
+
+      const itemOrgan = item.organ || item.branch;
+      if (itemOrgan) {
+        return itemOrgan === selectedOrgan;
+      }
+
+      // Universal items without a specific organ (streak freeze, 50:50 hints, XP boosters, universal frames/backgrounds)
+      // If user selected 'fardas' specifically, do not show items with no organ
+      return selectedCategory !== 'fardas';
+    });
+  }, [catalog, selectedCategory, selectedOrgan]);
 
   const handleTestItem = (item: UnifiedShopItem) => {
     playClickSound();
@@ -408,56 +470,41 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
     }
   };
 
-  const renderShopItemIcon = (item: UnifiedShopItem, genderOverride?: 'male' | 'female') => {
-    // 1. If item is an avatar farda, resolve dynamically with gender support
-    if (item.type === 'avatar_farda') {
-      const activeGender = genderOverride || userProfileGender;
-      const avatarImagePath = getAvatarImagePath(item.id, activeGender, item.branch);
+  const renderShopItemIcon = (item: UnifiedShopItem, genderOverride?: 'male' | 'female', size?: 'sm' | 'md' | 'lg' | 'xl' | number) => {
+    const activeGender = genderOverride || userProfileGender;
 
+    // 1. If item is an avatar farda, resolve dynamically with AvatarImage
+    if (item.type === 'avatar_farda' || item.type === 'avatar') {
       return (
         <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative bg-slate-950/90 border border-white/10 group">
-          <img
-            src={avatarImagePath}
+          <AvatarImage
+            id={item.id}
+            branch={item.branch || item.organ}
+            gender={activeGender}
             alt={item.name}
             className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
-            onError={(e) => {
-              const organ = (item.branch || 'pna').toLowerCase();
-              const cleanOrgan = ['pna', 'sic', 'sme', 'spcb', 'sp'].includes(organ) ? organ : 'pna';
-              e.currentTarget.src = `/avatars/${cleanOrgan}_${activeGender}.png`;
-            }}
           />
         </div>
       );
     }
 
-    // 2. Explicit asset path or image URL for accessories
-    const directAsset = item.assetPath || item.imageUrl;
-    if (directAsset) {
-      return (
-        <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center relative bg-slate-950/90 border border-white/10 group">
-          <img
-            src={directAsset}
-            alt={item.name}
-            className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
-            onError={(e) => {
-              e.currentTarget.src = `/avatars/pna_${userProfileGender}.png`;
-            }}
-          />
-        </div>
-      );
-    }
-
-    // 3. Specialized custom vector tactical avatars & illustrations
+    // 2. If item is a badge, booster, pin, background, frame, powerup, or face accessory:
+    // Call the dedicated ShopItemIcon component (No repeated standard avatar image!)
     return (
-      <div className="w-12 h-12 rounded-xl overflow-hidden shadow-md flex items-center justify-center bg-slate-950/80 border border-white/10">
-        <TacticalAvatarIllustration
-          id={item.id}
-          branch={item.branch}
-          gender={genderOverride || userProfileGender}
-          size={48}
-          className="w-full h-full object-cover"
-        />
-      </div>
+      <ShopItemIcon
+        type={item.type}
+        category={item.category}
+        symbol={item.symbol}
+        name={item.name}
+        id={item.id}
+        badgeBg={item.badgeBg}
+        layerClass={item.layerClass}
+        branch={item.branch || item.organ}
+        organ={item.organ || item.branch}
+        imageUrl={item.imageUrl || item.assetPath}
+        amount={item.amount}
+        size={size || 'md'}
+      />
     );
   };
 
@@ -539,170 +586,247 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
         )}
       </AnimatePresence>
 
-      {/* ℹ️ Modal de Detalhes do Item */}
+      {/* ℹ️ Modal de Pré-visualização Ampliada & Detalhes do Traje */}
       <AnimatePresence>
         {selectedDetailItem && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150"
             onClick={() => setSelectedDetailItem(null)}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 15 }}
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 15 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#0F1115] border border-amber-500/50 rounded-2xl max-w-md w-full p-5 sm:p-6 text-white shadow-2xl shadow-black/80 relative overflow-hidden ring-1 ring-white/10"
+              className="bg-[#0F1115] border border-amber-500/40 rounded-2xl max-w-md w-full p-4 sm:p-6 text-white shadow-2xl shadow-black/90 relative overflow-hidden my-auto ring-1 ring-white/10"
             >
-              {/* Ambient Glow */}
-              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+              {/* Subtle Ambient Background Accent */}
+              <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-8 -left-8 w-36 h-36 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
 
               {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setSelectedDetailItem(null)}
-                className="absolute top-4 right-4 p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                title="Fechar detalhes"
+                className="absolute top-3.5 right-3.5 p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer z-10"
+                title="Fechar visualização"
+                aria-label="Fechar"
               >
                 <X size={18} />
               </button>
 
-              {/* Header Title & Category */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-slate-900 border border-amber-500/40 p-1 flex items-center justify-center text-3xl shrink-0 shadow-lg shadow-black/50">
-                  {renderShopItemIcon(selectedDetailItem, previewGender)}
+              {/* Header: Badges & Item Name */}
+              <div className="pr-8 mb-2">
+                <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                  {selectedDetailItem.branch && (
+                    <span className={`px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider border ${
+                      selectedDetailItem.branch === 'PNA'
+                        ? 'bg-blue-500/20 text-blue-400 border-blue-500/40'
+                        : selectedDetailItem.branch === 'SIC'
+                        ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
+                        : selectedDetailItem.branch === 'SME'
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                        : selectedDetailItem.branch === 'SPCB'
+                        ? 'bg-red-500/20 text-red-400 border-red-500/40'
+                        : 'bg-purple-500/20 text-purple-400 border-purple-500/40'
+                    }`}>
+                      {selectedDetailItem.branch}
+                    </span>
+                  )}
+                  {selectedDetailItem.isPopular && (
+                    <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1">
+                      <Sparkles size={10} />
+                      <span>Popular</span>
+                    </span>
+                  )}
+                  {selectedDetailItem.isExclusive && (
+                    <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1">
+                      <Crown size={10} />
+                      <span>Exclusivo</span>
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-bold uppercase tracking-wider bg-white/5 text-slate-400 border border-white/10">
+                    {selectedDetailItem.type === 'avatar_farda' ? 'Traje Oficial' : selectedDetailItem.category}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0 pr-6">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {selectedDetailItem.branch && (
-                      <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                        {selectedDetailItem.branch}
-                      </span>
-                    )}
-                    {selectedDetailItem.isPopular && (
-                      <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                        <Sparkles size={10} />
-                        <span>Popular</span>
-                      </span>
-                    )}
-                    {selectedDetailItem.isExclusive && (
-                      <span className="px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                        <Crown size={10} />
-                        <span>Exclusivo</span>
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="text-base sm:text-lg font-black text-slate-100 mt-1 tracking-tight truncate">
-                    {selectedDetailItem.name}
-                  </h3>
-                </div>
+                <h3 className="text-base sm:text-lg font-black text-slate-100 tracking-tight">
+                  {selectedDetailItem.name}
+                </h3>
               </div>
 
-              {/* Gender Selector Toggle for Fardas (M / F Preview) */}
-              {selectedDetailItem.type === 'avatar_farda' && (
-                <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-3 mb-4 flex items-center justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Modelo de Farda</span>
-                    <span className="text-xs font-bold text-slate-200">
-                      {previewGender === 'male' ? 'Versão Masculina' : 'Versão Feminina'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-white/10">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewGender('male')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
-                        previewGender === 'male'
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20 ring-1 ring-blue-400'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <span>👨 Masc (M)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewGender('female')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
-                        previewGender === 'female'
-                          ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20 ring-1 ring-rose-400'
-                          : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      <span>👩 Fem (F)</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* 🖼️ PALCO DE PRÉ-VISUALIZAÇÃO AMPLIADA (Lightweight 2D Box) */}
+              <div className="my-3 bg-gradient-to-b from-slate-900/90 via-[#13171F] to-slate-950 border border-white/10 rounded-2xl p-4 flex flex-col items-center justify-center relative overflow-hidden shadow-inner">
+                {selectedDetailItem.type === 'avatar_farda' ? (
+                  <>
+                    {/* Traje Oficial Ampliado */}
+                    <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-2xl bg-slate-950 border-2 border-amber-500/40 overflow-hidden shadow-xl flex items-center justify-center group">
+                      <AvatarImage
+                        id={selectedDetailItem.id}
+                        branch={selectedDetailItem.branch || selectedDetailItem.organ}
+                        gender={previewGender}
+                        size={208}
+                        alt={selectedDetailItem.name}
+                        className="w-full h-full object-cover select-none pointer-events-none"
+                      />
+                      
+                      {/* Insígnia do Ramo Discreta */}
+                      <div className="absolute top-2 left-2 bg-slate-950/80 backdrop-blur-xs border border-white/15 px-2 py-0.5 rounded-md font-mono text-[9px] font-black uppercase tracking-wider text-amber-400 shadow-xs">
+                        {selectedDetailItem.branch || 'MININT'}
+                      </div>
+                    </div>
 
-              {/* Price & Status Banner */}
-              <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3.5 mb-4 flex items-center justify-between gap-3">
+                    {/* Seletor de Versão Masc / Fem */}
+                    <div className="mt-3 flex items-center gap-2 bg-slate-950/90 p-1 rounded-xl border border-white/10">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 px-2">Versão:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound();
+                          setPreviewGender('male');
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                          previewGender === 'male'
+                            ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>👨 Masculino</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playClickSound();
+                          setPreviewGender('female');
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-black tracking-wider transition-all cursor-pointer flex items-center gap-1 ${
+                          previewGender === 'female'
+                            ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <span>👩 Feminino</span>
+                      </button>
+                    </div>
+                  </>
+                ) : selectedDetailItem.type === 'background' || selectedDetailItem.category === 'fundos' ? (
+                  /* 🎨 PALCO DEDICADO DE PRÉ-VISUALIZAÇÃO DE FUNDO/GRADIENTE (Real CSS Gradient Preview) */
+                  <div className="w-full flex flex-col items-center justify-center space-y-3">
+                    {/* Círculo/Caixa Ampliada com o Gradiente Real */}
+                    <div className="relative w-40 h-40 sm:w-48 sm:h-48 rounded-3xl bg-slate-950 border-2 border-amber-400/80 p-2 shadow-2xl shadow-amber-500/20 ring-2 ring-white/10 overflow-hidden flex items-center justify-center group">
+                      <div
+                        className={`w-full h-full rounded-2xl bg-gradient-to-br ${
+                          selectedDetailItem.layerClass ||
+                          (selectedDetailItem.id === 'bg_dark_obsidian' ? 'from-zinc-950 via-slate-900 to-black' :
+                           selectedDetailItem.id === 'bg_golden_glory' ? 'from-amber-600 via-yellow-500 to-amber-900' :
+                           selectedDetailItem.id === 'bg_crimson_elite' ? 'from-rose-900 via-red-950 to-slate-950' :
+                           selectedDetailItem.id === 'bg_emerald_command' ? 'from-emerald-800 via-teal-950 to-slate-950' :
+                           selectedDetailItem.id === 'bg_cyber_space' ? 'from-cyan-900 via-blue-950 to-indigo-950' :
+                           selectedDetailItem.id === 'bg_sunset_patrol' ? 'from-violet-900 via-purple-950 to-orange-950' :
+                           'from-amber-600 via-yellow-500 to-amber-900')
+                        } flex flex-col items-center justify-center relative overflow-hidden shadow-inner`}
+                      >
+                        {/* Brilho e Efeito Especular Suave */}
+                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none" />
+                        <div className="absolute -top-6 -right-6 w-20 h-20 bg-white/25 rounded-full blur-sm pointer-events-none" />
+                        <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-black/40 rounded-full blur-sm pointer-events-none" />
+
+                        <span className="text-4xl sm:text-5xl filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] transform group-hover:scale-110 transition-transform duration-200">
+                          {selectedDetailItem.symbol || '🎨'}
+                        </span>
+
+                        <span className="mt-2 px-2.5 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-[10px] font-mono font-black tracking-widest text-amber-300 uppercase border border-white/20 shadow-md">
+                          GRADIENTE REAL
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Botão Rápido de Testar no Avatar */}
+                    <button
+                      type="button"
+                      onClick={() => handleTestItem(selectedDetailItem)}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+                        previewItem?.id === selectedDetailItem.id
+                          ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-300'
+                          : 'bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30'
+                      }`}
+                    >
+                      <Eye size={14} />
+                      <span>{previewItem?.id === selectedDetailItem.id ? 'A Testar no Avatar ✓' : 'Testar Fundo no Avatar'}</span>
+                    </button>
+                  </div>
+                ) : (
+                  /* Item Geral Ampliado (Molduras, Pins, Powerups) */
+                  <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-2xl bg-slate-950 border border-amber-500/30 overflow-hidden shadow-lg flex items-center justify-center p-3">
+                    {renderShopItemIcon(selectedDetailItem, previewGender, 'xl')}
+                  </div>
+                )}
+              </div>
+
+              {/* Price & Status Strip */}
+              <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3 mb-3 flex items-center justify-between gap-2">
                 <div>
-                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Preço Oficial</span>
-                  <div className="flex items-center gap-1.5 font-mono text-base font-black text-yellow-400 mt-0.5">
+                  <span className="text-[9px] font-mono uppercase text-slate-400 font-bold block">Preço do Item</span>
+                  <div className="flex items-center gap-1.5 font-mono text-sm sm:text-base font-black text-yellow-400 mt-0.5">
                     <Coins size={16} className="text-yellow-400 fill-yellow-400/90" />
-                    <span>{selectedDetailItem.cost} Moedas MININT</span>
+                    <span>{selectedDetailItem.cost} Moedas</span>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Status do Candidato</span>
+                  <span className="text-[9px] font-mono uppercase text-slate-400 font-bold block">Estado no Perfil</span>
                   {isItemEquipped(selectedDetailItem) ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider mt-0.5">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider mt-0.5">
                       <Check size={11} /> Equipado
                     </span>
                   ) : isItemOwned(selectedDetailItem) ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider mt-0.5">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase tracking-wider mt-0.5">
                       <Check size={11} /> Desbloqueado
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider mt-0.5">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider mt-0.5">
                       Disponível
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* Description & Usage Guide */}
-              <div className="space-y-3 mb-5">
-                <div>
-                  <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 font-mono mb-1">
-                    Descrição do Equipamento
-                  </h4>
-                  <p className="text-xs text-slate-200 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-white/5">
-                    {selectedDetailItem.description}
-                  </p>
-                </div>
+              {/* Description */}
+              <div className="space-y-2 mb-4">
+                <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-white/5">
+                  {selectedDetailItem.description}
+                </p>
 
-                <div className="text-[11px] text-slate-400 bg-slate-900/30 p-2.5 rounded-lg border border-white/5 flex items-center gap-2">
-                  <Info size={14} className="text-amber-400 shrink-0" />
+                <div className="text-[10px] text-slate-400 bg-slate-900/30 px-2.5 py-1.5 rounded-lg border border-white/5 flex items-center gap-1.5">
+                  <Info size={13} className="text-amber-400 shrink-0" />
                   <span>
                     {selectedDetailItem.type === 'avatar_farda'
-                      ? 'Esta farda especial fica salva no seu perfil e pode ser equipada a qualquer momento.'
+                      ? 'Ao equipar, o traje é sincronizado no seu perfil e exibido nos simulados e rankings.'
                       : selectedDetailItem.type === 'frame'
-                      ? 'A moldura tática é exibida ao redor do seu avatar nos rankings, ligas e simulados.'
+                      ? 'A moldura tática é exibida ao redor do avatar em todas as telas.'
                       : selectedDetailItem.type === 'streak_freeze'
-                      ? 'Protege automaticamente a sua sequência diária caso falte a um dia de treino.'
+                      ? 'Protege automaticamente a sua sequência caso falte a um dia de treino.'
                       : selectedDetailItem.type === 'hint_powerup'
-                      ? 'Elimina 2 alternativas incorretas durante os simulados para ajudar na pontuação.'
+                      ? 'Elimina 2 alternativas incorretas durante os simulados.'
                       : 'Equipamento tático oficial para personalização militar do candidato.'}
                   </span>
                 </div>
               </div>
 
               {/* Action Buttons in Modal */}
-              <div className="flex flex-col sm:flex-row items-center gap-2 pt-1 border-t border-white/10">
+              <div className="flex flex-col sm:flex-row items-center gap-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => {
                     handleTestItem(selectedDetailItem);
                   }}
-                  className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  className={`w-full sm:w-auto px-3.5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     previewItem?.id === selectedDetailItem.id
-                      ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-xs ring-1 ring-amber-400'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10'
                   }`}
                 >
-                  <Eye size={14} />
+                  <Eye size={13} />
                   <span>{previewItem?.id === selectedDetailItem.id ? 'A Testar no Topo' : 'Testar no Avatar'}</span>
                 </button>
 
@@ -725,9 +849,6 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                     type="button"
                     onClick={() => {
                       handlePurchase(selectedDetailItem);
-                      if (userCoins >= selectedDetailItem.cost) {
-                        setSelectedDetailItem(null);
-                      }
                     }}
                     className={`w-full sm:flex-1 py-2.5 px-4 rounded-xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer ${
                       userCoins >= selectedDetailItem.cost
@@ -755,6 +876,147 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                   className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white font-bold text-xs transition-colors cursor-pointer"
                 >
                   Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ❓ Caixa de Diálogo de Confirmação de Compra ('Are you sure?') */}
+      <AnimatePresence>
+        {confirmPurchaseItem && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150"
+            onClick={() => setConfirmPurchaseItem(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.94, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.94, opacity: 0, y: 15 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0F1115] border-2 border-amber-500/80 rounded-2xl max-w-md w-full p-5 sm:p-6 text-white shadow-2xl shadow-amber-950/50 relative overflow-hidden ring-1 ring-amber-500/30 my-auto"
+            >
+              {/* Ambient Glow */}
+              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setConfirmPurchaseItem(null)}
+                className="absolute top-3.5 right-3.5 p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer z-10"
+                title="Cancelar e fechar"
+                aria-label="Fechar"
+              >
+                <X size={18} />
+              </button>
+
+              {/* Header Icon & Title */}
+              <div className="flex items-center gap-3 mb-3.5 pr-8">
+                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-yellow-600 p-0.5 shadow-lg shadow-amber-500/25 shrink-0 flex items-center justify-center">
+                  <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center">
+                    <HelpCircle size={22} className="text-amber-400" />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono font-black uppercase tracking-wider text-amber-400 block">
+                    Confirmar Aquisição
+                  </span>
+                  <h3 className="text-base sm:text-lg font-black text-slate-100 tracking-tight">
+                    Tem a certeza que deseja comprar?
+                  </h3>
+                </div>
+              </div>
+
+              {/* Item Overview Card */}
+              <div className="bg-slate-900/90 border border-white/10 rounded-xl p-3 mb-3.5 flex items-center gap-3">
+                <div className="w-14 h-14 rounded-xl bg-slate-950 border border-amber-500/30 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                  {confirmPurchaseItem.type === 'avatar_farda' ? (
+                    <AvatarImage
+                      id={confirmPurchaseItem.id}
+                      branch={confirmPurchaseItem.branch || confirmPurchaseItem.organ}
+                      gender={previewGender}
+                      size={56}
+                      alt={confirmPurchaseItem.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    renderShopItemIcon(confirmPurchaseItem, previewGender, 'md')
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    {confirmPurchaseItem.branch && (
+                      <span className="px-1.5 py-0.2 rounded font-mono text-[9px] font-black uppercase bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                        {confirmPurchaseItem.branch}
+                      </span>
+                    )}
+                    <span className="text-[9px] font-mono uppercase text-slate-400 font-bold">
+                      {confirmPurchaseItem.type === 'avatar_farda' ? 'Farda Táctica' : confirmPurchaseItem.category}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-slate-100 truncate">
+                    {confirmPurchaseItem.name}
+                  </h4>
+                  <p className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                    {confirmPurchaseItem.description}
+                  </p>
+                </div>
+              </div>
+
+              {/* Financial Transaction Breakdown */}
+              <div className="bg-slate-950/80 border border-white/10 rounded-xl p-3 mb-3.5 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Preço do Item:</span>
+                  <span className="font-mono font-black text-yellow-400 flex items-center gap-1">
+                    <Coins size={13} className="text-yellow-400 fill-yellow-400/80" />
+                    -{confirmPurchaseItem.cost} Moedas
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">O seu Saldo Actual:</span>
+                  <span className="font-mono font-bold text-slate-200 flex items-center gap-1">
+                    <Coins size={13} className="text-slate-400" />
+                    {userCoins} Moedas
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs font-black">
+                  <span className="text-slate-200">Saldo Restante:</span>
+                  <span className="font-mono text-emerald-400 flex items-center gap-1">
+                    <Coins size={13} className="text-emerald-400 fill-emerald-400/80" />
+                    {userCoins - confirmPurchaseItem.cost} Moedas
+                  </span>
+                </div>
+              </div>
+
+              {/* Helpful Hint */}
+              <div className="text-[11px] text-slate-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-xl mb-4 flex items-center gap-2">
+                <Info size={14} className="text-amber-400 shrink-0" />
+                <span>
+                  {confirmPurchaseItem.type === 'streak_freeze' || confirmPurchaseItem.type === 'hint_powerup' || confirmPurchaseItem.type === 'booster' || confirmPurchaseItem.type === 'xp_booster'
+                    ? 'O item consumível será adicionado ao seu inventário e ficará pronto a utilizar.'
+                    : 'O equipamento será desbloqueado permanentemente e ficará activo no seu perfil.'}
+                </span>
+              </div>
+
+              {/* Action Buttons: Cancel vs Confirm */}
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setConfirmPurchaseItem(null)}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmAndExecutePurchase}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-yellow-500 via-amber-500 to-amber-600 hover:from-yellow-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer"
+                >
+                  <ShoppingBag size={14} />
+                  <span>Confirmar Compra</span>
                 </button>
               </div>
             </motion.div>
@@ -887,7 +1149,31 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
           <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-2.5 sm:gap-4">
             {/* Avatar Preview Visual Area */}
             <div className="flex items-center gap-2.5 sm:gap-4 w-full md:w-auto">
-              <div className="relative shrink-0 flex items-center justify-center p-0.5 sm:p-1">
+              <div className="relative shrink-0 flex items-center justify-center gap-2 p-0.5 sm:p-1">
+                {/* Pure Gradient Swatch Sphere (Only when previewing backgrounds) */}
+                {previewItem?.type === 'background' && (
+                  <div className="flex flex-col items-center">
+                    <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-2 border-amber-400 p-0.5 shadow-lg shadow-amber-500/30 overflow-hidden shrink-0">
+                      <div
+                        className={`w-full h-full rounded-full bg-gradient-to-br ${
+                          previewItem.layerClass ||
+                          (previewItem.id === 'bg_dark_obsidian' ? 'from-zinc-950 via-slate-900 to-black' :
+                           previewItem.id === 'bg_golden_glory' ? 'from-amber-600 via-yellow-500 to-amber-900' :
+                           previewItem.id === 'bg_crimson_elite' ? 'from-rose-900 via-red-950 to-slate-950' :
+                           previewItem.id === 'bg_emerald_command' ? 'from-emerald-800 via-teal-950 to-slate-950' :
+                           previewItem.id === 'bg_cyber_space' ? 'from-cyan-900 via-blue-950 to-indigo-950' :
+                           previewItem.id === 'bg_sunset_patrol' ? 'from-violet-900 via-purple-950 to-orange-950' :
+                           'from-amber-600 via-yellow-500 to-amber-900')
+                        } flex items-center justify-center shadow-inner relative`}
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none" />
+                        <span className="text-sm sm:text-base filter drop-shadow-md">{previewItem.symbol || '🎨'}</span>
+                      </div>
+                    </div>
+                    <span className="text-[8px] font-mono font-black text-amber-300 uppercase mt-0.5">Cor Real</span>
+                  </div>
+                )}
+
                 {/* Mobile compact avatar */}
                 <div className="block sm:hidden">
                   <ReactiveAvatar
@@ -904,7 +1190,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                     size="lg"
                     reaction="idle"
                     showBranchBadge={true}
-                    showLevelBadge={true}
+                    showLevelBadge={false}
                     level={profile.level || 1}
                     isVipSupporter={profile.isVipSupporter}
                     interactive={false}
@@ -926,7 +1212,7 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                     size="xl"
                     reaction="idle"
                     showBranchBadge={true}
-                    showLevelBadge={true}
+                    showLevelBadge={false}
                     level={profile.level || 1}
                     isVipSupporter={profile.isVipSupporter}
                     interactive={true}
@@ -1141,6 +1427,65 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
         </div>
       </div>
 
+      {/* 🏛️ 1. BARRA DE FILTROS POR RAMO / ÓRGÃO DO MININT */}
+      <div className="bg-slate-100/80 dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl p-3 sm:p-3.5 space-y-2 shadow-xs">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+            <Shield size={14} className="text-amber-500 shrink-0" />
+            <span>Filtrar por Ramo:</span>
+          </div>
+          <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-md">
+            {selectedOrgan === 'all' ? 'Todos os Ramos' : `Ramo: ${selectedOrgan}`}
+          </span>
+        </div>
+
+        {/* Organ Selection Buttons Grid */}
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
+          {[
+            { id: 'all', label: 'Todos', subtitle: 'Geral MININT', icon: Layers, activeColor: 'bg-amber-500 text-slate-950 border-amber-400 shadow-amber-500/25' },
+            { id: 'PNA', label: 'PNA', subtitle: 'Polícia Nacional', icon: Shield, activeColor: 'bg-blue-600 text-white border-blue-400 shadow-blue-500/30' },
+            { id: 'SIC', label: 'SIC', subtitle: 'Investigação Criminal', icon: Microscope, activeColor: 'bg-cyan-700 text-white border-cyan-400 shadow-cyan-600/30' },
+            { id: 'SME', label: 'SME', subtitle: 'Migração e Estrang.', icon: Compass, activeColor: 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-600/30' },
+            { id: 'SPCB', label: 'SPCB', subtitle: 'Bombeiros & Protec.', icon: Flame, activeColor: 'bg-red-600 text-white border-red-400 shadow-red-600/30' },
+            { id: 'SP', label: 'SP', subtitle: 'Serviço Penitenc.', icon: Scale, activeColor: 'bg-purple-600 text-white border-purple-400 shadow-purple-600/30' },
+          ].map((org) => {
+            const isSelected = selectedOrgan === org.id;
+            const IconComp = org.icon;
+            return (
+              <button
+                key={org.id}
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedOrgan(org.id as MININTBranch | 'all');
+                }}
+                className={`py-2 px-1.5 sm:px-2 rounded-xl border text-center transition-all duration-200 cursor-pointer flex flex-col items-center justify-center gap-0.5 active:scale-95 group ${
+                  isSelected
+                    ? `${org.activeColor} font-black shadow-md ring-1 ring-white/30`
+                    : 'bg-white dark:bg-slate-900/90 border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:border-amber-500/50 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+                title={`Filtrar por ${org.label} (${org.subtitle})`}
+              >
+                <div className="flex items-center gap-1">
+                  <IconComp 
+                    size={13} 
+                    className={isSelected ? (org.id === 'all' ? 'text-slate-950' : 'text-white') : 'text-slate-400 group-hover:text-amber-500 transition-colors'} 
+                  />
+                  <span className="text-xs font-black tracking-wide">{org.label}</span>
+                </div>
+                <span className={`text-[8.5px] sm:text-[9px] truncate max-w-full block leading-none ${
+                  isSelected 
+                    ? (org.id === 'all' ? 'text-slate-900 font-bold' : 'text-white/90 font-bold') 
+                    : 'text-slate-400 dark:text-slate-500'
+                }`}>
+                  {org.subtitle}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Category Tabs Scrollbar */}
       <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
         {[
@@ -1178,6 +1523,43 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
 
       {/* Shop Items Grid Catalog */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {filteredItems.length === 0 && (
+          <div className="col-span-full bg-slate-100 dark:bg-slate-900/60 border border-dashed border-slate-300 dark:border-white/10 rounded-2xl p-8 text-center my-2">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center mx-auto mb-3">
+              <Shield size={24} />
+            </div>
+            <h4 className="text-sm font-black text-slate-800 dark:text-slate-200">
+              Nenhum item encontrado para o filtro selecionado
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              Não existem itens do ramo <strong>{selectedOrgan === 'all' ? 'selecionado' : selectedOrgan}</strong> nesta categoria.
+            </p>
+            <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedCategory('all');
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all cursor-pointer"
+              >
+                Ver Todas as Categorias
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  setSelectedOrgan('all');
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+              >
+                <RotateCcw size={13} />
+                <span>Mostrar Todos os Ramos</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {filteredItems.map((item) => {
           const isOwned = isItemOwned(item);
           const isEquipped = isItemEquipped(item);

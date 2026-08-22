@@ -4,6 +4,7 @@ import { UserProfile, MININTBranch, AcademicLevel, ACADEMIC_LEVELS, AvatarAccess
 import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, BASIC_FREE_AVATARS, RANKS_MININT, getAvatarOption, getCandidateInitials } from '../data/branches';
 import { BASE_AVATARS, AvatarBase, getAvatarById, getAvatarAssetPath, getUserGender, getAvatarDisplayTitle } from '../data/avatars';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
+import { AvatarImage } from './AvatarImage';
 import { BADGES_LIST } from '../data/badges';
 import { 
   ACCESSORY_FRAMES, 
@@ -1052,10 +1053,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                       }`}
                     >
                       <div className="w-10 h-10 rounded-full overflow-hidden mb-1 flex items-center justify-center bg-slate-900/50 relative">
-                        <TacticalAvatarIllustration
+                        <AvatarImage
                           id={av.id}
                           gender={av.gender}
                           branch={av.organ as MININTBranch}
+                          alt={av.title}
                           className="w-full h-full object-cover"
                         />
                         {isSelected && (

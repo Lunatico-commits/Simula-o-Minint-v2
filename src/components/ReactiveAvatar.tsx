@@ -7,6 +7,7 @@ import { getAccessoryItem } from '../data/avatarAccessories';
 import { getUserGender } from '../data/avatars';
 import { BranchIllustration } from './BranchIllustration';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
+import { AvatarImage } from './AvatarImage';
 
 export type AvatarReactionType = 'idle' | 'victory' | 'quizComplete' | 'levelUp' | 'celebrate';
 
@@ -429,7 +430,7 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
             ) : equippedUniform ? (
               <div className="relative w-full h-full flex items-center justify-center">
                 {/* Base 3D Avatar of user underneath */}
-                <TacticalAvatarIllustration
+                <AvatarImage
                   id={avatarOption.id || avatarId || (resolvedGender === 'female' ? 'pna_female' : 'pna_male')}
                   branch={branch}
                   gender={resolvedGender}
@@ -437,7 +438,7 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
                 />
                 {/* Equipped / Tested Special Tactical Farda Overlay */}
                 <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                  <TacticalAvatarIllustration
+                  <AvatarImage
                     id={equippedUniform}
                     branch={branch}
                     gender={resolvedGender}
@@ -446,7 +447,7 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
                 </div>
               </div>
             ) : (
-              <TacticalAvatarIllustration
+              <AvatarImage
                 id={avatarOption.id || avatarId || (resolvedGender === 'female' ? 'pna_female' : 'pna_male')}
                 branch={branch}
                 gender={resolvedGender}

@@ -5,6 +5,7 @@ import { UserProfile, MININTBranch } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { getAvatarImagePath, getUserGender } from '../data/avatars';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
+import { AvatarImage } from './AvatarImage';
 import { generateMemeCaption, generateDynamicMemeText, MemeDataResponse } from '../services/apiService';
 import { 
   Sparkles, Share2, Download, RefreshCw, X, Shield, Award, 
@@ -338,10 +339,11 @@ export const MemeGeneratorModal: React.FC<MemeGeneratorModalProps> = ({
             {/* Candidate Identity Strip */}
             <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-2.5">
               <div className="w-11 h-11 rounded-xl bg-slate-900 border border-amber-500/40 overflow-hidden flex items-center justify-center shrink-0 shadow-inner relative">
-                <TacticalAvatarIllustration
+                <AvatarImage
                   id={profile.equippedUniform || profile.avatarId}
                   branch={userBranch}
                   gender={profile.gender || getUserGender(profile.avatarId)}
+                  alt={profile.displayName}
                   className="w-full h-full object-cover"
                 />
               </div>

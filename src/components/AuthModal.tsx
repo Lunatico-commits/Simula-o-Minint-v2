@@ -7,6 +7,7 @@ import { getCurrentISOWeek } from '../utils/league';
 import { registerWithFirebaseAuth, loginWithFirebaseAuth, db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
+import { AvatarImage } from './AvatarImage';
 import { 
   Shield, 
   UserPlus, 
@@ -462,10 +463,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       <div className="flex items-center gap-3">
                         {/* Dynamic Tactical PNG Avatar Badge */}
                         <div className="w-11 h-11 rounded-xl bg-slate-900 border border-amber-500/30 overflow-hidden flex items-center justify-center shadow-sm shrink-0 relative">
-                          <TacticalAvatarIllustration
+                          <AvatarImage
                             id={activeAvatarId}
                             gender={activeGender}
                             branch={acc.branch}
+                            alt={acc.displayName}
                             className="w-full h-full object-cover"
                           />
                         </div>
@@ -648,10 +650,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       }`}
                     >
                       <div className="w-10 h-10 rounded-full overflow-hidden mb-1 flex items-center justify-center bg-slate-900/50 relative">
-                        <TacticalAvatarIllustration
+                        <AvatarImage
                           id={av.id}
                           gender={av.gender}
                           branch={av.organ as MININTBranch}
+                          alt={av.title}
                           className="w-full h-full object-cover"
                         />
                         {isSelected && (
