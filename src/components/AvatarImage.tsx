@@ -1,6 +1,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import { MININTBranch, UserProfile, SavedAccount } from '../types';
 import { getAvatarImagePath, getUserGender } from '../data/avatars';
+import { getAccessoryItem } from '../data/avatarAccessories';
 
 export interface AvatarImageProps {
   /** Optional user profile or saved account object to extract avatar/uniform/gender */
@@ -31,6 +32,10 @@ export interface AvatarImageProps {
   onClick?: (e: React.MouseEvent<HTMLImageElement>) => void;
   /** Optional title tooltip */
   title?: string;
+  /** Optional badge/pin to render on the avatar (e.g., tested badge or equipped badge) */
+  badge?: string | { id?: string; symbol?: string; icon?: string; name?: string; branch?: string } | null;
+  /** Tested badge/pin for live shop preview */
+  testedBadge?: string | { id?: string; symbol?: string; icon?: string; name?: string; branch?: string } | null;
 }
 
 /**
@@ -39,6 +44,7 @@ export interface AvatarImageProps {
  * - Dynamic resolution of gender & uniform equipment.
  * - Native lazy loading ('lazy') & async decoding.
  * - Multi-tier native error recovery with strict fallback to /avatars/pna_female.png or /avatars/pna_male.png.
+ * - Optional badge/pin overlay for live testing and preview.
  */
 export const AvatarImage: React.FC<AvatarImageProps> = memo(({
   user,
@@ -56,6 +62,8 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
   onError,
   onClick,
   title,
+  badge,
+  testedBadge,
 }) => {
   // 1. Resolve active gender
   const rawTargetId = id || uniformId || avatarId || user?.equippedUniform || user?.avatarId || user?.avatar;
@@ -111,6 +119,24 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
     }
   };
 
+  // 4. Resolve badge overlay (if passed)
+  const targetBadge = testedBadge || badge;
+  let badgeIcon: string | undefined;
+  let badgeName: string | undefined;
+
+  if (targetBadge && targetBadge !== 'badge_none') {
+    if (typeof targetBadge === 'string') {
+      const item = getAccessoryItem(targetBadge);
+      if (item && item.id !== 'badge_none') {
+        badgeIcon = item.icon;
+        badgeName = item.name;
+      }
+    } else if (typeof targetBadge === 'object') {
+      badgeIcon = targetBadge.symbol || targetBadge.icon;
+      badgeName = targetBadge.name;
+    }
+  }
+
   const sizeStyle: React.CSSProperties = size !== undefined
     ? {
         width: typeof size === 'number' ? `${size}px` : size,
@@ -118,7 +144,7 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
       }
     : {};
 
-  return (
+  const imageElement = (
     <img
       src={currentSrc}
       alt={alt}
@@ -131,6 +157,26 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
       className={`select-none pointer-events-auto transition-opacity duration-200 ${className}`}
     />
   );
+
+  if (badgeIcon) {
+    return (
+      <div className="relative inline-block" style={sizeStyle}>
+        {imageElement}
+        <div
+          className="absolute -bottom-1 -right-1 z-20 pointer-events-none select-none flex items-center justify-center"
+          title={badgeName ? `Distintivo: ${badgeName}` : undefined}
+        >
+          <div className="bg-slate-950/95 text-amber-300 w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-amber-400 shadow-[0_2px_8px_rgba(0,0,0,0.85)] flex items-center justify-center ring-1 ring-amber-400/50">
+            <span className="text-[10px] sm:text-xs leading-none drop-shadow-sm filter">
+              {badgeIcon}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return imageElement;
 });
 
 AvatarImage.displayName = 'AvatarImage';

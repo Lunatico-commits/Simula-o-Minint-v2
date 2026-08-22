@@ -1,3 +1,6 @@
+import { MININTBranch } from '../types';
+import { SHOP_ITEMS } from './shopItems';
+
 export type AccessoryCategory = 'frames' | 'backgrounds' | 'badges' | 'face';
 
 export type AccessoryType = 'frame' | 'background' | 'badge' | 'faceAccessory';
@@ -15,6 +18,8 @@ export interface AccessoryItem {
   layerClass?: string;
   glowColor?: string;
   imageUrl?: string;
+  branch?: MININTBranch | string;
+  organ?: MININTBranch | string;
 }
 
 // Inline SVG Data URLs for ultra-sharp, self-contained Vector Frames
@@ -317,6 +322,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 35,
     description: 'Insígnia de vigilância aérea e soberania nacional.',
     icon: '🦅',
+    branch: 'PNA',
+    organ: 'PNA',
   },
   {
     id: 'badge_star',
@@ -326,6 +333,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 30,
     description: 'Emblema estelar de dedicação exemplar aos estudos.',
     icon: '⭐',
+    branch: 'SME',
+    organ: 'SME',
   },
   {
     id: 'badge_shield',
@@ -335,6 +344,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 40,
     description: 'Símbolo da defesa da lei e garantia da ordem pública.',
     icon: '🛡️',
+    branch: 'PNA',
+    organ: 'PNA',
   },
   {
     id: 'badge_swords',
@@ -344,6 +355,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 45,
     description: 'Insígnia de bravura e prontidão combativa em campo.',
     icon: '⚔️',
+    branch: 'SIC',
+    organ: 'SIC',
   },
   {
     id: 'badge_medal',
@@ -353,6 +366,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 50,
     description: 'Condecoração máxima de serviço distinto e lealdade.',
     icon: '🎖️',
+    branch: 'SP',
+    organ: 'SP',
   },
   {
     id: 'badge_crown',
@@ -362,6 +377,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 65,
     description: 'Selo nobre de distinção para os melhores classificados.',
     icon: '👑',
+    branch: 'MININT',
+    organ: 'MININT',
   },
   {
     id: 'badge_flame',
@@ -371,6 +388,8 @@ export const ACCESSORY_BADGES: AccessoryItem[] = [
     cost: 40,
     description: 'Emblema de coragem e resposta rápida aos desafios.',
     icon: '🔥',
+    branch: 'SPCB',
+    organ: 'SPCB',
   },
 ];
 
@@ -397,6 +416,26 @@ export const ALL_ACCESSORIES: AccessoryItem[] = [
 
 export function getAccessoryItem(id?: string): AccessoryItem | undefined {
   if (!id) return undefined;
-  return ALL_ACCESSORIES.find(item => item.id === id);
+  const found = ALL_ACCESSORIES.find(item => item.id === id);
+  if (found) return found;
+
+  const shopItem = SHOP_ITEMS.find(item => item.id === id);
+  if (shopItem) {
+    return {
+      id: shopItem.id,
+      name: shopItem.name,
+      category: (shopItem.category === 'badges' ? 'badges' : shopItem.category === 'fundos' ? 'backgrounds' : 'frames') as AccessoryCategory,
+      type: (shopItem.type === 'pin' ? 'badge' : shopItem.type as any) || 'badge',
+      cost: shopItem.cost,
+      description: shopItem.description,
+      icon: shopItem.symbol || '🛡️',
+      imageUrl: shopItem.assetPath,
+      layerClass: shopItem.badgeBg,
+      branch: shopItem.branch || shopItem.organ,
+      organ: shopItem.organ || shopItem.branch,
+    };
+  }
+
+  return undefined;
 }
 

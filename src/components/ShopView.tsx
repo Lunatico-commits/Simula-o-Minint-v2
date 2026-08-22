@@ -62,8 +62,8 @@ export interface UnifiedShopItem {
   cost: number;
   description: string;
   symbol: string;
-  branch?: MININTBranch;
-  organ?: MININTBranch;
+  branch?: MININTBranch | string;
+  organ?: MININTBranch | string;
   badgeBg?: string;
   isPopular?: boolean;
   isExclusive?: boolean;
@@ -231,7 +231,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
     ...currentAccessories,
     frame: previewItem?.type === 'frame' ? previewItem.id : (currentAccessories.frame || profile.equippedFrame || 'frame_none'),
     background: previewItem?.type === 'background' ? previewItem.id : (currentAccessories.background || profile.equippedBackground || 'bg_default'),
-    badge: (previewItem?.type === 'badge' || previewItem?.type === 'pin') ? previewItem.id : (currentAccessories.badge || 'badge_none'),
+    badge: (previewItem?.type === 'badge' || previewItem?.type === 'pin' || previewItem?.category === 'badges') ? previewItem.id : (currentAccessories.badge || 'badge_none'),
     faceAccessory: previewItem?.type === 'faceAccessory' ? previewItem.id : (currentAccessories.faceAccessory || profile.equippedFaceAccessory || 'face_none'),
   };
 
@@ -456,8 +456,12 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
       }
 
       // Universal items without a specific organ (streak freeze, 50:50 hints, XP boosters, universal frames/backgrounds)
-      // If user selected 'fardas' specifically, do not show items with no organ
-      return selectedCategory !== 'fardas';
+      // When an organ filter is active, exclude generic fardas and badges without matching organ
+      if (item.category === 'fardas' || item.category === 'badges') {
+        return false;
+      }
+
+      return selectedCategory !== 'fardas' && selectedCategory !== 'badges';
     });
   }, [catalog, selectedCategory, selectedOrgan]);
 
@@ -1186,6 +1190,8 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                     equippedFrame={simulatedAccessories.frame}
                     equippedBackground={simulatedAccessories.background}
                     equippedFaceAccessory={simulatedAccessories.faceAccessory}
+                    equippedBadge={simulatedAccessories.badge}
+                    testedBadge={previewItem?.category === 'badges' || previewItem?.type === 'badge' || previewItem?.type === 'pin' ? previewItem : undefined}
                     equippedUniform={simulatedUniform}
                     size="lg"
                     reaction="idle"
@@ -1208,6 +1214,8 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                     equippedFrame={simulatedAccessories.frame}
                     equippedBackground={simulatedAccessories.background}
                     equippedFaceAccessory={simulatedAccessories.faceAccessory}
+                    equippedBadge={simulatedAccessories.badge}
+                    testedBadge={previewItem?.category === 'badges' || previewItem?.type === 'badge' || previewItem?.type === 'pin' ? previewItem : undefined}
                     equippedUniform={simulatedUniform}
                     size="xl"
                     reaction="idle"

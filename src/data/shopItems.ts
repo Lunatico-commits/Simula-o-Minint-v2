@@ -30,8 +30,8 @@ export interface ShopItem {
   cost: number;
   description: string;
   symbol: string;
-  branch?: MININTBranch;
-  organ?: MININTBranch;
+  branch?: MININTBranch | string;
+  organ?: MININTBranch | string;
   badgeBg?: string;
   isPopular?: boolean;
   isExclusive?: boolean;
@@ -239,6 +239,8 @@ export const SHOP_ITEMS: ShopItem[] = [
     cost: 150,
     description: 'Insígnia Especial de Formador e Mestre de Preparação Académica do MININT.',
     symbol: '🎓',
+    branch: 'MININT',
+    organ: 'MININT',
     badgeBg: 'from-indigo-950 via-slate-900 to-amber-950',
     isExclusive: true,
     type: 'pin',

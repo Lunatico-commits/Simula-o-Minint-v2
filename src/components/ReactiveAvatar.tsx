@@ -22,6 +22,9 @@ export interface ReactiveAvatarProps {
   equippedBackground?: string;
   equippedUniform?: string;
   equippedFaceAccessory?: string;
+  equippedBadge?: string;
+  testedBadge?: string | any;
+  badge?: string | any;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
   reaction?: AvatarReactionType;
   triggerReaction?: number | string | boolean;
@@ -121,6 +124,9 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
   equippedBackground,
   equippedUniform,
   equippedFaceAccessory,
+  equippedBadge,
+  testedBadge,
+  badge,
   size = 'md',
   reaction = 'idle',
   triggerReaction,
@@ -207,12 +213,26 @@ export const ReactiveAvatar: React.FC<ReactiveAvatarProps> = ({
   // 4 Guaranteed Accessory Layers: Background, Frame, Pin/Badge, Face Accessory (resolving singular & plural keys)
   const resolvedFrameId = equippedFrame || accessories?.frame || (accessories as any)?.frames;
   const resolvedBgId = equippedBackground || accessories?.background || (accessories as any)?.backgrounds;
-  const resolvedBadgeId = accessories?.badge || (accessories as any)?.badges;
+  const rawBadge = testedBadge || badge || equippedBadge || accessories?.badge || (accessories as any)?.badges;
+  const resolvedBadgeId = typeof rawBadge === 'string' ? rawBadge : rawBadge?.id;
   const resolvedFaceId = equippedFaceAccessory || accessories?.faceAccessory || (accessories as any)?.face;
 
   const bgItem = getAccessoryItem(resolvedBgId);
   const frameItem = getAccessoryItem(resolvedFrameId);
-  const badgeItem = getAccessoryItem(resolvedBadgeId);
+  let badgeItem = getAccessoryItem(resolvedBadgeId);
+  if (!badgeItem && rawBadge && typeof rawBadge === 'object') {
+    badgeItem = {
+      id: rawBadge.id || 'tested_badge',
+      name: rawBadge.name || 'Distintivo',
+      category: 'badges',
+      type: 'badge',
+      cost: rawBadge.cost || 0,
+      description: rawBadge.description || '',
+      icon: rawBadge.symbol || rawBadge.icon || '🛡️',
+      imageUrl: rawBadge.imageUrl || rawBadge.assetPath,
+      layerClass: rawBadge.badgeBg,
+    };
+  }
   const faceItem = getAccessoryItem(resolvedFaceId);
 
   const bgGradient = bgItem?.layerClass
