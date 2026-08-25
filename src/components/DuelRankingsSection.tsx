@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserProfile, MININTBranch } from '../types';
+import { UserProfile, MININTBranch, isRealHumanCandidate } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { LEAGUES_CONFIG, getTimeUntilWeeklyReset, DuelLeague } from '../utils/league';
 import { RankChangeIndicator } from './RankingsView';
@@ -72,18 +72,18 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Deduplicate and sort all users by weeklyDuelPoints desc
+  // Deduplicate and sort all users by weeklyDuelPoints desc (strictly real humans)
   const sortedDuelLeaderboard = React.useMemo(() => {
     const map = new Map<string, UserProfile>();
 
     allUsers.forEach((u) => {
-      if (u && u.uid) {
+      if (u && u.uid && isRealHumanCandidate(u)) {
         map.set(u.uid, u);
       }
     });
 
-    // Ensure current profile is up to date
-    if (currentProfile && currentProfile.uid) {
+    // Ensure current profile is up to date if real human
+    if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
       map.set(currentProfile.uid, currentProfile);
     }
 
@@ -120,9 +120,10 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
 
   // Filter list by search query
   const filteredDuelLeaderboard = React.useMemo(() => {
-    if (!searchQuery.trim()) return sortedDuelLeaderboard;
-    const q = searchQuery.toLowerCase();
-    return sortedDuelLeaderboard.filter((c) => {
+    const baseList = sortedDuelLeaderboard.filter(isRealHumanCandidate);
+    if (!searchQuery.trim()) return baseList;
+    const q = searchQuery.toLowerCase().trim();
+    return baseList.filter((c) => {
       const nameMatch = (c.displayName || '').toLowerCase().includes(q);
       const provMatch = (c.province || '').toLowerCase().includes(q);
       const branchMatch = (c.branch || '').toLowerCase().includes(q);

@@ -96,6 +96,37 @@ export default function App() {
   const [sessionType, setSessionType] = useState<'simulado' | 'duelo' | 'desafio'>('simulado');
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [isGlobalExitModalOpen, setIsGlobalExitModalOpen] = useState(false);
+  const [duelResetKey, setDuelResetKey] = useState(0);
+
+  const cleanupDuelStorageAndUrl = () => {
+    try {
+      const keysToRemove = [
+        'activeDuelId',
+        'currentMatch',
+        'minint_active_duel_id',
+        'minint_current_duel',
+        'minint_current_match',
+        'minint_duel_room_code',
+        'minint_duel_view_state'
+      ];
+      keysToRemove.forEach((k) => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+      const url = new URL(window.location.href);
+      const duelParams = ['join', 'code', 'room', 'duelRoom', 'duel', 'sala'];
+      let changed = false;
+      duelParams.forEach((p) => {
+        if (url.searchParams.has(p)) {
+          url.searchParams.delete(p);
+          changed = true;
+        }
+      });
+      if (changed) {
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+      }
+    } catch (e) {}
+  };
 
   const requestTabChange = (targetTab: string) => {
     if (isSessionActive && targetTab !== activeTab) {
@@ -104,6 +135,10 @@ export default function App() {
     } else {
       if (targetTab === 'quiz' && activeTab === 'quiz') {
         setQuizResetKey((prev) => prev + 1);
+      }
+      if (targetTab === 'duel') {
+        cleanupDuelStorageAndUrl();
+        setDuelResetKey((prev) => prev + 1);
       }
       setActiveTab(targetTab as any);
     }
@@ -115,6 +150,10 @@ export default function App() {
     if (pendingTab) {
       if (pendingTab === 'quiz') {
         setQuizResetKey((prev) => prev + 1);
+      }
+      if (pendingTab === 'duel') {
+        cleanupDuelStorageAndUrl();
+        setDuelResetKey((prev) => prev + 1);
       }
       setActiveTab(pendingTab as any);
       setPendingTab(null);
@@ -950,6 +989,7 @@ export default function App() {
 
             {activeTab === 'duel' && (
               <MultiplayerDuel
+                key={duelResetKey}
                 profile={profile}
                 initialRoomCode={inviteRoomCode}
                 onUpdateStats={handleUpdateStats}

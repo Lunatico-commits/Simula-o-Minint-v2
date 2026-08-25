@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserProfile, AcademicLevel, MININTBranch, QuestionCategory } from '../types';
+import { UserProfile, AcademicLevel, MININTBranch, QuestionCategory, isRealHumanCandidate } from '../types';
 import { MININT_BRANCHES, getAvatarOption, PROVINCES_ANGOLA, normalizeProvinceName } from '../data/branches';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
@@ -178,7 +178,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
       const users: UserProfile[] = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        users.push({
+        const profileCandidate: UserProfile = {
           ...(data as UserProfile),
           uid: data.uid || docSnap.id,
           avatarAccessories: data.avatarAccessories || {
@@ -189,26 +189,31 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           equippedFrame: data.equippedFrame || data.avatarAccessories?.frame,
           equippedBackground: data.equippedBackground || data.avatarAccessories?.background,
           equippedUniform: data.equippedUniform,
-        });
+        };
+
+        // Strictly ignore test, bot, and AI candidate accounts
+        if (isRealHumanCandidate(profileCandidate)) {
+          users.push(profileCandidate);
+        }
       });
 
-      // Strict Map deduplication by uid
+      // Strict Map deduplication by uid with human validation
       const uniqueMap = new Map<string, UserProfile>();
 
       users.forEach((u) => {
-        if (u && u.uid) {
+        if (u && u.uid && isRealHumanCandidate(u)) {
           uniqueMap.set(u.uid, u);
         }
       });
 
-      // Ensure current profile is present and updated
-      if (currentProfile && currentProfile.uid) {
+      // Ensure current profile is present and updated if human
+      if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
         uniqueMap.set(currentProfile.uid, currentProfile);
       }
 
-      // Add seed candidates if missing
+      // Add seed candidates if missing and valid human
       MOCK_LEADERBOARD_SEED.forEach(seed => {
-        if (seed && seed.uid && !uniqueMap.has(seed.uid)) {
+        if (seed && seed.uid && isRealHumanCandidate(seed) && !uniqueMap.has(seed.uid)) {
           uniqueMap.set(seed.uid, seed);
         }
       });
@@ -219,11 +224,11 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
     }, (error) => {
       console.error('Erro ao buscar ranking:', error);
       const uniqueMap = new Map<string, UserProfile>();
-      if (currentProfile && currentProfile.uid) {
+      if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
         uniqueMap.set(currentProfile.uid, currentProfile);
       }
       MOCK_LEADERBOARD_SEED.forEach(seed => {
-        if (seed && seed.uid && !uniqueMap.has(seed.uid)) {
+        if (seed && seed.uid && isRealHumanCandidate(seed) && !uniqueMap.has(seed.uid)) {
           uniqueMap.set(seed.uid, seed);
         }
       });
@@ -246,7 +251,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
   // Rank position within user's home province
   const userHomeProvinceList = leaderboard.filter(
-    u => normalizeProvinceName(u.province) === normUserProvince
+    u => isRealHumanCandidate(u) && normalizeProvinceName(u.province) === normUserProvince
   );
   const myHomeProvinceRankIndex = userHomeProvinceList.findIndex(u => u.uid === currentProfile.uid);
   const myHomeProvinceRank = myHomeProvinceRankIndex !== -1 ? myHomeProvinceRankIndex + 1 : 1;
@@ -289,6 +294,9 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
   // Filtered leaderboard by Scope (National vs Friends vs Province), Academic level, and Search query
   const filteredList = leaderboard.filter(candidate => {
+    // Strictly ignore any bot, AI or test candidate accounts
+    if (!isRealHumanCandidate(candidate)) return false;
+
     const isMe = Boolean(
       (candidate.uid && currentProfile.uid && candidate.uid === currentProfile.uid) ||
       (candidate.id && currentProfile.id && candidate.id === currentProfile.id) ||

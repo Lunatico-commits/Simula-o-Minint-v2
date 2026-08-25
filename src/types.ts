@@ -147,7 +147,10 @@ export interface UserProfile {
   following?: string[];
   emailOrPhone?: string;
   password?: string;
-  role?: 'admin' | 'candidate';
+  role?: 'admin' | 'candidate' | 'bot';
+  isBot?: boolean;
+  isAi?: boolean;
+  isTestAccount?: boolean;
   isVipSupporter?: boolean;
   dailyStreak?: number;
   lastDailyDate?: string;
@@ -191,6 +194,64 @@ export function isAdminUser(profile?: UserProfile | null): boolean {
   return adminEmails.includes(email);
 }
 
+/**
+ * Validates if a user/candidate is a genuine human registered user,
+ * filtering out any test accounts, AI bots or simulation placeholders.
+ */
+export function isRealHumanCandidate(candidate?: Partial<UserProfile> | null | any): boolean {
+  if (!candidate) return false;
+
+  // 1. Explicit bot / AI / test flags
+  if (candidate.isBot === true || candidate.is_bot === true) return false;
+  if (candidate.isAi === true || candidate.isAI === true || candidate.is_ai === true) return false;
+  if (candidate.isTestAccount === true || candidate.isTest === true || candidate.is_test === true) return false;
+
+  // 2. Roles
+  const role = String(candidate.role || '').toLowerCase().trim();
+  if (role === 'bot' || role === 'ai' || role === 'test' || role === 'ia') return false;
+
+  // 3. UID checks
+  const uid = String(candidate.uid || candidate.id || '').toLowerCase().trim();
+  if (
+    uid.startsWith('bot_') ||
+    uid.startsWith('bot-') ||
+    uid.startsWith('ai_') ||
+    uid.startsWith('ai-') ||
+    uid.startsWith('ia_') ||
+    uid.startsWith('ia-') ||
+    uid.startsWith('mock_') ||
+    uid.startsWith('test_') ||
+    uid.startsWith('simulated_') ||
+    uid === 'bot_candidate_ai'
+  ) {
+    return false;
+  }
+
+  // 4. DisplayName bot / test indicators
+  const name = String(candidate.displayName || '').trim().toLowerCase();
+  if (!name) return false;
+  if (
+    name.includes('[bot]') ||
+    name.includes('[ia]') ||
+    name.includes('[test]') ||
+    name.includes('(bot)') ||
+    name.includes('(ia)') ||
+    name.includes('(test)') ||
+    name.startsWith('bot ') ||
+    name.startsWith('ia ') ||
+    name.startsWith('robô ') ||
+    name.startsWith('robot ') ||
+    name === 'bot' ||
+    name === 'ia' ||
+    name === 'robo' ||
+    name === 'robô'
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export interface SavedAccount {
   uid: string;
   displayName: string;
@@ -200,7 +261,7 @@ export interface SavedAccount {
   province: string;
   academicLevel?: AcademicLevel;
   rankTitle: string;
-  role?: 'candidate' | 'admin';
+  role?: 'candidate' | 'admin' | 'bot';
   totalXp: number;
   referralCode?: string;
   emailOrPhone?: string;

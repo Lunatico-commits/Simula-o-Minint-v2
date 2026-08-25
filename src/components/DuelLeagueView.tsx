@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, AcademicLevel, MININTBranch } from '../types';
+import { UserProfile, AcademicLevel, MININTBranch, isRealHumanCandidate } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { db } from '../lib/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
@@ -104,13 +104,13 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
 
         snapshot.forEach((docSnap) => {
           const u = docSnap.data() as UserProfile;
-          if (u && u.uid) {
+          if (u && u.uid && isRealHumanCandidate(u)) {
             usersMap.set(u.uid, u);
           }
         });
 
-        // Always ensure current profile exists in list
-        if (currentProfile && currentProfile.uid) {
+        // Always ensure current profile exists in list if real human
+        if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
           usersMap.set(currentProfile.uid, currentProfile);
         }
 
@@ -119,22 +119,27 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
       },
       (error) => {
         console.error('Erro ao carregar liga de duelos:', error);
-        setCandidates([currentProfile]);
+        if (currentProfile && isRealHumanCandidate(currentProfile)) {
+          setCandidates([currentProfile]);
+        } else {
+          setCandidates([]);
+        }
       }
     );
 
     return () => unsubscribe();
   }, [currentProfile]);
 
-  // Filter candidates for selected league and sort by weeklyDuelPoints desc
+  // Filter candidates for selected league and sort by weeklyDuelPoints desc (strictly real humans)
   const leagueCandidates = candidates
-    .filter((c) => (c.duelLeague || 'bronze') === selectedLeague)
+    .filter((c) => isRealHumanCandidate(c) && (c.duelLeague || 'bronze') === selectedLeague)
     .sort((a, b) => (b.weeklyDuelPoints || 0) - (a.weeklyDuelPoints || 0));
 
   // Search filter
   const filteredCandidates = leagueCandidates.filter((c) => {
+    if (!isRealHumanCandidate(c)) return false;
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
     return (
       c.displayName.toLowerCase().includes(q) ||
       (c.province && c.province.toLowerCase().includes(q)) ||

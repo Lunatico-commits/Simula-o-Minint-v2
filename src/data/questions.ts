@@ -1930,13 +1930,13 @@ export const QUESTION_BANK: Question[] = [
     question: 'Qual é o ponto de maior altitude (ponto culminante) do relevo de Angola, situado na província do Huambo?',
     options: [
       'Monte Moco (2.620 metros)',
-      'Serra da Leba',
+      'Serra da Chela',
       'Pedras Negras de Pungo Andongo',
-      'Morro do Moco (1.200 metros)'
+      'Morro do Sombreiro'
     ],
     correctIndex: 0,
     lawReference: 'Geografia Física de Angola',
-    explanation: 'O Monte Moco, com aproximadamente 2.620 metros de altitude, é o ponto mais alto do território angolano.',
+    explanation: 'O Monte Moco (ou Morro do Moco), com aproximadamente 2.620 metros de altitude localizado no planalto do Huambo, é o ponto culminante e mais elevado do território angolano.',
     difficulty: 'médio'
   },
 

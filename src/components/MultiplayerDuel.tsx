@@ -38,6 +38,13 @@ import {
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
 import { trackMissionProgress, updateQuestProgress } from '../utils/dailyMissions';
+import {
+  setupRoomOnDisconnect,
+  validateRoomAndHostAvailability,
+  filterValidLobbyRooms,
+  cleanupGhostRoom,
+  MAX_OPEN_ROOM_AGE_MS
+} from '../services/duelService';
 
 /**
  * Normalizes user-entered room codes (e.g., 'mnt 8421', 'mnt-8421', '8421', 'MNT8421')
@@ -279,13 +286,68 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const opponentLastActiveRef = useRef<number>(Date.now());
   const processedForfeitRef = useRef<string | null>(null);
 
-  // Keep a reference to currentRoom for auto-cleanup on component unmount
+  // Keep a reference to currentRoom for safe reference
   const currentRoomRef = useRef<DuelRoom | null>(null);
   useEffect(() => {
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
-  // RTDB Presence Tracker, Heartbeat, and 15-Second Inactivity/AFK Detector
+  // Centralized Function to Completely Clear Match State & Return to Clean Lobby
+  const clearDuelSessionAndReturnToLobby = () => {
+    // 1. Reset all state to clean lobby
+    setCurrentRoom(null);
+    setProcessedDuelId(null);
+    setShowHonorVictoryOverlay(false);
+    setIsRoomClosedModalOpen(false);
+    setIsExitModalOpen(false);
+    setIsForfeitModalOpen(false);
+    setRoomCodeInput('');
+    setErrorMessage('');
+    setAutoJoinedCode(null);
+    setOpponentInactivitySeconds(0);
+    setAnswerFeedback(null);
+    setFloatingParticles([]);
+    setConsecutiveCorrectStreak(0);
+    setShowComboSparkleAnimation(false);
+    setViewState('lobby');
+
+    // 2. Clear any match tracking keys in localStorage and sessionStorage
+    try {
+      const keysToRemove = [
+        'activeDuelId',
+        'currentMatch',
+        'minint_active_duel_id',
+        'minint_current_duel',
+        'minint_current_match',
+        'minint_duel_room_code',
+        'minint_duel_view_state'
+      ];
+      keysToRemove.forEach((k) => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+    } catch (e) {
+      console.warn('Erro ao limpar chaves de duelo da sessão:', e);
+    }
+
+    // 3. Clear direct join duel parameters from URL
+    try {
+      const url = new URL(window.location.href);
+      const duelParams = ['join', 'code', 'room', 'duelRoom', 'duel', 'sala'];
+      let changed = false;
+      duelParams.forEach((p) => {
+        if (url.searchParams.has(p)) {
+          url.searchParams.delete(p);
+          changed = true;
+        }
+      });
+      if (changed) {
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+      }
+    } catch (e) {}
+  };
+
+  // RTDB Presence Tracker & Heartbeat (Maintains presence without false abandonment triggers)
   useEffect(() => {
     if (!currentRoom?.id || currentRoom.player2?.isBot || viewState !== 'room') {
       setOpponentInactivitySeconds(0);
@@ -301,16 +363,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const lastActiveRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/lastActive`);
     const userPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${profile.uid}`);
 
-    // Set initial presence and RTDB onDisconnect hook
+    // Set initial presence and RTDB onDisconnect hook using duelService
     try {
-      const discon = rtdbOnDisconnect(presenceRef);
-      discon.set(false);
-
-      const userDiscon = rtdbOnDisconnect(userPresenceRef);
-      userDiscon.set({
-        isConnected: false,
-        lastActive: Date.now(),
-        disconnectedAt: Date.now(),
+      setupRoomOnDisconnect({
+        roomId,
+        userUid: profile.uid,
+        isHost,
+        status: currentRoom.status as any,
+        opponentUid,
       });
 
       rtdbSet(presenceRef, true);
@@ -323,7 +383,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       console.warn('Erro ao configurar presença no RTDB:', e);
     }
 
-    // 1. Heartbeat loop: update timestamp every 3 seconds
+    // Heartbeat loop: update timestamp every 3 seconds
     const heartbeatInterval = setInterval(() => {
       try {
         rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}/${myKey}`), {
@@ -337,7 +397,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       } catch (e) {}
     }, 3000);
 
-    // 2. Listen to Opponent's RTDB presence & heartbeat
+    // Listen to Opponent's RTDB presence & heartbeat
     let oppPresenceUnsub = () => {};
     if (opponentUid) {
       const oppPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${opponentUid}`);
@@ -347,51 +407,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           if (typeof val?.lastActive === 'number') {
             opponentLastActiveRef.current = Math.max(opponentLastActiveRef.current, val.lastActive);
           }
-          if (val?.isConnected === false && currentRoomRef.current?.status === 'active') {
-            // Immediate forfeit on explicit disconnect
-            const room = currentRoomRef.current;
-            if (room && room.status === 'active' && !room.player2?.isBot) {
-              const forfeitKey = `${roomId}_${opponentUid}_disconnect`;
-              if (processedForfeitRef.current !== forfeitKey) {
-                processedForfeitRef.current = forfeitKey;
-                handleForfeitVictory(room, profile.uid, opponentUid, 'opponent_left');
-              }
-            }
-          }
         }
       });
     }
 
-    // 3. 15-Second Inactivity & AFK Watcher: Checks every second
-    const afkInterval = setInterval(() => {
-      const room = currentRoomRef.current;
-      if (!room || room.status !== 'active' || room.player2?.isBot || !opponentUid) return;
-
-      const oppPlayer = isHost ? room.player2 : room.player1;
-      const effectiveOppLastActive = Math.max(
-        opponentLastActiveRef.current,
-        oppPlayer?.lastActive || 0,
-        room.questionStartTime || 0
-      );
-
-      const now = Date.now();
-      const inactiveSeconds = Math.max(0, Math.floor((now - effectiveOppLastActive) / 1000));
-      setOpponentInactivitySeconds(inactiveSeconds);
-
-      // If opponent has been inactive for 15 seconds or more, declare automatic forfeit victory
-      if (inactiveSeconds >= 15) {
-        const forfeitKey = `${roomId}_${opponentUid}_afk`;
-        if (processedForfeitRef.current !== forfeitKey) {
-          processedForfeitRef.current = forfeitKey;
-          console.warn(`[DUEL AFK] Adversário ${opponentUid} inativo há ${inactiveSeconds}s (>= 15s). Vitória por desistência!`);
-          handleForfeitVictory(room, profile.uid, opponentUid, 'inactivity');
-        }
-      }
-    }, 1000);
-
     return () => {
       clearInterval(heartbeatInterval);
-      clearInterval(afkInterval);
       oppPresenceUnsub();
       try {
         rtdbSet(presenceRef, false);
@@ -403,73 +424,34 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     };
   }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, currentRoom?.status, profile?.uid]);
 
-  // Auto-cleanup on unmount / window close: if in active multiplayer duel, award forfeit victory to opponent
+  // Clean mount & unmount effect (Always start clean and avoid false forfeit on simple unmounts)
   useEffect(() => {
-    const handleBeforeUnloadOrPageHide = () => {
-      const room = currentRoomRef.current;
-      if (room && room.status === 'active' && !room.player2?.isBot && room.player2) {
-        const roomId = room.id || room.roomCode;
-        const isHost = room.player1.uid === profile?.uid;
-        const opponentUid = isHost ? room.player2.uid : room.player1.uid;
-        try {
-          const forfeitPayload = {
-            status: 'finished',
-            winnerUid: opponentUid,
-            forfeitedBy: profile?.uid,
-            forfeitReason: 'opponent_left',
-            isForfeit: true,
-            rewardClaimed: true,
-            [`rewardClaimedBy/${opponentUid}`]: true,
-          };
-          rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), forfeitPayload).catch(() => {});
-          setDoc(doc(db, 'duels', roomId), forfeitPayload, { merge: true }).catch(() => {});
-        } catch (e) {}
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnloadOrPageHide);
-    window.addEventListener('pagehide', handleBeforeUnloadOrPageHide);
+    // Clean lingering duel storage items on mount
+    try {
+      ['activeDuelId', 'currentMatch', 'minint_active_duel_id', 'minint_current_duel'].forEach(k => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+    } catch (e) {}
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnloadOrPageHide);
-      window.removeEventListener('pagehide', handleBeforeUnloadOrPageHide);
       const room = currentRoomRef.current;
-      if (room && !room.player2?.isBot) {
+      if (room && !room.player2?.isBot && room.status === 'waiting') {
         const roomId = room.id || room.roomCode;
-        if (room.status === 'active' && room.player2) {
-          const isHost = room.player1.uid === profile?.uid;
-          const opponentUid = isHost ? room.player2.uid : room.player1.uid;
+        const isHost = room.hostUid ? (room.hostUid === profile?.uid) : (room.player1?.uid === profile?.uid);
+        if (isHost && roomId) {
           try {
             const roomRef = doc(db, 'duels', roomId);
-            const forfeitPayload = {
-              status: 'finished',
-              winnerUid: opponentUid,
-              forfeitedBy: profile?.uid,
-              forfeitReason: 'opponent_left',
-              isForfeit: true,
-              rewardClaimed: true,
-              rewardClaimedBy: { [opponentUid]: true },
-            };
-            setDoc(roomRef, forfeitPayload, { merge: true }).catch(() => {});
-            rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), forfeitPayload).catch(() => {});
-          } catch (e) {
-            console.warn('Erro ao finalizar duelo por abandono no unmount:', e);
-          }
-        } else if (room.status === 'waiting') {
-          const isHost = room.hostUid ? (room.hostUid === profile?.uid) : (room.player1?.uid === profile?.uid);
-          if (isHost && roomId) {
-            try {
-              const roomRef = doc(db, 'duels', roomId);
-              deleteDoc(roomRef).catch(() => {});
-              rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
-            } catch (e) {}
-          }
+            deleteDoc(roomRef).catch(() => {});
+            rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
+          } catch (e) {}
         }
       }
-      // Reset any active modal overlays on unmount to prevent ghost loops
+      // Reset any active modal overlays on unmount
       setShowHonorVictoryOverlay(false);
       setIsExitModalOpen(false);
       setIsRoomClosedModalOpen(false);
+      setIsForfeitModalOpen(false);
       currentRoomRef.current = null;
     };
   }, [profile?.uid]);
@@ -638,7 +620,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [isAILoading, setIsAILoading] = useState(false);
   const [modalQuestion, setModalQuestion] = useState<Question | null>(null);
 
-  // Listen for open public rooms in lobby (Firestore Realtime onSnapshot)
+  // Listen for open public rooms in lobby (Firestore Realtime onSnapshot + strictly < 2 min active rooms)
   useEffect(() => {
     let unsubscribeFirestore = () => {};
     setIsLoadingOpenRooms(true);
@@ -652,35 +634,21 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
       unsubscribeFirestore = onSnapshot(q, (snapshot) => {
         const firestoreRooms: DuelRoom[] = [];
-        const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
 
         snapshot.forEach((docSnap) => {
           const r = docSnap.data() as any;
           if (r && r.status === 'waiting') {
-            let createdTime = 0;
-            if (typeof r.createdAt === 'number') {
-              createdTime = r.createdAt;
-            } else if (r.createdAt?.toMillis) {
-              createdTime = r.createdAt.toMillis();
-            } else if (r.createdAt?.seconds) {
-              createdTime = r.createdAt.seconds * 1000;
-            } else {
-              createdTime = Date.now();
-            }
-
-            if (createdTime >= twoHoursAgo) {
-              const safeP1 = buildSafePlayer(r.player1 || {});
-              firestoreRooms.push({
-                ...r,
-                id: docSnap.id,
-                code: r.code || r.roomCode || docSnap.id,
-                roomCode: r.roomCode || r.code || docSnap.id,
-                player1: safeP1,
-              });
-            }
+            const safeP1 = buildSafePlayer(r.player1 || {});
+            firestoreRooms.push({
+              ...r,
+              id: docSnap.id,
+              code: r.code || r.roomCode || docSnap.id,
+              roomCode: r.roomCode || r.code || docSnap.id,
+              player1: safeP1,
+            });
           }
         });
-        setOpenRooms(firestoreRooms);
+        setOpenRooms(filterValidLobbyRooms(firestoreRooms));
         setIsLoadingOpenRooms(false);
       }, (error) => {
         console.warn('Erro ao escutar salas públicas no Firestore:', error);
@@ -691,8 +659,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setIsLoadingOpenRooms(false);
     }
 
+    // Periodic sweep: clean up any rooms older than 2 minutes in real time without refresh
+    const sweepInterval = setInterval(() => {
+      setOpenRooms((prev) => filterValidLobbyRooms(prev));
+    }, 4000);
+
     return () => {
       unsubscribeFirestore();
+      clearInterval(sweepInterval);
     };
   }, []);
 
@@ -1151,11 +1125,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         }
       }
     }
-    setCurrentRoom(null);
-    setRoomCodeInput('');
-    setErrorMessage('');
-    setIsExitModalOpen(false);
-    setViewState('lobby');
+    clearDuelSessionAndReturnToLobby();
   };
 
   // Synchronized Question Timer with Rigid 0s Timeout Advancement
@@ -1401,9 +1371,15 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       // 1. Save room document directly to Firestore using roomCode as document ID
       await setDoc(doc(db, 'duels', roomCode), firestoreDocData);
 
-      // 2. Sync to Realtime Database
+      // 2. Sync to Realtime Database & setup onDisconnect
       try {
         await rtdbSet(rtdbRef(rtdb, `duels/${roomCode}`), newRoom);
+        setupRoomOnDisconnect({
+          roomId: roomCode,
+          userUid: profile?.uid || 'anon',
+          isHost: true,
+          status: 'waiting',
+        });
       } catch (rtdbErr) {
         console.warn('Erro ao sincronizar sala no RTDB:', rtdbErr);
       }
@@ -1426,7 +1402,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   };
 
-  // Join Room by Code
+  // Join Room by Code with Pre-Join Online Host Validation
   const handleJoinRoomByCode = async (targetCode?: string) => {
     const rawInput = targetCode || roomCodeInput;
     if (!rawInput || !rawInput.trim()) {
@@ -1443,134 +1419,21 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setLoading(true);
     setErrorMessage('');
     try {
-      let roomData: DuelRoom | null = null;
-      let roomDocId: string | null = null;
+      // 3. Pre-join validation: ensure room is alive (< 2 min old) and host is STILL ONLINE
+      const validation = await validateRoomAndHostAvailability(cleanCode, profile?.uid || '');
 
-      // 3. Busque a sala diretamente pelo ID do documento (doc(db, "duels", cleanCode)) ou faça query na coleção onde 'code' == cleanCode
-      try {
-        // Direct document lookup by ID
-        const directDocRef = doc(db, 'duels', cleanCode);
-        let docSnap = await getDoc(directDocRef);
-
-        if (!docSnap.exists() && normalizedCode && normalizedCode !== cleanCode) {
-          const normDocRef = doc(db, 'duels', normalizedCode);
-          docSnap = await getDoc(normDocRef);
-        }
-
-        if (docSnap.exists()) {
-          roomData = docSnap.data() as DuelRoom;
-          roomDocId = docSnap.id;
-        } else {
-          // Query na coleção onde 'code' == cleanCode ou 'code' == normalizedCode
-          const searchCodes = Array.from(new Set([cleanCode, normalizedCode])).filter(Boolean);
-
-          for (const sCode of searchCodes) {
-            if (roomData) break;
-            const qCode = query(
-              collection(db, 'duels'),
-              where('code', '==', sCode),
-              limit(1)
-            );
-            const snapshotCode = await getDocs(qCode);
-            if (!snapshotCode.empty) {
-              const snap = snapshotCode.docs[0];
-              roomData = snap.data() as DuelRoom;
-              roomDocId = snap.id;
-              break;
-            }
-
-            const qRoomCode = query(
-              collection(db, 'duels'),
-              where('roomCode', '==', sCode),
-              limit(1)
-            );
-            const snapshotRoomCode = await getDocs(qRoomCode);
-            if (!snapshotRoomCode.empty) {
-              const snap = snapshotRoomCode.docs[0];
-              roomData = snap.data() as DuelRoom;
-              roomDocId = snap.id;
-              break;
-            }
-          }
-        }
-
-        if (!roomData) {
-          // Secondary fallback query: fetch waiting rooms and compare code / roomCode
-          const waitingQ = query(
-            collection(db, 'duels'),
-            where('status', '==', 'waiting'),
-            limit(50)
-          );
-          const waitingSnap = await getDocs(waitingQ);
-          const searchCodes = Array.from(new Set([cleanCode, normalizedCode])).filter(Boolean);
-          for (const docSnap of waitingSnap.docs) {
-            const data = docSnap.data() as DuelRoom;
-            const docCodeClean = (data.code || data.roomCode || '').toUpperCase().trim().replace(/\s+/g, '');
-            const docNormalized = normalizeRoomCode(data.code || data.roomCode);
-            if (
-              searchCodes.includes(docCodeClean) ||
-              searchCodes.includes(docNormalized) ||
-              docSnap.id === cleanCode ||
-              docSnap.id === normalizedCode
-            ) {
-              roomData = data;
-              roomDocId = docSnap.id;
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Busca no Firestore por código falhou, tentando fallbacks:', e);
-      }
-
-      // Query RTDB fallback if Firestore was empty
-      if (!roomData) {
-        try {
-          const searchCodes = Array.from(new Set([cleanCode, normalizedCode])).filter(Boolean);
-          const duelsRtdbRef = rtdbRef(rtdb, 'duels');
-          const snapshot = await rtdbGet(duelsRtdbRef);
-          if (snapshot.exists()) {
-            const data = snapshot.val();
-            for (const key of Object.keys(data)) {
-              const r = data[key] as DuelRoom;
-              const rCodeClean = (r?.roomCode || r?.code || '').toUpperCase().trim().replace(/\s+/g, '');
-              const rCodeNormalized = normalizeRoomCode(r?.roomCode || r?.code);
-              if (
-                r &&
-                (searchCodes.includes(rCodeClean) || searchCodes.includes(rCodeNormalized) || key === cleanCode || key === normalizedCode)
-              ) {
-                roomData = r;
-                roomDocId = r.id || key;
-                break;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Busca no RTDB por código falhou:', e);
-        }
-      }
-
-      // Search in local state fallback
-      if (!roomData) {
-        const searchCodes = Array.from(new Set([cleanCode, normalizedCode])).filter(Boolean);
-        const localMatch = (openRooms || []).find(
-          (r) => {
-            const rCodeClean = (r?.roomCode || r?.code || '').toUpperCase().trim().replace(/\s+/g, '');
-            const rCodeNormalized = normalizeRoomCode(r?.roomCode || r?.code);
-            return r && (searchCodes.includes(rCodeClean) || searchCodes.includes(rCodeNormalized) || r.id === cleanCode || r.id === normalizedCode);
-          }
-        );
-        if (localMatch) {
-          roomData = localMatch;
-          roomDocId = localMatch.id;
-        }
-      }
-
-      if (!roomData) {
-        setErrorMessage(`Sala ${normalizedCode || cleanCode} não foi encontrada. Verifique se o código está correto ou se a sala foi criada.`);
+      if (!validation.isValid) {
+        const unavailableMsg = validation.errorMessage || 'Esta sala já não está disponível';
+        alert(unavailableMsg);
+        showToast(unavailableMsg, true);
+        setErrorMessage(unavailableMsg);
+        setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== cleanCode && r.roomCode !== cleanCode && r.roomCode !== normalizedCode));
         setLoading(false);
         return;
       }
+
+      let roomData: DuelRoom = validation.room!;
+      let roomDocId: string = validation.docId || cleanCode;
 
       // Re-entry check for host or player 2
       if (roomData.player1.uid === profile.uid || roomData.player2?.uid === profile.uid) {
@@ -1596,7 +1459,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const isPlayer2Filled = !!roomData.player2;
 
       if (isStatusOccupied || !isWaiting || isPlayer2Filled || participantCount >= 2) {
-        const unavailableMsg = 'Esta sala não está mais disponível para novos participantes.';
+        const unavailableMsg = 'Esta sala já não está disponível';
+        alert(unavailableMsg);
         setErrorMessage(unavailableMsg);
         showToast(unavailableMsg, true);
         setLoading(false);
@@ -1628,6 +1492,15 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             status: 'active',
             questionStartTime: Date.now(),
           }).catch((e) => console.warn('Erro ao atualizar entrada na sala no RTDB:', e));
+
+          // Set onDisconnect for player 2 in active duel
+          setupRoomOnDisconnect({
+            roomId: targetId,
+            userUid: profile.uid,
+            isHost: false,
+            status: 'active',
+            opponentUid: roomData.player1.uid,
+          });
         } catch (e) {
           console.warn('Erro ao atualizar entrada na sala nos bancos de dados:', e);
         }
@@ -1638,7 +1511,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setViewState('room');
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
-      setErrorMessage('Falha ao entrar na sala. Tente novamente.');
+      const unavailableMsg = 'Esta sala já não está disponível';
+      alert(unavailableMsg);
+      setErrorMessage(unavailableMsg);
+      showToast(unavailableMsg, true);
     } finally {
       setLoading(false);
     }
@@ -2149,6 +2025,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
       try {
         await rtdbSet(rtdbRef(rtdb, `duels/${roomCode}`), newRoom);
+        setupRoomOnDisconnect({
+          roomId: roomCode,
+          userUid: profile?.uid || 'anon',
+          isHost: true,
+          status: 'waiting',
+        });
       } catch (rtdbErr) {
         console.warn('Erro em segundo plano ao salvar sala no RTDB:', rtdbErr);
       }
@@ -3877,12 +3759,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
               <button
                 onClick={() => {
-                  setCurrentRoom(null);
-                  setProcessedDuelId(null);
-                  setShowHonorVictoryOverlay(false);
-                  setIsRoomClosedModalOpen(false);
-                  setIsExitModalOpen(false);
-                  setViewState('lobby');
+                  clearDuelSessionAndReturnToLobby();
                 }}
                 className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold uppercase tracking-wider border border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
@@ -4175,9 +4052,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setIsRoomClosedModalOpen(false);
-                  setViewState('lobby');
-                  setCurrentRoom(null);
+                  clearDuelSessionAndReturnToLobby();
                 }}
                 className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
               >
@@ -4262,11 +4137,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setIsForfeitModalOpen(false);
-                  setShowHonorVictoryOverlay(false);
-                  setCurrentRoom(null);
-                  setProcessedDuelId(null);
-                  setViewState('lobby');
+                  clearDuelSessionAndReturnToLobby();
                 }}
                 className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-sm uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
               >
