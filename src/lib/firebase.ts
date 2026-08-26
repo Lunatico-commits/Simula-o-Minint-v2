@@ -3,7 +3,9 @@ import {
   initializeFirestore, 
   persistentLocalCache, 
   persistentMultipleTabManager, 
-  getFirestore 
+  getFirestore,
+  doc,
+  getDocFromServer
 } from 'firebase/firestore';
 import { getDatabase } from 'firebase/database';
 import { getMessaging, isSupported as isMessagingSupported, Messaging } from 'firebase/messaging';
@@ -15,36 +17,106 @@ import {
   signInWithEmailAndPassword,
   User 
 } from 'firebase/auth';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyCjG36Cav9_UFr41pIGCLa2zv_xiIvP5n8",
-  authDomain: "simulados-minint.firebaseapp.com",
-  databaseURL: "https://simulados-minint-default-rtdb.firebaseio.com",
-  projectId: "simulados-minint",
-  storageBucket: "simulados-minint.firebasestorage.app",
-  messagingSenderId: "371489175915",
-  appId: "1:371489175915:web:3e586300fbd9d0a8c4742e",
-  measurementId: "G-FZFZTTCFG7"
-};
+import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Export Firestore with persistent local cache for seamless offline operation
+// Export Firestore with persistent local cache and designated database ID
 export const db = (() => {
   try {
+    if (firebaseConfig.firestoreDatabaseId) {
+      return initializeFirestore(app, {
+        localCache: persistentLocalCache({
+          tabManager: persistentMultipleTabManager()
+        })
+      }, firebaseConfig.firestoreDatabaseId);
+    }
     return initializeFirestore(app, {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       })
     });
   } catch (e) {
-    return getFirestore(app);
+    return firebaseConfig.firestoreDatabaseId ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : getFirestore(app);
   }
 })();
 
-export const rtdb = getDatabase(app);
+// Realtime Database for quick 1v1 multiplayer duels (with safe fallback)
+export const rtdb = (() => {
+  try {
+    const dbUrl = (firebaseConfig as any).databaseURL || `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
+    return getDatabase(app, dbUrl);
+  } catch (e) {
+    try {
+      return getDatabase(app);
+    } catch {
+      return {} as any;
+    }
+  }
+})();
+
 export const auth = getAuth(app);
+
+// Test connection silently and gracefully on boot
+export async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Firestore operating in offline cache mode.");
+    }
+  }
+}
+testConnection();
+
+// Standard Firestore Error Handling conforming to Firebase Skill specification
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.warn('Firestore Operation Notification: ', JSON.stringify(errInfo));
+  return errInfo;
+}
 
 let messagingInstance: Messaging | null = null;
 export async function getFirebaseMessaging(): Promise<Messaging | null> {
