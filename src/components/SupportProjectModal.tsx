@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile } from '../types';
-import { db } from '../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
-import { Coffee, Copy, Check, Heart, Sparkles, X, Shield, Smartphone, CreditCard, UserCheck, Star } from 'lucide-react';
+import { generateReferralCode } from '../utils/referral';
+import { Coffee, Copy, Check, Sparkles, X, Smartphone, CreditCard, UserCheck, MessageCircle, ShieldCheck } from 'lucide-react';
 
 interface SupportProjectModalProps {
   isOpen: boolean;
@@ -15,10 +14,8 @@ export const SupportProjectModal: React.FC<SupportProjectModalProps> = ({
   isOpen,
   onClose,
   currentProfile,
-  onUpdateProfile,
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [successToast, setSuccessToast] = useState(false);
 
   if (!isOpen) return null;
 
@@ -26,6 +23,11 @@ export const SupportProjectModal: React.FC<SupportProjectModalProps> = ({
   const ibanFormatted = 'AO06 0058 0000 0617 3873 1013 8';
   const ibanClean = 'AO06005800000617387310138';
   const accountHolder = 'António Edson Lima Pimentel';
+
+  const userCode = currentProfile.referralCode || generateReferralCode(currentProfile.displayName || 'CANDIDATO');
+  const whatsappNumber = '244939606343';
+  const rawMessage = `Olá! Já fiz a minha contribuição para o Simulados MININT. O meu Código de Indicação é: ${userCode}. Segue o comprovativo para activação do Selo VIP.`;
+  const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(rawMessage)}`;
 
   const handleCopy = (textToCopy: string, fieldName: string) => {
     navigator.clipboard.writeText(textToCopy);
@@ -35,40 +37,8 @@ export const SupportProjectModal: React.FC<SupportProjectModalProps> = ({
     }, 2000);
   };
 
-  const handleConfirmContribution = async () => {
-    // 1. Update local profile
-    const updatedProfile: UserProfile = {
-      ...currentProfile,
-      isVipSupporter: true,
-    };
-
-    // Save flag in localStorage
-    if (currentProfile.uid) {
-      localStorage.setItem(`minint_vip_supporter_${currentProfile.uid}`, 'true');
-    }
-    localStorage.setItem('minint_vip_supporter_global', 'true');
-
-    if (onUpdateProfile) {
-      onUpdateProfile(updatedProfile);
-    }
-
-    // 2. Persist to Firestore if available
-    if (currentProfile.uid && currentProfile.uid !== 'guest_user') {
-      try {
-        await setDoc(doc(db, 'users', currentProfile.uid), {
-          isVipSupporter: true,
-          updatedAt: new Date().toISOString(),
-        }, { merge: true });
-      } catch (err) {
-        console.warn('Could not update Firestore supporter status, fallback to local state:', err);
-      }
-    }
-
-    setSuccessToast(true);
-    setTimeout(() => {
-      setSuccessToast(false);
-      onClose();
-    }, 2500);
+  const handleOpenWhatsApp = () => {
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -78,6 +48,7 @@ export const SupportProjectModal: React.FC<SupportProjectModalProps> = ({
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-100 transition-colors cursor-pointer"
+          title="Fechar"
         >
           <X size={18} />
         </button>
@@ -96,16 +67,8 @@ export const SupportProjectModal: React.FC<SupportProjectModalProps> = ({
           </p>
         </div>
 
-        {/* Toast Alert on Confirmation */}
-        {successToast && (
-          <div className="mb-4 p-3 bg-amber-500 text-slate-950 rounded-2xl font-black text-xs text-center flex items-center justify-center gap-2 shadow-lg animate-bounce">
-            <Star className="fill-slate-950" size={18} />
-            <span>Obrigado! Tornou-se um Apoiador VIP 🌟!</span>
-          </div>
-        )}
-
         {/* Payment Details Container */}
-        <div className="space-y-3 mb-5">
+        <div className="space-y-3 mb-4">
           {/* Item 1: Express / Unitel Money */}
           <div className="bg-slate-950 p-3 rounded-2xl border border-slate-800 flex items-center justify-between gap-2 hover:border-amber-500/30 transition-all">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -224,21 +187,32 @@ export const SupportProjectModal: React.FC<SupportProjectModalProps> = ({
         </div>
 
         {/* Benefits banner */}
-        <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-[11px] text-amber-300 font-semibold mb-4 text-center flex items-center justify-center gap-1.5">
+        <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-[11px] text-amber-300 font-semibold mb-3 text-center flex items-center justify-center gap-1.5">
           <Sparkles size={14} className="shrink-0 text-amber-400" />
           <span>Contribua com qualquer valor e ganhe a insígnia <strong className="text-amber-400">Apoiador VIP 🌟</strong></span>
         </div>
 
+        {/* Informative Notice Box */}
+        <div className="p-3 bg-slate-950 border border-amber-500/30 rounded-2xl text-xs text-slate-300 mb-4 flex items-start gap-2.5 shadow-inner">
+          <ShieldCheck size={18} className="shrink-0 text-amber-400 mt-0.5" />
+          <div className="text-[11.5px] leading-relaxed">
+            <span className="text-amber-300 font-bold block mb-0.5">Validação do Comprovativo:</span>
+            <span>Após enviar o comprovativo no WhatsApp, o seu Selo VIP Apoiador será ativado após a validação.</span>
+          </div>
+        </div>
+
         {/* Action Buttons */}
         <div className="space-y-2">
-          <button
-            type="button"
-            onClick={handleConfirmContribution}
-            className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={handleOpenWhatsApp}
+            className="w-full py-3.5 bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98 text-center"
           >
-            <Star className="fill-slate-950" size={16} />
-            <span>Já fiz a minha contribuição 🌟</span>
-          </button>
+            <MessageCircle className="fill-slate-950" size={17} />
+            <span>Já fiz a minha contribuição 💬</span>
+          </a>
           <button
             type="button"
             onClick={onClose}
