@@ -99,19 +99,15 @@ export const getAcademicLevelLabel = (level?: AcademicLevel): string => {
 };
 
 // Category stats helper for mock candidates
-const defaultStats: Record<QuestionCategory, { correct: number; total: number }> = {
-  informatica_basica: { correct: 25, total: 30 },
+const defaultStats: Partial<Record<QuestionCategory, { correct: number; total: number }>> = {
+  historia_angola: { correct: 25, total: 30 },
+  organizacao_politica_cra: { correct: 20, total: 25 },
+  nocoes_administracao_publica: { correct: 30, total: 40 },
   legislacao_minint: { correct: 30, total: 40 },
-  direito_constituicao: { correct: 20, total: 25 },
-  historia_cultura_geral: { correct: 20, total: 25 },
-  portugues_raciocinio: { correct: 30, total: 40 },
-  lingua_portuguesa: { correct: 20, total: 25 },
-  cultura_geral: { correct: 20, total: 25 },
-  direito_penal: { correct: 20, total: 25 },
-  raciocinio_logico: { correct: 15, total: 20 },
+  patriotismo_valores_civicos: { correct: 20, total: 25 },
 };
 
-const buildStats = (overrides?: Partial<Record<QuestionCategory, { correct: number; total: number }>>): Record<QuestionCategory, { correct: number; total: number }> => ({
+const buildStats = (overrides?: Partial<Record<QuestionCategory, { correct: number; total: number }>>): Partial<Record<QuestionCategory, { correct: number; total: number }>> => ({
   ...defaultStats,
   ...(overrides || {}),
 });

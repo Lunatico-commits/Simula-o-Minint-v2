@@ -47,8 +47,15 @@ export interface BranchInfo {
   avatarSvg: string;
 }
 
+export type OfficialSubjectId = 
+  | 'historia_angola'
+  | 'organizacao_politica_cra'
+  | 'nocoes_administracao_publica'
+  | 'legislacao_minint'
+  | 'patriotismo_valores_civicos';
+
 export type QuestionCategory = 
-  | 'legislacao_minint' 
+  | OfficialSubjectId
   | 'direito_constituicao' 
   | 'historia_cultura_geral' 
   | 'portugues_raciocinio'
@@ -58,21 +65,52 @@ export type QuestionCategory =
   | 'direito_penal' 
   | 'raciocinio_logico';
 
-export function normalizeCategory(cat: string): 'legislacao_minint' | 'direito_constituicao' | 'historia_cultura_geral' | 'portugues_raciocinio' | 'informatica_basica' {
+export function normalizeCategory(cat: string): OfficialSubjectId {
   if (!cat) return 'legislacao_minint';
   const c = cat.toLowerCase();
-  if (c === 'informatica_basica' || c === 'informatica' || c === 'informatica_e_raciocinio') {
-    return 'informatica_basica';
+  
+  if (
+    c === 'historia_angola' || 
+    c === 'historia' || 
+    c === 'historia_cultura_geral' || 
+    c === 'cultura_geral'
+  ) {
+    return 'historia_angola';
   }
-  if (c === 'lingua_portuguesa' || c === 'raciocinio_logico' || c === 'portugues_raciocinio') {
-    return 'portugues_raciocinio';
+  
+  if (
+    c === 'organizacao_politica_cra' || 
+    c === 'organizacao_politica' || 
+    c === 'direito_constituicao' || 
+    c === 'direito_penal' || 
+    c === 'cra' || 
+    c === 'constituicao'
+  ) {
+    return 'organizacao_politica_cra';
   }
-  if (c === 'cultura_geral' || c === 'historia_cultura_geral') {
-    return 'historia_cultura_geral';
+  
+  if (
+    c === 'nocoes_administracao_publica' || 
+    c === 'administracao_publica' || 
+    c === 'administracao' || 
+    c === 'portugues_raciocinio' || 
+    c === 'lingua_portuguesa' || 
+    c === 'raciocinio_logico' || 
+    c === 'informatica_basica' || 
+    c === 'informatica'
+  ) {
+    return 'nocoes_administracao_publica';
   }
-  if (c === 'direito_penal' || c === 'direito_constituicao') {
-    return 'direito_constituicao';
+
+  if (
+    c === 'patriotismo_valores_civicos' || 
+    c === 'patriotismo' || 
+    c === 'valores_civicos' || 
+    c === 'civismo'
+  ) {
+    return 'patriotismo_valores_civicos';
   }
+
   return 'legislacao_minint';
 }
 
@@ -80,6 +118,7 @@ export interface Question {
   id: string;
   category: QuestionCategory;
   categoryName: string;
+  branch?: MININTBranch | 'GERAL' | string;
   academicLevel?: AcademicLevel | 'todos';
   academicLevelLabel?: string;
   question: string;
@@ -140,7 +179,7 @@ export interface UserProfile {
   quizzesCompleted: number;
   correctAnswersCount: number;
   totalQuestionsAnswered: number;
-  categoryStats: Record<QuestionCategory, { correct: number; total: number }>;
+  categoryStats?: Partial<Record<QuestionCategory, { correct: number; total: number }>> | Record<string, { correct: number; total: number }>;
   referralCode?: string;
   referredBy?: string;
   referralsCount?: number;

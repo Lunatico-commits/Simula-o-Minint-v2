@@ -30,8 +30,8 @@ export interface ShopItem {
   cost: number;
   description: string;
   symbol: string;
-  branch?: MININTBranch | string;
-  organ?: MININTBranch | string;
+  branch?: MININTBranch | 'GERAL' | string;
+  organ?: MININTBranch | 'GERAL' | string;
   badgeBg?: string;
   isPopular?: boolean;
   isExclusive?: boolean;
@@ -166,6 +166,8 @@ export const SHOP_ITEMS: ShopItem[] = [
     cost: 300,
     description: 'Uniforme Supremo do Ministério do Interior com coroa dourada e brilho lendário.',
     symbol: '👑',
+    branch: 'GERAL',
+    organ: 'GERAL',
     badgeBg: 'from-amber-700 via-yellow-600 to-amber-900',
     isExclusive: true,
     type: 'avatar_farda',
@@ -239,8 +241,8 @@ export const SHOP_ITEMS: ShopItem[] = [
     cost: 150,
     description: 'Insígnia Especial de Formador e Mestre de Preparação Académica do MININT.',
     symbol: '🎓',
-    branch: 'MININT',
-    organ: 'MININT',
+    branch: 'GERAL',
+    organ: 'GERAL',
     badgeBg: 'from-indigo-950 via-slate-900 to-amber-950',
     isExclusive: true,
     type: 'pin',

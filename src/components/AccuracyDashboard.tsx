@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { UserProfile, QuestionCategory, normalizeCategory } from '../types';
+import { UserProfile, QuestionCategory, normalizeCategory, OfficialSubjectId } from '../types';
+import { OFFICIAL_SUBJECTS, OFFICIAL_SUBJECTS_MAP } from '../data/categories';
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -17,80 +18,104 @@ import {
   PolarAngleAxis, 
   PolarRadiusAxis 
 } from 'recharts';
-import { TrendingUp, Target, Award, BookOpen, CheckCircle, BarChart3, LineChart as LineChartIcon, PieChart } from 'lucide-react';
+import { TrendingUp, Target, Award, BookOpen, CheckCircle, BarChart3, LineChart as LineChartIcon, PieChart, Landmark, Scale, Briefcase, ShieldCheck, Flag } from 'lucide-react';
 
 interface AccuracyDashboardProps {
   profile: UserProfile;
 }
 
 const CATEGORY_MAP: Record<QuestionCategory, { name: string; shortName: string; color: string; bg: string }> = {
-  legislacao_minint: {
-    name: 'Legislação do MININT',
-    shortName: 'Leg. MININT',
-    color: '#F59E0B', // Amber
-    bg: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
-  },
-  direito_constituicao: {
-    name: 'Direito e Constituição (CRA)',
-    shortName: 'Direito & CRA',
-    color: '#8B5CF6', // Purple
-    bg: 'bg-purple-500/10 text-purple-500 border-purple-500/30',
-  },
-  historia_cultura_geral: {
-    name: 'História e Cultura Geral',
-    shortName: 'História & Cultura',
+  historia_angola: {
+    name: 'História de Angola',
+    shortName: 'História de Angola',
     color: '#10B981', // Emerald
-    bg: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
+    bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
   },
-  portugues_raciocinio: {
-    name: 'Língua Portuguesa e Raciocínio Lógico',
-    shortName: 'Português & Lógica',
-    color: '#3B82F6', // Blue
-    bg: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
+  organizacao_politica_cra: {
+    name: 'Organização Política e Administrativa / CRA',
+    shortName: 'Org. Política & CRA',
+    color: '#8B5CF6', // Purple
+    bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
   },
-  informatica_basica: {
-    name: 'Informática Básica',
-    shortName: 'Informática',
+  nocoes_administracao_publica: {
+    name: 'Noções de Administração Pública',
+    shortName: 'Adm. Pública & Ética',
     color: '#06B6D4', // Cyan
-    bg: 'bg-cyan-500/10 text-cyan-500 border-cyan-500/30',
+    bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  },
+  legislacao_minint: {
+    name: 'Legislação e Funcionamento do MININT',
+    shortName: 'Leg. MININT & Órgãos',
+    color: '#F59E0B', // Amber
+    bg: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  },
+  patriotismo_valores_civicos: {
+    name: 'Patriotismo e Valores Cívicos',
+    shortName: 'Patriotismo & Civismo',
+    color: '#EF4444', // Red
+    bg: 'bg-red-500/10 text-red-400 border-red-500/30',
   },
   // Legacy category mappings for backward compatibility
+  direito_constituicao: {
+    name: 'Organização Política e Administrativa / CRA',
+    shortName: 'Org. Política & CRA',
+    color: '#8B5CF6',
+    bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
+  },
+  historia_cultura_geral: {
+    name: 'História de Angola',
+    shortName: 'História de Angola',
+    color: '#10B981',
+    bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
+  },
+  portugues_raciocinio: {
+    name: 'Noções de Administração Pública',
+    shortName: 'Adm. Pública & Ética',
+    color: '#06B6D4',
+    bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  },
+  informatica_basica: {
+    name: 'Noções de Administração Pública',
+    shortName: 'Adm. Pública & Ética',
+    color: '#06B6D4',
+    bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+  },
   lingua_portuguesa: {
-    name: 'Língua Portuguesa e Raciocínio Lógico',
-    shortName: 'Português & Lógica',
-    color: '#3B82F6',
-    bg: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
+    name: 'Noções de Administração Pública',
+    shortName: 'Adm. Pública & Ética',
+    color: '#06B6D4',
+    bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
   },
   cultura_geral: {
-    name: 'História e Cultura Geral',
-    shortName: 'História & Cultura',
+    name: 'História de Angola',
+    shortName: 'História de Angola',
     color: '#10B981',
-    bg: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30',
+    bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
   },
   direito_penal: {
-    name: 'Direito e Constituição (CRA)',
-    shortName: 'Direito & CRA',
+    name: 'Organização Política e Administrativa / CRA',
+    shortName: 'Org. Política & CRA',
     color: '#8B5CF6',
-    bg: 'bg-purple-500/10 text-purple-500 border-purple-500/30',
+    bg: 'bg-purple-500/10 text-purple-400 border-purple-500/30',
   },
   raciocinio_logico: {
-    name: 'Língua Portuguesa e Raciocínio Lógico',
-    shortName: 'Português & Lógica',
-    color: '#3B82F6',
-    bg: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
+    name: 'Noções de Administração Pública',
+    shortName: 'Adm. Pública & Ética',
+    color: '#06B6D4',
+    bg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
   },
 };
 
 export const AccuracyDashboard: React.FC<AccuracyDashboardProps> = ({ profile }) => {
   const [chartType, setChartType] = useState<'evolution' | 'categories' | 'radar'>('categories');
 
-  // Aggregate user category stats into the official categories
-  const officialStats: Record<'legislacao_minint' | 'direito_constituicao' | 'historia_cultura_geral' | 'portugues_raciocinio' | 'informatica_basica', { correct: number; total: number }> = {
+  // Aggregate user category stats into the 5 official subjects
+  const officialStats: Record<OfficialSubjectId, { correct: number; total: number }> = {
+    historia_angola: { correct: 0, total: 0 },
+    organizacao_politica_cra: { correct: 0, total: 0 },
+    nocoes_administracao_publica: { correct: 0, total: 0 },
     legislacao_minint: { correct: 0, total: 0 },
-    direito_constituicao: { correct: 0, total: 0 },
-    historia_cultura_geral: { correct: 0, total: 0 },
-    portugues_raciocinio: { correct: 0, total: 0 },
-    informatica_basica: { correct: 0, total: 0 },
+    patriotismo_valores_civicos: { correct: 0, total: 0 },
   };
 
   if (profile.categoryStats) {
@@ -106,13 +131,13 @@ export const AccuracyDashboard: React.FC<AccuracyDashboardProps> = ({ profile })
     });
   }
 
-  // The Official Subjects
-  const categoriesList: QuestionCategory[] = [
+  // The 5 Official Subjects
+  const categoriesList: OfficialSubjectId[] = [
+    'historia_angola',
+    'organizacao_politica_cra',
+    'nocoes_administracao_publica',
     'legislacao_minint',
-    'direito_constituicao',
-    'historia_cultura_geral',
-    'portugues_raciocinio',
-    'informatica_basica',
+    'patriotismo_valores_civicos',
   ];
 
   const categoryData = categoriesList.map((catKey) => {

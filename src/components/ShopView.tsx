@@ -50,6 +50,7 @@ import { ReactiveAvatar } from './ReactiveAvatar';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { AvatarImage } from './AvatarImage';
 import { ShopItemIcon } from './ShopItemIcon';
+import { preloadShopAndAvatarAssets } from '../utils/imagePreloader';
 import { fireConfetti } from '../utils/confetti';
 import { playCorrectSound, playClickSound } from '../utils/audio';
 
@@ -102,6 +103,11 @@ export const ShopView: React.FC<ShopViewProps> = ({
       setSelectedOrgan(profile.branch);
     }
   }, [profile.branch]);
+
+  // Preload all avatar uniforms and shop assets on view mount
+  useEffect(() => {
+    preloadShopAndAvatarAssets();
+  }, []);
 
   const userCoins = profile.minintCoins || 0;
   const purchasedItems = profile.purchasedItems || [];
@@ -486,6 +492,8 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             branch={item.branch || item.organ}
             gender={activeGender}
             alt={item.name}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover select-none pointer-events-none transition-transform duration-300 group-hover:scale-105"
           />
         </div>
@@ -671,6 +679,9 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                         gender={previewGender}
                         size={208}
                         alt={selectedDetailItem.name}
+                        loading="eager"
+                        decoding="async"
+                        fetchPriority="high"
                         className="w-full h-full object-cover select-none pointer-events-none"
                       />
                       
@@ -944,6 +955,9 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
                       gender={previewGender}
                       size={56}
                       alt={confirmPurchaseItem.name}
+                      loading="eager"
+                      decoding="async"
+                      fetchPriority="high"
                       className="w-full h-full object-cover"
                     />
                   ) : (

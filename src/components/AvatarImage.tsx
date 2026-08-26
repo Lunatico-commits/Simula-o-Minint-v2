@@ -1,7 +1,8 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { MININTBranch, UserProfile, SavedAccount } from '../types';
 import { getAvatarImagePath, getUserGender } from '../data/avatars';
 import { getAccessoryItem } from '../data/avatarAccessories';
+import { Loader2 } from 'lucide-react';
 
 export interface AvatarImageProps {
   /** Optional user profile or saved account object to extract avatar/uniform/gender */
@@ -26,6 +27,8 @@ export interface AvatarImageProps {
   loading?: 'lazy' | 'eager';
   /** Image decoding ('async' by default) */
   decoding?: 'async' | 'auto' | 'sync';
+  /** Browser fetch priority hint */
+  fetchPriority?: 'high' | 'low' | 'auto';
   /** Optional onError event handler */
   onError?: (e: React.SyntheticEvent<HTMLImageElement, Event>) => void;
   /** Optional click handler */
@@ -39,10 +42,65 @@ export interface AvatarImageProps {
 }
 
 /**
+ * Returns branch-specific visual theme colors for skeleton and loader
+ */
+function getBranchTheme(branch?: string) {
+  const b = (branch || '').toUpperCase();
+  if (b.includes('PNA')) {
+    return {
+      gradient: 'from-slate-950 via-blue-950/60 to-slate-900',
+      shimmer: 'via-blue-500/20',
+      spinner: 'text-blue-400',
+      glow: 'shadow-[0_0_12px_rgba(59,130,246,0.2)]',
+    };
+  }
+  if (b.includes('SIC')) {
+    return {
+      gradient: 'from-slate-950 via-rose-950/40 to-slate-900',
+      shimmer: 'via-rose-500/20',
+      spinner: 'text-rose-400',
+      glow: 'shadow-[0_0_12px_rgba(244,63,94,0.2)]',
+    };
+  }
+  if (b.includes('SME')) {
+    return {
+      gradient: 'from-slate-950 via-amber-950/40 to-slate-900',
+      shimmer: 'via-amber-500/20',
+      spinner: 'text-amber-400',
+      glow: 'shadow-[0_0_12px_rgba(245,158,11,0.2)]',
+    };
+  }
+  if (b.includes('SPCB')) {
+    return {
+      gradient: 'from-slate-950 via-red-950/50 to-orange-950/40',
+      shimmer: 'via-orange-500/20',
+      spinner: 'text-orange-400',
+      glow: 'shadow-[0_0_12px_rgba(249,115,22,0.2)]',
+    };
+  }
+  if (b.includes('SP') || b.includes('PENITENCIÁRIO')) {
+    return {
+      gradient: 'from-slate-950 via-emerald-950/50 to-slate-900',
+      shimmer: 'via-emerald-500/20',
+      spinner: 'text-emerald-400',
+      glow: 'shadow-[0_0_12px_rgba(16,185,129,0.2)]',
+    };
+  }
+  return {
+    gradient: 'from-slate-950 via-slate-900 to-amber-950/30',
+    shimmer: 'via-amber-500/20',
+    spinner: 'text-amber-400',
+    glow: 'shadow-[0_0_12px_rgba(245,158,11,0.15)]',
+  };
+}
+
+/**
  * AvatarImage Component
  * - Dedicated, memoized component for high-fidelity avatar and tactical uniform PNGs.
  * - Dynamic resolution of gender & uniform equipment.
  * - Native lazy loading ('lazy') & async decoding.
+ * - Animated Skeleton shimmer and branch-colored loader indicator while downloading.
+ * - Smooth opacity transition (fade-in) upon load.
  * - Multi-tier native error recovery with strict fallback to /avatars/pna_female.png or /avatars/pna_male.png.
  * - Optional badge/pin overlay for live testing and preview.
  */
@@ -59,6 +117,7 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
   size,
   loading = 'lazy',
   decoding = 'async',
+  fetchPriority,
   onError,
   onClick,
   title,
@@ -86,12 +145,25 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
   const initialPath = resolveInitialSrc();
   const [currentSrc, setCurrentSrc] = useState<string>(initialPath);
   const [fallbackStage, setFallbackStage] = useState<number>(0);
+  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   // Sync state when props change
   useEffect(() => {
     const newPath = resolveInitialSrc();
     setCurrentSrc(newPath);
     setFallbackStage(0);
+
+    // Synchronous memory-cache check
+    if (typeof window !== 'undefined') {
+      const probe = new Image();
+      probe.src = newPath;
+      if (probe.complete && probe.naturalWidth > 0) {
+        setIsLoaded(true);
+      } else {
+        setIsLoaded(false);
+      }
+    }
   }, [src, rawTargetId, resolvedGender, resolvedBranch]);
 
   // 3. Fallback and error handling logic
@@ -117,6 +189,8 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
       setCurrentSrc(defaultPnaFallback);
       return;
     }
+
+    setIsLoaded(true);
   };
 
   // 4. Resolve badge overlay (if passed)
@@ -144,24 +218,56 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
       }
     : {};
 
-  const imageElement = (
-    <img
-      src={currentSrc}
-      alt={alt}
-      loading={loading}
-      decoding={decoding}
-      onError={handleImageError}
-      onClick={onClick}
-      title={title}
-      style={sizeStyle}
-      className={`select-none pointer-events-auto transition-opacity duration-200 ${className}`}
-    />
-  );
+  const theme = getBranchTheme(resolvedBranch || branch);
 
-  if (badgeIcon) {
-    return (
-      <div className="relative inline-block" style={sizeStyle}>
-        {imageElement}
+  // Spinner size dynamically calculated
+  const spinnerSize = typeof size === 'number'
+    ? Math.max(12, Math.min(26, Math.floor(size / 3.5)))
+    : 16;
+
+  return (
+    <div
+      className={`relative inline-flex items-center justify-center overflow-hidden ${className}`}
+      style={sizeStyle}
+    >
+      {/* 🌟 SKELETON SHIMMER & SPINNER INDICATOR */}
+      {!isLoaded && (
+        <div
+          className={`absolute inset-0 z-0 bg-gradient-to-br ${theme.gradient} flex flex-col items-center justify-center overflow-hidden transition-opacity duration-300 pointer-events-none`}
+        >
+          {/* Animated Shimmer Stripe */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer" />
+
+          {/* Branch-colored Spinner */}
+          <div className="relative z-10 flex flex-col items-center justify-center p-1">
+            <Loader2
+              size={spinnerSize}
+              className={`animate-spin ${theme.spinner} opacity-90 drop-shadow-xs`}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* 🖼️ HIGH-FIDELITY AVATAR IMAGE WITH FADE-IN */}
+      <img
+        ref={imgRef}
+        src={currentSrc}
+        alt={alt}
+        loading={loading}
+        decoding={decoding}
+        // @ts-ignore React 18 / HTMLImageElement fetchPriority support
+        fetchPriority={fetchPriority}
+        onLoad={() => setIsLoaded(true)}
+        onError={handleImageError}
+        onClick={onClick}
+        title={title}
+        className={`w-full h-full object-cover select-none pointer-events-auto transition-opacity duration-300 ease-out ${
+          isLoaded ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+
+      {/* 🎖️ BADGE / PIN OVERLAY */}
+      {badgeIcon && (
         <div
           className="absolute -bottom-1 -right-1 z-20 pointer-events-none select-none flex items-center justify-center"
           title={badgeName ? `Distintivo: ${badgeName}` : undefined}
@@ -172,11 +278,9 @@ export const AvatarImage: React.FC<AvatarImageProps> = memo(({
             </span>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return imageElement;
+      )}
+    </div>
+  );
 });
 
 AvatarImage.displayName = 'AvatarImage';

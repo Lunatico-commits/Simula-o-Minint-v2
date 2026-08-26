@@ -572,12 +572,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   // Category name helper
   const getCategoryName = (cat: QuestionCategory) => {
     switch (cat) {
-      case 'legislacao_minint': return 'Legislação Orgânica do MININT & CRA';
-      case 'lingua_portuguesa': return 'Língua Portuguesa';
-      case 'cultura_geral': return 'Cultura Geral & História de Angola';
-      case 'raciocinio_logico': return 'Raciocínio Lógico & Matemática';
-      case 'direito_penal': return 'Direito Penal & Processual';
-      default: return 'Geral MININT';
+      case 'historia_angola': return 'História de Angola';
+      case 'organizacao_politica_cra': return 'Organização Política e Administrativa / CRA';
+      case 'nocoes_administracao_publica': return 'Noções de Administração Pública';
+      case 'legislacao_minint': return 'Legislação e Funcionamento do MININT';
+      case 'patriotismo_valores_civicos': return 'Patriotismo e Valores Cívicos';
+      case 'direito_constituicao': return 'Organização Política e Administrativa / CRA';
+      case 'historia_cultura_geral': return 'História de Angola';
+      case 'portugues_raciocinio': return 'Noções de Administração Pública';
+      case 'informatica_basica': return 'Noções de Administração Pública';
+      default: return 'Legislação e Funcionamento do MININT';
     }
   };
 
@@ -1423,18 +1427,17 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Matéria / Categoria:</label>
+                        <label className="block text-[10px] text-slate-400 mb-0.5 font-bold">Matéria Oficial do Concurso:</label>
                         <select
                           value={newCategory}
                           onChange={(e) => setNewCategory(e.target.value as QuestionCategory)}
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 font-semibold"
                         >
-                          <option value="legislacao_minint">Legislação MININT & CRA</option>
-                          <option value="informatica_basica">Informática Básica</option>
-                          <option value="lingua_portuguesa">Língua Portuguesa</option>
-                          <option value="cultura_geral">Cultura Geral & História</option>
-                          <option value="raciocinio_logico">Raciocínio Lógico & Mat.</option>
-                          <option value="direito_penal">Direito Penal & Processual</option>
+                          <option value="historia_angola">História de Angola</option>
+                          <option value="organizacao_politica_cra">Organização Política e Adm. / CRA</option>
+                          <option value="nocoes_administracao_publica">Noções de Administração Pública</option>
+                          <option value="legislacao_minint">Legislação e Funcionamento do MININT</option>
+                          <option value="patriotismo_valores_civicos">Patriotismo e Valores Cívicos</option>
                         </select>
                       </div>
 

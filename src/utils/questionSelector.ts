@@ -1,4 +1,4 @@
-import { Question, QuestionCategory, AcademicLevel, normalizeCategory } from '../types';
+import { Question, QuestionCategory, AcademicLevel, normalizeCategory, MININTBranch } from '../types';
 import { QUESTION_BANK } from '../data/questions';
 
 /**
@@ -60,6 +60,7 @@ function getMergedQuestionBank(): Question[] {
 
 export interface GetRandomQuestionsOptions {
   category?: QuestionCategory | 'todas' | 'misto';
+  branch?: MININTBranch | 'GERAL' | 'todos' | string;
   academicLevel?: AcademicLevel;
   difficulty?: 'fácil' | 'médio' | 'difícil' | 'todas';
   count: number;
@@ -100,7 +101,7 @@ function saveRecentIds(modeKey: string, ids: string[]): void {
  * Also shuffles the options (A, B, C, D) within each selected question.
  */
 export function getRandomQuestions(options: GetRandomQuestionsOptions): Question[] {
-  const { category, academicLevel, difficulty, count, modeKey = 'general' } = options;
+  const { category, branch, academicLevel, difficulty, count, modeKey = 'general' } = options;
 
   const fullBank = getMergedQuestionBank();
 
@@ -117,6 +118,15 @@ export function getRandomQuestions(options: GetRandomQuestionsOptions): Question
       if (normMatches.length > 0) {
         candidatePool = normMatches;
       }
+    }
+  }
+
+  if (branch && branch !== 'todos') {
+    const branchMatches = candidatePool.filter(q => q.branch === branch || q.branch === 'GERAL');
+    if (branchMatches.length >= count) {
+      candidatePool = branchMatches;
+    } else if (branchMatches.length > 0) {
+      candidatePool = branchMatches;
     }
   }
 

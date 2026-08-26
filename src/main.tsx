@@ -3,9 +3,13 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import { initAssetValidatorInDev } from './utils/assetValidator';
+import { preloadShopAndAvatarAssets } from './utils/imagePreloader';
 
 // Initialize asset validation diagnostics for development mode
 initAssetValidatorInDev();
+
+// Preload avatar uniforms and shop assets in the background
+preloadShopAndAvatarAssets();
 
 // Ensure OffscreenCanvas and HTMLCanvasElement instances always have getBoundingClientRect defined
 if (typeof window !== 'undefined') {

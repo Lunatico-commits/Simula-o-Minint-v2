@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Zap, 
   Snowflake, 
@@ -21,9 +21,38 @@ import {
   CheckCircle2,
   Gem,
   Lock,
-  Layers
+  Layers,
+  Loader2
 } from 'lucide-react';
 import { MININTBranch } from '../types';
+
+/**
+ * FrameImageItem with skeleton shimmer and smooth fade-in
+ */
+const FrameImageItem: React.FC<{ imageUrl: string; name?: string }> = ({ imageUrl, name }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  return (
+    <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+      {!isLoaded && (
+        <div className="absolute inset-0 bg-slate-900/80 flex items-center justify-center pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/15 to-transparent -translate-x-full animate-shimmer" />
+          <Loader2 size={14} className="animate-spin text-amber-400 opacity-70" />
+        </div>
+      )}
+      <img
+        src={imageUrl}
+        alt={name || 'Moldura'}
+        decoding="async"
+        loading="lazy"
+        onLoad={() => setIsLoaded(true)}
+        className={`w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] transform group-hover:scale-105 transition-all duration-300 ${
+          isLoaded ? 'opacity-100' : 'opacity-0'
+        }`}
+      />
+    </div>
+  );
+};
 
 export interface ShopItemIconProps {
   type?: string;
@@ -575,11 +604,7 @@ export const ShopItemIcon: React.FC<ShopItemIconProps> = ({
         className={`${containerSizeClass} rounded-2xl bg-slate-950 border border-amber-500/30 p-1 flex items-center justify-center relative overflow-hidden shadow-md select-none ${className}`}
       >
         {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={name || 'Moldura'}
-            className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(245,158,11,0.5)] transform group-hover:scale-105 transition-transform duration-200"
-          />
+          <FrameImageItem imageUrl={imageUrl} name={name} />
         ) : (
           <div className="w-full h-full rounded-full border-2 border-dashed border-amber-400 flex items-center justify-center">
             <span className={symbolTextSize}>{symbol || '⭕'}</span>

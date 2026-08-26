@@ -618,12 +618,12 @@ export const PracticeQuiz: React.FC<PracticeQuizProps> = ({ profile, onUpdateSta
 
             <div className="flex overflow-x-auto gap-2 pb-1.5 snap-x no-scrollbar -mx-1 px-1">
               {[
-                { id: 'todas', label: 'Todas as Matérias', desc: 'Simulado Misto MININT', icon: Layers, color: 'text-amber-400' },
-                { id: 'informatica_basica', label: 'Informática Básica', desc: 'Windows, Word, Excel, Net & Email', icon: Laptop, color: 'text-cyan-400' },
-                { id: 'legislacao_minint', label: 'Legislação do MININT', desc: 'PNA, SIC, SME, SP, SPCB e Estatutos', icon: Shield, color: 'text-amber-400' },
-                { id: 'direito_constituicao', label: 'Direito e Constituição (CRA)', desc: 'Constituição (CRA), Direito & LGTFP', icon: Scale, color: 'text-purple-400' },
-                { id: 'historia_cultura_geral', label: 'História e Cultura Geral', desc: 'História, Geografia e Angola', icon: Globe, color: 'text-emerald-400' },
-                { id: 'portugues_raciocinio', label: 'Língua Portuguesa e Raciocínio Lógico', desc: 'Gramática, Redacção, Lógica & Mat.', icon: FileText, color: 'text-blue-400' },
+                { id: 'todas', label: 'Todas as Matérias', desc: 'Simulado Geral MININT', icon: Layers, color: 'text-amber-400' },
+                { id: 'historia_angola', label: 'História de Angola', desc: 'Factos históricos, heróis e datas', icon: Globe, color: 'text-emerald-400' },
+                { id: 'organizacao_politica_cra', label: 'Organização Política / CRA', desc: 'Estrutura do Estado e órgãos', icon: Scale, color: 'text-purple-400' },
+                { id: 'nocoes_administracao_publica', label: 'Noções de Adm. Pública', desc: 'Princípios do Estado e probidade', icon: FileText, color: 'text-cyan-400' },
+                { id: 'legislacao_minint', label: 'Legislação do MININT', desc: 'PNA, SIC, SME, SP, SPCB e leis', icon: Shield, color: 'text-amber-400' },
+                { id: 'patriotismo_valores_civicos', label: 'Patriotismo & Civismo', desc: 'Símbolos nacionais e deveres', icon: Flag, color: 'text-rose-400' },
               ].map((cat) => {
                 const IconComp = cat.icon;
                 const isSelected = selectedCategory === cat.id;
