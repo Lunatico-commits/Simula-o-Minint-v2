@@ -141,8 +141,8 @@ export async function getTotalUsersRealCount(): Promise<number> {
 }
 
 /**
- * Busca TODOS os utilizadores reais da coleção 'users' sem aplicar filtros rígidos (where clauses restritivos).
- * Ordenados por pontos de experiência (XP) decrescente.
+ * Busca TODOS os utilizadores reais da coleção 'users' sem aplicar filtros de UID ou restrições de perfil ativo.
+ * Lê a coleção completa e retorna a lista ordenada por pontos de experiência (XP) de forma decrescente.
  */
 export async function fetchAllUsers(): Promise<UserProfile[]> {
   try {
@@ -168,6 +168,15 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
     console.error('Erro ao buscar utilizadores da coleção users:', error);
     return [];
   }
+}
+
+/**
+ * Consulta global da coleção 'users' do Firestore ('getUsers()').
+ * Lê a coleção 'users' COMPLETA sem restringir por UID do utilizador atual,
+ * retornando os candidatos ordenados por XP de forma decrescente.
+ */
+export async function getUsers(): Promise<UserProfile[]> {
+  return fetchAllUsers();
 }
 
 /**

@@ -29,277 +29,16 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { playClickSound, playCorrectSound } from '../utils/audio';
+import {
+  STUDY_PDFS,
+  StudyPDFItem,
+  EBOOK_FILE_MAP,
+  EBOOK_VARIANTS,
+  PDF_CATEGORIES
+} from '../data/pdfs';
 
-export interface StudyPDFItem {
-  id: string;
-  title: string;
-  category: 'Legislação MININT' | 'Língua Portuguesa' | 'Cultura Geral & Informática' | 'Combo Especial';
-  description: string;
-  priceKz: number;
-  pages: string;
-  rating: number;
-  reviewsCount: number;
-  highlights: string[];
-  isCombo?: boolean;
-  colorTheme: {
-    bgGrad: string;
-    badgeBg: string;
-    border: string;
-    textAccent: string;
-    iconBg: string;
-  };
-}
-
-/**
- * Mapeamento exato de cada PDF do site para o ficheiro correspondente no Supabase Storage (bucket 'ebooks').
- * Ficheiros oficiais simplificados no bucket 'ebooks':
- * - Combo VIP: 'combo-vip.zip'
- * - Constituição: 'constituicao.pdf'
- * - Código Penal: 'codigo-penal.pdf'
- * - Gramática: 'gramatica.pdf'
- * - Lei Orgânica: 'lei-organica.pdf'
- * - Cultura Geral: 'cultura-geral.pdf'
- * - Informática: 'informatica.pdf'
- * - Interpretação de Texto: 'interpretacao.pdf'
- */
-export const EBOOK_FILE_MAP: Record<string, string> = {
-  // Combo VIP: combo-vip.zip
-  'pdf_combo_supremo': 'combo-vip.zip',
-
-  // Constituição: constituicao.pdf
-  'pdf_cra_direitos': 'constituicao.pdf',
-  'pdf_constituicao_2010': 'constituicao.pdf',
-
-  // Código Penal: codigo-penal.pdf
-  'pdf_codigo_penal': 'codigo-penal.pdf',
-  'pdf_direito_penal_processual': 'codigo-penal.pdf',
-
-  // Gramática: gramatica.pdf
-  'pdf_portugues_gramatica': 'gramatica.pdf',
-
-  // Lei Orgânica: lei-organica.pdf
-  'pdf_minint_leis': 'lei-organica.pdf',
-  'pdf_regulamento_minint': 'lei-organica.pdf',
-
-  // Cultura Geral: cultura-geral.pdf
-  'pdf_cultura_geral_angola': 'cultura-geral.pdf',
-  'pdf_cultura_geral_historia': 'cultura-geral.pdf',
-
-  // Informática: informatica.pdf
-  'pdf_informatica_tics': 'informatica.pdf',
-  'pdf_informatica_basica': 'informatica.pdf',
-
-  // Interpretação de Texto: interpretacao.pdf
-  'pdf_portugues_redacao': 'interpretacao.pdf',
-  'pdf_lingua_portuguesa': 'interpretacao.pdf',
-};
-
-export const EBOOK_VARIANTS: Record<string, string[]> = {
-  'pdf_cra_direitos': ['constituicao.pdf', 'Constituicao-CRA.pdf'],
-  'pdf_constituicao_2010': ['constituicao.pdf', 'Constituicao-CRA.pdf'],
-  'pdf_codigo_penal': ['codigo-penal.pdf', 'Codigo-Penal.pdf'],
-  'pdf_direito_penal_processual': ['codigo-penal.pdf', 'Codigo-Penal.pdf'],
-  'pdf_portugues_gramatica': ['gramatica.pdf', 'Gramatica-Ortografia.pdf'],
-  'pdf_minint_leis': ['lei-organica.pdf', 'Lei Organica do MININT e Estatuto Unificado.pdf'],
-  'pdf_regulamento_minint': ['lei-organica.pdf', 'Lei Organica do MININT e Estatuto Unificado.pdf'],
-  'pdf_combo_supremo': ['combo-vip.zip', 'combo-vip-minint.zip'],
-  'pdf_cultura_geral_angola': ['cultura-geral.pdf', 'Cultura Geral Historia e Geografia de Angola.pdf'],
-  'pdf_cultura_geral_historia': ['cultura-geral.pdf', 'Cultura Geral Historia e Geografia de Angola.pdf'],
-  'pdf_informatica_tics': ['informatica.pdf', 'Informatica Basica e TICs para Concursos.pdf'],
-  'pdf_informatica_basica': ['informatica.pdf', 'Informatica Basica e TICs para Concursos.pdf'],
-  'pdf_portugues_redacao': ['interpretacao.pdf', 'Interpretacao de Texto e Redacao Oficial.pdf'],
-  'pdf_lingua_portuguesa': ['interpretacao.pdf', 'Interpretacao de Texto e Redacao Oficial.pdf']
-};
-
-export const STUDY_PDFS: StudyPDFItem[] = [
-  {
-    id: 'pdf_combo_supremo',
-    title: '💎 COMBO VIP: Todos os 7 PDFs + Simulados Bónus',
-    category: 'Combo Especial',
-    description: 'Pacote definitivo e completo para o Concurso do MININT. Inclui todos os 7 manuais de estudo em PDF (Legislação, Português, Cultura Geral & Informática) + Coletânea Especial de 500 Questões Resolvidas.',
-    priceKz: 2500,
-    pages: '7 Livros em PDF • 135 PÁGINAS NO TOTAL',
-    rating: 5.0,
-    reviewsCount: 148,
-    isCombo: true,
-    highlights: [
-      'Economize +1.400 Kz em relação à compra avulsa',
-      'Acesso vitalício e atualizações gratuitas',
-      'Legislação Orgânica do MININT + CRA + Código Penal',
-      'Português completo com Novo Acordo Ortográfico',
-      'Cultura Geral com a Lei 13/24 (21 Províncias) & TICs',
-      'Gabarito Comentado de Provas Anteriores'
-    ],
-    colorTheme: {
-      bgGrad: 'from-amber-500/15 via-amber-600/10 to-yellow-500/15 dark:from-amber-500/20 dark:via-amber-900/30 dark:to-yellow-500/20',
-      badgeBg: 'bg-amber-500 text-slate-950 font-black shadow-md',
-      border: 'border-2 border-amber-500/80 shadow-[0_0_20px_rgba(245,158,11,0.25)]',
-      textAccent: 'text-amber-500 dark:text-amber-400',
-      iconBg: 'bg-amber-500/20 text-amber-500 dark:bg-amber-500/30 dark:text-amber-300'
-    }
-  },
-  {
-    id: 'pdf_minint_leis',
-    title: 'Lei Orgânica do MININT & Estatuto Unificado',
-    category: 'Legislação MININT',
-    description: 'Resumo completo e esquematizado do Decreto Presidencial n.º 152/19. Abrange as competências e estruturas da PNA, SIC, SME, SP e SPCB com tabelas comparativas e pontos focais de exames.',
-    priceKz: 490,
-    pages: '18 PÁGINAS • Esquematizado',
-    rating: 4.9,
-    reviewsCount: 92,
-    highlights: [
-      'Decreto Presidencial n.º 152/19 integral',
-      'Estrutura detalhada dos 5 ramos do MININT',
-      'Requisitos e patentes da carreira policial',
-      'Resumo com tabelas para fácil memorização'
-    ],
-    colorTheme: {
-      bgGrad: 'from-blue-500/10 via-slate-800/20 to-blue-600/10',
-      badgeBg: 'bg-blue-600 text-white font-bold',
-      border: 'border-blue-500/30 dark:border-blue-500/40 hover:border-blue-500',
-      textAccent: 'text-blue-500 dark:text-blue-400',
-      iconBg: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/25 dark:text-blue-400'
-    }
-  },
-  {
-    id: 'pdf_cra_direitos',
-    title: 'Constituição da República de Angola (CRA) para Concursos',
-    category: 'Legislação MININT',
-    description: 'Guia de estudo focado nos Direitos, Liberdades e Garantias Fundamentais (Art. 67.º ao 89.º), Organização do Estado, Defesa Nacional e Princípios de Atuação da Segurança Pública.',
-    priceKz: 490,
-    pages: '12 PÁGINAS • Foco em Exames',
-    rating: 5.0,
-    reviewsCount: 84,
-    highlights: [
-      'Artigos essenciais da CRA comentados',
-      'Direitos fundamentais e garantias dos cidadãos',
-      'Organização do Estado e Administração Pública',
-      'Exercícios de fixação com gabarito'
-    ],
-    colorTheme: {
-      bgGrad: 'from-blue-500/10 via-slate-800/20 to-blue-600/10',
-      badgeBg: 'bg-blue-600 text-white font-bold',
-      border: 'border-blue-500/30 dark:border-blue-500/40 hover:border-blue-500',
-      textAccent: 'text-blue-500 dark:text-blue-400',
-      iconBg: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/25 dark:text-blue-400'
-    }
-  },
-  {
-    id: 'pdf_codigo_penal',
-    title: 'Código Penal & Processo Penal Angolano para a Polícia',
-    category: 'Legislação MININT',
-    description: 'Manual prático sobre Prisão Preventiva, Flagrante Delito, Crimes Contra a Ordem e Segurança Pública, Atribuições do SIC e limites de atuação dos agentes policiais.',
-    priceKz: 490,
-    pages: '18 PÁGINAS • Casos Práticos',
-    rating: 4.8,
-    reviewsCount: 76,
-    highlights: [
-      'Flagrante Delito e Prisão Preventiva',
-      'Crimes contra a segurança pública e Estado',
-      'Atribuições específicas do SIC e PNA',
-      'Casos práticos e interpretação da lei'
-    ],
-    colorTheme: {
-      bgGrad: 'from-blue-500/10 via-slate-800/20 to-blue-600/10',
-      badgeBg: 'bg-blue-600 text-white font-bold',
-      border: 'border-blue-500/30 dark:border-blue-500/40 hover:border-blue-500',
-      textAccent: 'text-blue-500 dark:text-blue-400',
-      iconBg: 'bg-blue-500/15 text-blue-600 dark:bg-blue-500/25 dark:text-blue-400'
-    }
-  },
-  {
-    id: 'pdf_portugues_gramatica',
-    title: 'Gramática & Ortografia da Língua Portuguesa',
-    category: 'Língua Portuguesa',
-    description: 'Guia completo com regras de Sintaxe, Concordância Verbal e Nominal, Regência, Pontuação, Crase e aplicação prática do Novo Acordo Ortográfico com questões de provas.',
-    priceKz: 490,
-    pages: '41 PÁGINAS • Resumo + Exercícios',
-    rating: 4.9,
-    reviewsCount: 110,
-    highlights: [
-      'Concordância e Regência simplificadas',
-      'Regras do Novo Acordo Ortográfico',
-      'Pontuação e sintaxe da oração',
-      'Mais de 80 exercícios comentados'
-    ],
-    colorTheme: {
-      bgGrad: 'from-emerald-500/10 via-slate-800/20 to-teal-600/10',
-      badgeBg: 'bg-emerald-600 text-white font-bold',
-      border: 'border-emerald-500/30 dark:border-emerald-500/40 hover:border-emerald-500',
-      textAccent: 'text-emerald-500 dark:text-emerald-400',
-      iconBg: 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400'
-    }
-  },
-  {
-    id: 'pdf_portugues_redacao',
-    title: 'Interpretação de Texto & Redação Oficial MININT',
-    category: 'Língua Portuguesa',
-    description: 'Técnicas essenciais de interpretação textual, identificação da ideia central, coesão e coerência, além de modelos prontos de relatórios, autos de notícia e correspondência oficial.',
-    priceKz: 490,
-    pages: '12 PÁGINAS • Guia de Redação',
-    rating: 4.8,
-    reviewsCount: 65,
-    highlights: [
-      'Estratégias de interpretação de textos longos',
-      'Modelos de Relatórios e Comunicação Oficial',
-      'Coesão, coerência e erros mais frequentes',
-      'Guia de conectivos para provas escritas'
-    ],
-    colorTheme: {
-      bgGrad: 'from-emerald-500/10 via-slate-800/20 to-teal-600/10',
-      badgeBg: 'bg-emerald-600 text-white font-bold',
-      border: 'border-emerald-500/30 dark:border-emerald-500/40 hover:border-emerald-500',
-      textAccent: 'text-emerald-500 dark:text-emerald-400',
-      iconBg: 'bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/25 dark:text-emerald-400'
-    }
-  },
-  {
-    id: 'pdf_cultura_geral_angola',
-    title: 'Cultura Geral, História & Geografia de Angola',
-    category: 'Cultura Geral & Informática',
-    description: 'Material completo contendo a História de Angola, Símbolos Nacionais, datas históricas cruciais, atualidades socioeconómicas e a Nova Divisão Político-Administrativa (Lei n.º 13/24 - 21 Províncias).',
-    priceKz: 490,
-    pages: '16 PÁGINAS • Mapas e Dados',
-    rating: 5.0,
-    reviewsCount: 105,
-    highlights: [
-      'Nova Divisão Político-Administrativa (21 Províncias)',
-      'Símbolos Nacionais e História da Independência',
-      'Geografia física e recursos naturais de Angola',
-      'Atualidades socioeconómicas e políticas do país'
-    ],
-    colorTheme: {
-      bgGrad: 'from-purple-500/10 via-slate-800/20 to-indigo-600/10',
-      badgeBg: 'bg-purple-600 text-white font-bold',
-      border: 'border-purple-500/30 dark:border-purple-500/40 hover:border-purple-500',
-      textAccent: 'text-purple-500 dark:text-purple-400',
-      iconBg: 'bg-purple-500/15 text-purple-600 dark:bg-purple-500/25 dark:text-purple-400'
-    }
-  },
-  {
-    id: 'pdf_informatica_tics',
-    title: 'Informática Básica & TICs para Exames Policiais',
-    category: 'Cultura Geral & Informática',
-    description: 'Resumo prático sobre Sistemas Operativos (Windows), Pacote Microsoft Office (Word, Excel e PowerPoint), Conceitos de Redes de Computadores, Internet e Noções de Cibersegurança.',
-    priceKz: 490,
-    pages: '18 PÁGINAS • Capturas e Atalhos',
-    rating: 4.9,
-    reviewsCount: 78,
-    highlights: [
-      'Atalhos essenciais do Windows e Office',
-      'Excel e Word cobrados em concursos públicos',
-      'Conceitos de Internet, E-mail e Redes',
-      'Boas práticas de Cibersegurança e Antivírus'
-    ],
-    colorTheme: {
-      bgGrad: 'from-purple-500/10 via-slate-800/20 to-indigo-600/10',
-      badgeBg: 'bg-purple-600 text-white font-bold',
-      border: 'border-purple-500/30 dark:border-purple-500/40 hover:border-purple-500',
-      textAccent: 'text-purple-500 dark:text-purple-400',
-      iconBg: 'bg-purple-500/15 text-purple-600 dark:bg-purple-500/25 dark:text-purple-400'
-    }
-  }
-];
+export type { StudyPDFItem };
+export { STUDY_PDFS, EBOOK_FILE_MAP, EBOOK_VARIANTS, PDF_CATEGORIES };
 
 interface StudyMaterialsViewProps {
   profile: UserProfile;
@@ -399,13 +138,7 @@ export const StudyMaterialsView: React.FC<StudyMaterialsViewProps> = ({ profile 
     checkSupabasePurchases();
   }, [profile.emailOrPhone, studentPhone]);
 
-  const categories = [
-    'Todos',
-    'Legislação MININT',
-    'Língua Portuguesa',
-    'Cultura Geral & Informática',
-    'Combo Especial'
-  ];
+  const categories = PDF_CATEGORIES;
 
   const filteredPdfs = STUDY_PDFS.filter((pdf) => {
     const matchesCategory =
@@ -686,7 +419,7 @@ Segue em anexo o meu comprovativo de pagamento para confirmação e receção do
                     : 'bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
                 }`}
               >
-                {cat === 'Combo Especial' ? '💎 ' + cat : cat}
+                {cat}
               </button>
             );
           })}

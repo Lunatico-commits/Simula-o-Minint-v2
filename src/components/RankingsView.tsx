@@ -443,6 +443,44 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
         />
       ) : (
         <>
+      {/* BANNER DA POSIÇÃO REAL DO CANDIDATO NA TABELA GLOBAL */}
+      <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/15 border border-amber-500/40 rounded-2xl p-3.5 shadow-md flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="shrink-0 flex items-center justify-center">
+            <UserAvatar user={currentProfile} size="md" showBranchBadge={true} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sua Posição Real:</span>
+              <span className="px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 font-black text-xs font-mono shadow-sm">
+                {myGlobalRank}.º LUGAR
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono">
+                de {leaderboard.length} {leaderboard.length === 1 ? 'candidato' : 'candidatos'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1.5">
+              <span className="font-bold text-white">{currentProfile.displayName}</span>
+              <span>•</span>
+              <span className="text-amber-300 flex items-center gap-0.5">
+                <MapPin size={10} />
+                {userProvince} ({myHomeProvinceRank}.º na província)
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="text-right shrink-0">
+          <div className="text-sm font-black text-amber-400 font-mono flex items-center justify-end gap-1">
+            <Zap size={14} className="text-amber-400 fill-amber-400" />
+            <span>{currentProfile.totalXp.toLocaleString()} XP</span>
+          </div>
+          <span className="text-[9px] text-emerald-400 font-semibold block">
+            {currentProfile.multiplayerDuelsWon ?? currentProfile.duelsWon ?? 0} Duelos Vencidos
+          </span>
+        </div>
+      </div>
+
       {/* 1. SCOPE FILTER (NATIONAL VS FRIENDS VS PROVINCE TABS) */}
       <div className="bg-slate-950/90 border border-slate-800 p-1.5 rounded-2xl shadow-inner space-y-2">
         <div className="grid grid-cols-3 gap-1.5 text-xs font-bold">

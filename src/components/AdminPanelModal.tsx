@@ -321,7 +321,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   // Fetch and Subscribe in Real-Time to Firestore Candidate Stats, Certificate Counts & Province Breakdown
   useEffect(() => {
-    if (!isOpen || activeTab !== 'stats') return;
+    if (!isOpen) return;
 
     setLoadingStats(true);
     let totalCertificatesCount = 0;
@@ -344,8 +344,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         let totalXp = 0;
         let totalDuels = 0;
         let totalQuizzes = 0;
-        const branchCount: Record<string, number> = { PNA: 0, SIC: 0, SME: 0, SP: 0, SPCB: 0 };
-        const levelCount: Record<string, number> = { '9th_grade': 0, 'high_school': 0, 'higher_education': 0 };
+        const branchCount: Record<string, number> = { PNA: 0, SIC: 0, SME: 0, SP: 0, SPCB: 0, 'Não informado': 0 };
+        const levelCount: Record<string, number> = { '9th_grade': 0, 'high_school': 0, 'higher_education': 0, 'Não informado': 0 };
 
         // Inicializar mapa de províncias para todas as 21 províncias de Angola + Não informado
         const provinceCount: Record<string, number> = {};
@@ -355,9 +355,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         provinceCount['Não informado'] = 0;
 
         realUsers.forEach((user) => {
-          totalXp += user.totalXp || 0;
-          totalDuels += user.duelsPlayed || 0;
-          totalQuizzes += user.quizzesCompleted || 0;
+          totalXp += Number(user.totalXp || 0);
+          totalDuels += Number(user.duelsPlayed || 0);
+          totalQuizzes += Number(user.quizzesCompleted || 0);
 
           const branch = user.branch && ['PNA', 'SIC', 'SME', 'SP', 'SPCB'].includes(user.branch)
             ? user.branch
@@ -415,7 +415,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     );
 
     return () => unsubscribe();
-  }, [isOpen, activeTab]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -559,15 +559,15 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const getCategoryName = (cat: QuestionCategory) => {
     switch (cat) {
       case 'historia_angola': return 'História de Angola';
-      case 'organizacao_politica_cra': return 'Organização Política e Administrativa / CRA';
+      case 'organizacao_politica_cra': return 'Organização Política & CRA';
       case 'nocoes_administracao_publica': return 'Noções de Administração Pública';
-      case 'legislacao_minint': return 'Legislação e Funcionamento do MININT';
-      case 'patriotismo_valores_civicos': return 'Patriotismo e Valores Cívicos';
-      case 'direito_constituicao': return 'Organização Política e Administrativa / CRA';
+      case 'legislacao_minint': return 'Legislação Orgânica do MININT';
+      case 'patriotismo_valores_civicos': return 'Patriotismo & Valores Cívicos';
+      case 'direito_constituicao': return 'Organização Política & CRA';
       case 'historia_cultura_geral': return 'História de Angola';
       case 'portugues_raciocinio': return 'Noções de Administração Pública';
       case 'informatica_basica': return 'Noções de Administração Pública';
-      default: return 'Legislação e Funcionamento do MININT';
+      default: return 'Legislação Orgânica do MININT';
     }
   };
 
@@ -713,7 +713,21 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   // Filter questions for display
   const filteredQuestions = questionsList.filter((q) => {
-    if (selectedCategory !== 'todas' && q.category !== selectedCategory) return false;
+    if (selectedCategory !== 'todas') {
+      if (selectedCategory === 'historia_angola') {
+        if (q.category !== 'historia_angola' && q.category !== 'historia_cultura_geral' && (q.category as string) !== 'cultura_geral') return false;
+      } else if (selectedCategory === 'organizacao_politica_cra') {
+        if (q.category !== 'organizacao_politica_cra' && q.category !== 'direito_constituicao') return false;
+      } else if (selectedCategory === 'nocoes_administracao_publica') {
+        if (q.category !== 'nocoes_administracao_publica' && q.category !== 'portugues_raciocinio' && q.category !== 'informatica_basica' && (q.category as string) !== 'lingua_portuguesa' && (q.category as string) !== 'raciocinio_logico') return false;
+      } else if (selectedCategory === 'legislacao_minint') {
+        if (q.category !== 'legislacao_minint' && (q.category as string) !== 'direito_penal') return false;
+      } else if (selectedCategory === 'patriotismo_valores_civicos') {
+        if (q.category !== 'patriotismo_valores_civicos') return false;
+      } else if (q.category !== selectedCategory) {
+        return false;
+      }
+    }
     if (selectedAcademicLevel !== 'todos' && q.academicLevel !== selectedAcademicLevel) return false;
     if (searchQuery.trim()) {
       const qLower = searchQuery.toLowerCase();
@@ -1546,10 +1560,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 font-semibold"
                         >
                           <option value="historia_angola">História de Angola</option>
-                          <option value="organizacao_politica_cra">Organização Política e Adm. / CRA</option>
+                          <option value="organizacao_politica_cra">Organização Política & CRA</option>
                           <option value="nocoes_administracao_publica">Noções de Administração Pública</option>
-                          <option value="legislacao_minint">Legislação e Funcionamento do MININT</option>
-                          <option value="patriotismo_valores_civicos">Patriotismo e Valores Cívicos</option>
+                          <option value="legislacao_minint">Legislação Orgânica do MININT</option>
+                          <option value="patriotismo_valores_civicos">Patriotismo & Valores Cívicos</option>
                         </select>
                       </div>
 
@@ -1609,12 +1623,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-amber-400 focus:outline-none focus:border-amber-500 cursor-pointer"
                   >
                     <option value="todas">Todas as Matérias</option>
-                    <option value="informatica_basica">Informática Básica</option>
-                    <option value="legislacao_minint">Legislação MININT & CRA</option>
-                    <option value="lingua_portuguesa">Língua Portuguesa</option>
-                    <option value="cultura_geral">Cultura Geral & História</option>
-                    <option value="raciocinio_logico">Raciocínio Lógico & Mat.</option>
-                    <option value="direito_penal">Direito Penal & Processual</option>
+                    <option value="historia_angola">História de Angola</option>
+                    <option value="organizacao_politica_cra">Organização Política & CRA</option>
+                    <option value="nocoes_administracao_publica">Noções de Administração Pública</option>
+                    <option value="legislacao_minint">Legislação Orgânica do MININT</option>
+                    <option value="patriotismo_valores_civicos">Patriotismo & Valores Cívicos</option>
                   </select>
                 </div>
 
