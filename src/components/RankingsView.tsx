@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, AcademicLevel, MININTBranch, QuestionCategory, isRealHumanCandidate } from '../types';
 import { MININT_BRANCHES, getAvatarOption, PROVINCES_ANGOLA, normalizeProvinceName } from '../data/branches';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
+import { normalizeUserProfile, subscribeToRankings, subscribeToAllUsers } from '../services/userService';
 import { Trophy, Search, Zap, MapPin, UserCheck, Swords, GraduationCap, Award, Shield, Sparkles, Globe, ChevronDown, CheckCircle2, X, Flame, ArrowUp, ArrowDown, Minus, Users, UserPlus, UserMinus, Copy, Check, HeartHandshake } from 'lucide-react';
 import { UserAvatar } from './UserAvatar';
 import { DuelLeagueView } from './DuelLeagueView';
@@ -85,7 +86,7 @@ export const RankChangeIndicator: React.FC<RankChangeIndicatorProps> = ({
 };
 
 // Academic level helper
-export const getAcademicLevelLabel = (level?: AcademicLevel): string => {
+export const getAcademicLevelLabel = (level?: AcademicLevel | string): string => {
   switch (level) {
     case '9th_grade':
       return '9.ª Classe';
@@ -94,32 +95,15 @@ export const getAcademicLevelLabel = (level?: AcademicLevel): string => {
     case 'higher_education':
       return 'Ensino Superior';
     default:
-      return 'Ensino Médio';
+      return level ? String(level) : 'Não informado';
   }
 };
-
-// Category stats helper for mock candidates
-const defaultStats: Partial<Record<QuestionCategory, { correct: number; total: number }>> = {
-  historia_angola: { correct: 25, total: 30 },
-  organizacao_politica_cra: { correct: 20, total: 25 },
-  nocoes_administracao_publica: { correct: 30, total: 40 },
-  legislacao_minint: { correct: 30, total: 40 },
-  patriotismo_valores_civicos: { correct: 20, total: 25 },
-};
-
-const buildStats = (overrides?: Partial<Record<QuestionCategory, { correct: number; total: number }>>): Partial<Record<QuestionCategory, { correct: number; total: number }>> => ({
-  ...defaultStats,
-  ...(overrides || {}),
-});
-
-// Seed candidates for leaderboard (starts clean for production)
-const MOCK_LEADERBOARD_SEED: UserProfile[] = [];
 
 export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPlayDuel, onUpdateProfile, defaultMode = 'xp' }) => {
   const [activeMode, setActiveMode] = useState<'xp' | 'duels' | 'ligas'>(defaultMode);
   const [scopeFilter, setScopeFilter] = useState<'national' | 'friends' | 'province'>('national');
   const [selectedProvince, setSelectedProvince] = useState<string>(
-    currentProfile.province || 'Luanda'
+    currentProfile.province && currentProfile.province !== 'Não informado' ? currentProfile.province : 'Luanda'
   );
   const [levelFilter, setLevelFilter] = useState<'all' | AcademicLevel>('all');
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
@@ -158,90 +142,59 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
   // Keep selected province in sync if user changes profile province and scope is province
   useEffect(() => {
-    if (currentProfile.province && !selectedProvince) {
+    if (currentProfile.province && currentProfile.province !== 'Não informado' && !selectedProvince) {
       setSelectedProvince(currentProfile.province);
     }
   }, [currentProfile.province]);
 
   useEffect(() => {
-    // Fetch live users from Firestore
-    const q = query(
-      collection(db, 'users'),
-      limit(150)
+    // Consulta direta em tempo real ao Firestore ordenada por XP decrescente
+    const unsubscribe = subscribeToRankings(
+      (users) => {
+        // Strict Map deduplication by uid with human validation
+        const uniqueMap = new Map<string, UserProfile>();
+
+        users.forEach((u) => {
+          if (u && u.uid && isRealHumanCandidate(u)) {
+            uniqueMap.set(u.uid, u);
+          }
+        });
+
+        // Ensure current profile is present and updated if human
+        if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
+          const existing = uniqueMap.get(currentProfile.uid);
+          uniqueMap.set(currentProfile.uid, {
+            ...(existing || {}),
+            ...currentProfile,
+            totalXp: Math.max(existing?.totalXp ?? 0, currentProfile.totalXp ?? 0),
+          });
+        }
+
+        const combined = Array.from(uniqueMap.values());
+        combined.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
+        setLeaderboard(combined);
+      },
+      (error) => {
+        console.error('Erro ao buscar ranking do Firestore:', error);
+        const uniqueMap = new Map<string, UserProfile>();
+        if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
+          uniqueMap.set(currentProfile.uid, currentProfile);
+        }
+        const combined = Array.from(uniqueMap.values());
+        combined.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
+        setLeaderboard(combined);
+      }
     );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const users: UserProfile[] = [];
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const profileCandidate: UserProfile = {
-          ...(data as UserProfile),
-          uid: data.uid || docSnap.id,
-          avatarAccessories: data.avatarAccessories || {
-            frame: data.equippedFrame || 'frame_none',
-            background: data.equippedBackground || 'bg_default',
-            badge: 'badge_none',
-          },
-          equippedFrame: data.equippedFrame || data.avatarAccessories?.frame,
-          equippedBackground: data.equippedBackground || data.avatarAccessories?.background,
-          equippedUniform: data.equippedUniform,
-        };
-
-        // Strictly ignore test, bot, and AI candidate accounts
-        if (isRealHumanCandidate(profileCandidate)) {
-          users.push(profileCandidate);
-        }
-      });
-
-      // Strict Map deduplication by uid with human validation
-      const uniqueMap = new Map<string, UserProfile>();
-
-      users.forEach((u) => {
-        if (u && u.uid && isRealHumanCandidate(u)) {
-          uniqueMap.set(u.uid, u);
-        }
-      });
-
-      // Ensure current profile is present and updated if human
-      if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
-        uniqueMap.set(currentProfile.uid, currentProfile);
-      }
-
-      // Add seed candidates if missing and valid human
-      MOCK_LEADERBOARD_SEED.forEach(seed => {
-        if (seed && seed.uid && isRealHumanCandidate(seed) && !uniqueMap.has(seed.uid)) {
-          uniqueMap.set(seed.uid, seed);
-        }
-      });
-
-      const combined = Array.from(uniqueMap.values());
-      combined.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
-      setLeaderboard(combined);
-    }, (error) => {
-      console.error('Erro ao buscar ranking:', error);
-      const uniqueMap = new Map<string, UserProfile>();
-      if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
-        uniqueMap.set(currentProfile.uid, currentProfile);
-      }
-      MOCK_LEADERBOARD_SEED.forEach(seed => {
-        if (seed && seed.uid && isRealHumanCandidate(seed) && !uniqueMap.has(seed.uid)) {
-          uniqueMap.set(seed.uid, seed);
-        }
-      });
-      const combined = Array.from(uniqueMap.values());
-      combined.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
-      setLeaderboard(combined);
-    });
 
     return () => unsubscribe();
   }, [currentProfile]);
 
   // User's Registered Province
-  const userProvince = currentProfile.province || 'Luanda';
+  const userProvince = currentProfile.province || 'Não informado';
   const normUserProvince = normalizeProvinceName(userProvince);
   const normSelectedProvince = normalizeProvinceName(selectedProvince);
 
-  // Global position of current user (1-indexed)
+  // Global position of current user in the real database (1-indexed)
   const myGlobalRankIndex = leaderboard.findIndex(u => u.uid === currentProfile.uid);
   const myGlobalRank = myGlobalRankIndex !== -1 ? myGlobalRankIndex + 1 : 1;
 
@@ -678,7 +631,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
               </div>
 
               <p className={`w-full truncate whitespace-nowrap text-[10.5px] font-bold text-center ${isMe || rank === 1 ? 'text-amber-300' : 'text-white'}`}>
-                {candidate.displayName || 'Candidato'}
+                {candidate.displayName || 'Não informado'}
               </p>
 
               {isMe ? (
@@ -728,7 +681,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
               )}
 
               <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                📍 {candidate.province || 'Luanda'} • {candidate.branch}
+                📍 {candidate.province || 'Não informado'} • {candidate.branch || 'Não informado'}
               </p>
               <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
                 {candidate.totalXp?.toLocaleString() ?? 0} XP
@@ -992,7 +945,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                         </div>
                         <span className="text-[9px] text-slate-400 font-mono flex items-center justify-end gap-0.5 mt-0.5">
                           <MapPin size={9} className="text-amber-500" />
-                          <span>{candidate.province || 'Luanda'}</span>
+                          <span>{candidate.province || 'Não informado'}</span>
                         </span>
                       </div>
                     </div>
@@ -1217,7 +1170,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                     <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Província</span>
                     <span className="font-black text-slate-100 flex items-center gap-1">
                       <MapPin size={13} className="text-amber-500" />
-                      {selectedCandidate.province || 'Luanda'}
+                      {selectedCandidate.province || 'Não informado'}
                     </span>
                   </div>
 
@@ -1450,7 +1403,7 @@ const PodiumCard: React.FC<{
 
         {/* Candidate Name */}
         <p className={`w-full truncate whitespace-nowrap text-[11px] sm:text-sm font-bold text-center mt-1 ${isMe ? 'text-amber-300' : 'text-slate-100'}`}>
-          {candidate.displayName}
+          {candidate.displayName || 'Não informado'}
         </p>
 
         {candidate.isVipSupporter && (
@@ -1470,7 +1423,7 @@ const PodiumCard: React.FC<{
         {/* Province Tag */}
         <span className="w-full truncate whitespace-nowrap text-[9px] sm:text-xs text-slate-400 text-center flex items-center justify-center gap-0.5 mt-0.5">
           <MapPin size={8} className="shrink-0 text-amber-400/80" />
-          <span className="truncate whitespace-nowrap">{candidate.province || 'Luanda'}</span>
+          <span className="truncate whitespace-nowrap">{candidate.province || 'Não informado'}</span>
         </span>
       </div>
 

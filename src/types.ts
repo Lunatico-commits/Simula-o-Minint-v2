@@ -267,8 +267,7 @@ export function isRealHumanCandidate(candidate?: Partial<UserProfile> | null | a
   }
 
   // 4. DisplayName bot / test indicators
-  const name = String(candidate.displayName || '').trim().toLowerCase();
-  if (!name) return false;
+  const name = String(candidate.displayName || candidate.nome || candidate.name || '').trim().toLowerCase();
   if (
     name.includes('[bot]') ||
     name.includes('[ia]') ||

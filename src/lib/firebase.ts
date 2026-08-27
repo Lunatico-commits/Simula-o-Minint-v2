@@ -15,6 +15,7 @@ import {
   onAuthStateChanged, 
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   User 
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -187,6 +188,35 @@ export async function loginWithFirebaseAuth(emailOrPhone: string, password: stri
       throw new Error('Conta não encontrada com este E-mail ou Telemóvel.');
     }
     return null;
+  }
+}
+
+/**
+ * Sends a password reset email to the candidate using Firebase Auth
+ */
+export async function sendPasswordReset(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('Por favor introduza um endereço de e-mail válido.');
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, cleanEmail);
+  } catch (error: any) {
+    console.warn('Firebase Auth sendPasswordResetEmail error:', error?.code || error?.message);
+    if (error?.code === 'auth/user-not-found') {
+      throw new Error('Não foi encontrada nenhuma conta associada a este e-mail.');
+    }
+    if (error?.code === 'auth/invalid-email') {
+      throw new Error('O endereço de e-mail introduzido é inválido.');
+    }
+    if (error?.code === 'auth/too-many-requests') {
+      throw new Error('Demasiadas tentativas. Por favor aguarde alguns minutos antes de tentar novamente.');
+    }
+    if (error?.code === 'auth/network-request-failed') {
+      throw new Error('Falha na ligação à internet. Verifique a sua conexão e tente novamente.');
+    }
+    throw new Error(error?.message || 'Erro ao enviar o e-mail de recuperação. Tente novamente.');
   }
 }
 

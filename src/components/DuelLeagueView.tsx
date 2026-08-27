@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile, AcademicLevel, MININTBranch, isRealHumanCandidate } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { db } from '../lib/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { subscribeToAllUsers } from '../services/userService';
 import {
   DuelLeague,
   LEAGUES_CONFIG,
@@ -95,37 +95,23 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
 
   // Fetch live candidates from Firestore
   useEffect(() => {
-    const q = query(collection(db, 'users'), limit(150));
+    const unsubscribe = subscribeToAllUsers((allUsers) => {
+      const realHumans = allUsers.filter(isRealHumanCandidate);
+      const usersMap = new Map<string, UserProfile>();
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const usersMap = new Map<string, UserProfile>();
-
-        snapshot.forEach((docSnap) => {
-          const u = docSnap.data() as UserProfile;
-          if (u && u.uid && isRealHumanCandidate(u)) {
-            usersMap.set(u.uid, u);
-          }
-        });
-
-        // Always ensure current profile exists in list if real human
-        if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
-          usersMap.set(currentProfile.uid, currentProfile);
+      realHumans.forEach((u) => {
+        if (u && u.uid) {
+          usersMap.set(u.uid, u);
         }
+      });
 
-        const all = Array.from(usersMap.values());
-        setCandidates(all);
-      },
-      (error) => {
-        console.error('Erro ao carregar liga de duelos:', error);
-        if (currentProfile && isRealHumanCandidate(currentProfile)) {
-          setCandidates([currentProfile]);
-        } else {
-          setCandidates([]);
-        }
+      // Always ensure current profile exists in list if real human
+      if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
+        usersMap.set(currentProfile.uid, currentProfile);
       }
-    );
+
+      setCandidates(Array.from(usersMap.values()));
+    });
 
     return () => unsubscribe();
   }, [currentProfile]);
@@ -722,7 +708,7 @@ export const DuelLeagueView: React.FC<DuelLeagueViewProps> = ({ currentProfile, 
                         <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium truncate mt-0.5">
                           <span className="text-amber-400/90 font-bold">{candidateBranch.id}</span>
                           <span>•</span>
-                          <span>📍 {candidate.province || 'Angola'}</span>
+                          <span>📍 {candidate.province || 'Não informado'}</span>
                         </div>
                       </div>
                     </div>

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Question, QuestionCategory, AcademicLevel, isAdminUser, MININTBranch, Testimonial } from '../types';
+import { UserProfile, Question, QuestionCategory, AcademicLevel, isAdminUser, MININTBranch, Testimonial, isRealHumanCandidate } from '../types';
 import { QUESTION_BANK } from '../data/questions';
 import { PROVINCES_ANGOLA, normalizeProvinceName } from '../data/branches';
 import { db } from '../lib/firebase';
 import { validateAdScript, syncAdSenseToHead } from '../lib/adSanitizer';
 import { collection, getDocs, getCountFromServer, doc, updateDoc, setDoc, deleteDoc, addDoc, query, orderBy, limit } from 'firebase/firestore';
+import { fetchAllUsers, getTotalUsersRealCount, normalizeUserProfile, subscribeToAllUsers } from '../services/userService';
 import { 
-  ShieldCheck, X, Megaphone, BarChart3, BookOpen, Code, Key, Plus, Check, Trash2, Search, Users, Sparkles, Lock, KeyRound, RefreshCw, Edit3, Save, AlertCircle, FileText, MessageSquare, CheckCircle2, Clock, Star, ThumbsUp, LogOut, Award, MapPin
+  ShieldCheck, X, Megaphone, BarChart3, BookOpen, Code, Key, Plus, Check, Trash2, Search, Users, Sparkles, Lock, KeyRound, RefreshCw, Edit3, Save, AlertCircle, FileText, MessageSquare, CheckCircle2, Clock, Star, ThumbsUp, LogOut, Award, MapPin, UserCheck, Filter
 } from 'lucide-react';
 
 interface AdminPanelModalProps {
@@ -71,6 +72,9 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     levelBreakdown: { '9th_grade': 0, 'high_school': 0, 'higher_education': 0 },
     provinceBreakdown: {},
   });
+  const [candidatesList, setCandidatesList] = useState<UserProfile[]>([]);
+  const [candidateSearchQuery, setCandidateSearchQuery] = useState('');
+  const [candidateBranchFilter, setCandidateBranchFilter] = useState<'ALL' | MININTBranch>('ALL');
   const [provinceSearch, setProvinceSearch] = useState('');
   const [loadingStats, setLoadingStats] = useState(false);
   const [rankingResetSuccess, setRankingResetSuccess] = useState(false);
@@ -315,40 +319,27 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setShowTestimonialForm(true);
   };
 
-  // Fetch Firestore Candidate Stats, Certificate Counts & Province Breakdown
+  // Fetch and Subscribe in Real-Time to Firestore Candidate Stats, Certificate Counts & Province Breakdown
   useEffect(() => {
     if (!isOpen || activeTab !== 'stats') return;
 
-    const fetchStats = async () => {
-      setLoadingStats(true);
-      try {
-        const usersColl = collection(db, 'users');
-        const certsColl = collection(db, 'certificates');
+    setLoadingStats(true);
+    let totalCertificatesCount = 0;
 
-        let totalUsersCount = 0;
-        let totalCertificatesCount = 0;
+    const certsColl = collection(db, 'certificates');
+    getCountFromServer(certsColl)
+      .then((snap) => {
+        totalCertificatesCount = snap.data().count;
+      })
+      .catch((err) => {
+        console.warn('Erro ao obter contagem agregada de certificados:', err);
+      });
 
-        // 1. Utilize consultas agregadas do Firestore (count())
-        try {
-          const usersCountSnap = await getCountFromServer(usersColl);
-          totalUsersCount = usersCountSnap.data().count;
-        } catch (err) {
-          console.warn('Erro ao obter contagem agregada de utilizadores:', err);
-        }
-
-        try {
-          const certsCountSnap = await getCountFromServer(certsColl);
-          totalCertificatesCount = certsCountSnap.data().count;
-        } catch (err) {
-          console.warn('Erro ao obter contagem agregada de certificados:', err);
-        }
-
-        // 2. Procurar documentos de utilizador para agrupamento de províncias
-        const querySnapshot = await getDocs(usersColl);
-
-        if (totalUsersCount === 0 && querySnapshot.size > 0) {
-          totalUsersCount = querySnapshot.size;
-        }
+    const unsubscribe = subscribeToAllUsers(
+      (allUsers) => {
+        // Filtrar apenas candidatos humanos reais (remover bots, IA e testes)
+        const realUsers = allUsers.filter(isRealHumanCandidate);
+        setCandidatesList(realUsers);
 
         let totalXp = 0;
         let totalDuels = 0;
@@ -356,79 +347,74 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         const branchCount: Record<string, number> = { PNA: 0, SIC: 0, SME: 0, SP: 0, SPCB: 0 };
         const levelCount: Record<string, number> = { '9th_grade': 0, 'high_school': 0, 'higher_education': 0 };
 
-        // Inicializar mapa de províncias para todas as 21 províncias de Angola
+        // Inicializar mapa de províncias para todas as 21 províncias de Angola + Não informado
         const provinceCount: Record<string, number> = {};
         PROVINCES_ANGOLA.forEach((p) => {
           provinceCount[p] = 0;
         });
+        provinceCount['Não informado'] = 0;
 
-        querySnapshot.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          totalXp += data.totalXp || 0;
-          totalDuels += data.duelsPlayed || 0;
-          totalQuizzes += data.quizzesCompleted || 0;
+        realUsers.forEach((user) => {
+          totalXp += user.totalXp || 0;
+          totalDuels += user.duelsPlayed || 0;
+          totalQuizzes += user.quizzesCompleted || 0;
 
-          if (data.branch && branchCount[data.branch] !== undefined) {
-            branchCount[data.branch]++;
-          }
-          const level = data.academicLevel || 'high_school';
-          if (levelCount[level] !== undefined) {
-            levelCount[level]++;
-          }
+          const branch = user.branch && ['PNA', 'SIC', 'SME', 'SP', 'SPCB'].includes(user.branch)
+            ? user.branch
+            : 'Não informado';
+          branchCount[branch] = (branchCount[branch] || 0) + 1;
 
-          // Agrupar pelo campo provincia / province
-          const rawProvince = data.provincia || data.province || 'Não Especificada';
+          const level = user.academicLevel || 'Não informado';
+          levelCount[level] = (levelCount[level] || 0) + 1;
+
+          const rawProvince = user.province || 'Não informado';
           const matchedProvince = PROVINCES_ANGOLA.find(
-            p => normalizeProvinceName(p) === normalizeProvinceName(rawProvince)
+            (p) => normalizeProvinceName(p) === normalizeProvinceName(rawProvince)
           );
 
           if (matchedProvince) {
             provinceCount[matchedProvince] = (provinceCount[matchedProvince] || 0) + 1;
           } else {
-            const key = rawProvince.trim() || 'Não Especificada';
+            const key = rawProvince.trim() || 'Não informado';
             provinceCount[key] = (provinceCount[key] || 0) + 1;
           }
         });
 
-        const quizzesTodayCount = Math.max(14, Math.floor(totalQuizzes * 0.18) + 12);
-
         setCandidateStats({
-          totalCandidates: totalUsersCount || querySnapshot.size || 28,
+          totalCandidates: realUsers.length,
           totalCertificates: totalCertificatesCount,
-          totalXp: totalXp || 145000,
-          totalDuels: totalDuels || 84,
-          quizzesToday: quizzesTodayCount,
+          totalXp: totalXp,
+          totalDuels: totalDuels,
+          quizzesToday: totalQuizzes,
           branchBreakdown: branchCount,
           levelBreakdown: levelCount,
           provinceBreakdown: provinceCount,
         });
-      } catch (e) {
-        console.error('Erro ao carregar estatísticas:', e);
-        // Fallback para modo offline/local
-        const fallbackProvinces: Record<string, number> = {};
-        PROVINCES_ANGOLA.forEach((p, idx) => {
-          fallbackProvinces[p] = (idx * 3 + 2) % 15;
+        setLoadingStats(false);
+      },
+      (e) => {
+        console.error('Erro ao subscrever estatísticas de utilizadores:', e);
+        const zeroProvinces: Record<string, number> = {};
+        PROVINCES_ANGOLA.forEach((p) => {
+          zeroProvinces[p] = 0;
         });
-        fallbackProvinces['Luanda'] = 18;
-        fallbackProvinces['Huambo'] = 7;
-        fallbackProvinces['Benguela'] = 9;
+        zeroProvinces['Não informado'] = 0;
 
         setCandidateStats({
-          totalCandidates: 42,
-          totalCertificates: 12,
-          totalXp: 184500,
-          totalDuels: 112,
-          quizzesToday: 38,
-          branchBreakdown: { PNA: 18, SIC: 10, SME: 7, SP: 4, SPCB: 3 },
-          levelBreakdown: { '9th_grade': 12, 'high_school': 20, 'higher_education': 10 },
-          provinceBreakdown: fallbackProvinces,
+          totalCandidates: 0,
+          totalCertificates: 0,
+          totalXp: 0,
+          totalDuels: 0,
+          quizzesToday: 0,
+          branchBreakdown: { PNA: 0, SIC: 0, SME: 0, SP: 0, SPCB: 0, 'Não informado': 0 },
+          levelBreakdown: { '9th_grade': 0, 'high_school': 0, 'higher_education': 0, 'Não informado': 0 },
+          provinceBreakdown: zeroProvinces,
         });
-      } finally {
         setLoadingStats(false);
       }
-    };
+    );
 
-    fetchStats();
+    return () => unsubscribe();
   }, [isOpen, activeTab]);
 
   if (!isOpen) return null;
@@ -1305,6 +1291,132 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             <span className="text-slate-300 text-[11px] font-bold">{count}</span>
                           </div>
                         ))}
+                      </div>
+                    </div>
+
+                    {/* 3.1. Listagem Real de Candidatos / Utilizadores Cadastrados */}
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Users size={14} />
+                            <span>Utilizadores e Candidatos Reais ({candidatesList.length})</span>
+                          </h4>
+                          <p className="text-[11px] text-slate-400">
+                            Listagem direta da coleção Firestore sem filtros restritivos (compatível com contas antigas).
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="relative">
+                            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                            <input
+                              type="text"
+                              value={candidateSearchQuery}
+                              onChange={(e) => setCandidateSearchQuery(e.target.value)}
+                              placeholder="Pesquisar utilizador..."
+                              className="pl-7 pr-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 w-36 sm:w-44"
+                            />
+                          </div>
+                          <select
+                            value={candidateBranchFilter}
+                            onChange={(e) => setCandidateBranchFilter(e.target.value as any)}
+                            className="px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500/50 cursor-pointer"
+                          >
+                            <option value="ALL">Todos os Ramos</option>
+                            <option value="PNA">PNA</option>
+                            <option value="SIC">SIC</option>
+                            <option value="SME">SME</option>
+                            <option value="SP">SP</option>
+                            <option value="SPCB">SPCB</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Tabela de Utilizadores */}
+                      <div className="overflow-x-auto max-h-64 overflow-y-auto rounded-xl border border-slate-800/80 bg-slate-900/60 custom-scrollbar">
+                        <table className="w-full text-left text-xs">
+                          <thead className="sticky top-0 bg-slate-900 border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <tr>
+                              <th className="py-2 px-3">Candidato</th>
+                              <th className="py-2 px-2.5">Ramo</th>
+                              <th className="py-2 px-2.5">Província</th>
+                              <th className="py-2 px-2.5">Nível</th>
+                              <th className="py-2 px-2.5 text-right">XP</th>
+                              <th className="py-2 px-2.5 text-center">Papel</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 font-medium">
+                            {candidatesList
+                              .filter((c) => {
+                                const matchesBranch = candidateBranchFilter === 'ALL' || c.branch === candidateBranchFilter;
+                                const q = candidateSearchQuery.toLowerCase().trim();
+                                const matchesSearch =
+                                  !q ||
+                                  (c.displayName || '').toLowerCase().includes(q) ||
+                                  (c.emailOrPhone || '').toLowerCase().includes(q) ||
+                                  (c.province || '').toLowerCase().includes(q) ||
+                                  (c.rankTitle || '').toLowerCase().includes(q);
+                                return matchesBranch && matchesSearch;
+                              })
+                              .map((candidate, idx) => (
+                                <tr key={candidate.uid || idx} className="hover:bg-slate-800/40 transition-colors">
+                                  <td className="py-2 px-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-amber-400 shrink-0">
+                                        {(candidate.displayName || '?').charAt(0).toUpperCase()}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="font-bold text-slate-200 truncate max-w-[140px] sm:max-w-[180px]">
+                                          {candidate.displayName || 'Não informado'}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 truncate max-w-[140px]">
+                                          {candidate.emailOrPhone || candidate.uid.slice(0, 10) + '...'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-2 px-2.5">
+                                    <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-[10px] font-bold text-amber-400 font-mono">
+                                      {candidate.branch || 'Não informado'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-2.5 text-slate-300 text-[11px] truncate max-w-[110px]">
+                                    {candidate.province || 'Não informado'}
+                                  </td>
+                                  <td className="py-2 px-2.5 text-slate-400 text-[10px]">
+                                    {candidate.academicLevel === 'higher_education'
+                                      ? 'Superior'
+                                      : candidate.academicLevel === '9th_grade'
+                                      ? '9.ª Classe'
+                                      : candidate.academicLevel === 'high_school'
+                                      ? 'Médio'
+                                      : 'Não informado'}
+                                  </td>
+                                  <td className="py-2 px-2.5 text-right font-mono font-bold text-amber-400 text-[11px]">
+                                    {(candidate.totalXp || 0).toLocaleString()}
+                                  </td>
+                                  <td className="py-2 px-2.5 text-center">
+                                    {candidate.role === 'admin' ? (
+                                      <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[9px] font-bold uppercase border border-rose-500/40">
+                                        ADM
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[9px]">
+                                        Candidato
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            {candidatesList.length === 0 && (
+                              <tr>
+                                <td colSpan={6} className="py-6 text-center text-slate-500 text-xs">
+                                  Nenhum utilizador encontrado no momento.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
 

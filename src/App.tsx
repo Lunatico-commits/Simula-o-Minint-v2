@@ -14,6 +14,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { NotificationBanner } from './components/NotificationBanner';
+import { SystemUpdateBanner } from './components/SystemUpdateBanner';
 import { listenForDuelInvitations, listenForUserNotifications, checkAndTriggerDailyStudyReminder } from './utils/notifications';
 import { SupportProjectModal } from './components/SupportProjectModal';
 import { StudyMaterialsView } from './components/StudyMaterialsView';
@@ -878,37 +879,52 @@ export default function App() {
   // Strict Authentication Guard: If not authenticated, render ONLY the AuthModal screen
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 relative overflow-hidden select-none font-sans">
-        {/* Background ambient light */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <AuthModal
-          isOpen={true}
-          allowClose={false}
-          currentProfile={profile}
-          initialView={authModalInitialView}
-          onSelectAccount={handleSelectAccount}
-          onCreateAccount={handleCreateAccount}
-          onRemoveSavedAccount={handleRemoveSavedAccount}
-          onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden select-none font-sans">
+        {/* Top System Update Notification Banner for all visitors */}
+        <SystemUpdateBanner
+          onOpenCreateAccount={() => setAuthModalInitialView('create_account')}
         />
 
-        {/* Admin Panel Modal if triggered from discrete shield tap in AuthModal */}
-        {isAdminPanelOpen && (
-          <AdminPanelModal
-            isOpen={isAdminPanelOpen}
-            onClose={() => setIsAdminPanelOpen(false)}
+        <div className="flex-1 flex items-center justify-center p-4 relative">
+          {/* Background ambient light */}
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-1/4 left-1/2 -translate-x-1/2 translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <AuthModal
+            isOpen={true}
+            allowClose={false}
             currentProfile={profile}
-            onUpdateProfile={(updated) => setProfile(updated)}
+            initialView={authModalInitialView}
+            onSelectAccount={handleSelectAccount}
+            onCreateAccount={handleCreateAccount}
+            onRemoveSavedAccount={handleRemoveSavedAccount}
+            onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
           />
-        )}
+
+          {/* Admin Panel Modal if triggered from discrete shield tap in AuthModal */}
+          {isAdminPanelOpen && (
+            <AdminPanelModal
+              isOpen={isAdminPanelOpen}
+              onClose={() => setIsAdminPanelOpen(false)}
+              currentProfile={profile}
+              onUpdateProfile={(updated) => setProfile(updated)}
+            />
+          )}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-white font-sans flex flex-col selection:bg-amber-500 selection:text-slate-950">
+      {/* Top System Update Notification Banner */}
+      <SystemUpdateBanner
+        onOpenCreateAccount={() => {
+          setAuthModalInitialView('create_account');
+          setIsAuthModalOpen(true);
+        }}
+      />
+
       {/* Active Push Notification Toast Banner */}
       <NotificationBanner
         notification={activeNotification}

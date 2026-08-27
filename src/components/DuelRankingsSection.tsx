@@ -404,7 +404,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                       </span>
                     )}
                     <p className="w-full truncate whitespace-nowrap text-[8.5px] text-slate-400 text-center mt-0.5">
-                      📍 {candidate.province || 'Luanda'} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vits
+                      📍 {candidate.province || 'Não informado'} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {candidate.weeklyDuelPoints || 0} Pts
@@ -451,7 +451,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     )}
 
                     <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                      📍 {top2.province || 'Luanda'} • {top2.multiplayerDuelsWon ?? top2.duelsWon ?? 0} Vits
+                      📍 {top2.province || 'Não informado'} • {top2.multiplayerDuelsWon ?? top2.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {top2.weeklyDuelPoints || 0} Pts
@@ -496,7 +496,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     )}
 
                     <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-300 text-center mt-0.5">
-                      📍 {top1.province || 'Luanda'} • {top1.multiplayerDuelsWon ?? top1.duelsWon ?? 0} Vits
+                      📍 {top1.province || 'Não informado'} • {top1.multiplayerDuelsWon ?? top1.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {top1.weeklyDuelPoints || 0} Pts
@@ -541,7 +541,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     )}
 
                     <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                      📍 {top3.province || 'Luanda'} • {top3.multiplayerDuelsWon ?? top3.duelsWon ?? 0} Vits
+                      📍 {top3.province || 'Não informado'} • {top3.multiplayerDuelsWon ?? top3.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {top3.weeklyDuelPoints || 0} Pts

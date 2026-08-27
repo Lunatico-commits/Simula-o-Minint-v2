@@ -4,7 +4,7 @@ import { MININT_BRANCHES, PROVINCES_ANGOLA, AVATAR_OPTIONS, RANKS_MININT, getAva
 import { BASE_AVATARS, getAvatarById, getAvatarAssetPath, getAvatarImagePath, getUserGender } from '../data/avatars';
 import { generateReferralCode, processReferralReward } from '../utils/referral';
 import { getCurrentISOWeek } from '../utils/league';
-import { registerWithFirebaseAuth, loginWithFirebaseAuth, db } from '../lib/firebase';
+import { registerWithFirebaseAuth, loginWithFirebaseAuth, sendPasswordReset, db } from '../lib/firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { TacticalAvatarIllustration } from './TacticalAvatarIllustration';
 import { AvatarImage } from './AvatarImage';
@@ -25,7 +25,12 @@ import {
   Lock, 
   Mail, 
   Phone,
-  Key
+  Key,
+  KeyRound,
+  CheckCircle2,
+  AlertCircle,
+  ArrowLeft,
+  Send
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -33,7 +38,7 @@ interface AuthModalProps {
   onClose?: () => void;
   allowClose?: boolean;
   currentProfile: UserProfile;
-  initialView?: 'saved_accounts' | 'create_account' | 'login_existing' | 'admin_login';
+  initialView?: 'saved_accounts' | 'create_account' | 'login_existing' | 'admin_login' | 'reset_password';
   onSelectAccount: (account: SavedAccount) => void;
   onCreateAccount: (newProfile: UserProfile, referralCodeInput?: string) => Promise<void>;
   onRemoveSavedAccount: (uid: string) => void;
@@ -51,7 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onRemoveSavedAccount,
   onOpenAdminPanel,
 }) => {
-  const [view, setView] = useState<'saved_accounts' | 'create_account' | 'login_existing' | 'admin_login'>(initialView);
+  const [view, setView] = useState<'saved_accounts' | 'create_account' | 'login_existing' | 'admin_login' | 'reset_password'>(initialView);
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   
   // Registration Form State
@@ -69,6 +74,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loginEmailOrPhone, setLoginEmailOrPhone] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+  // Password Reset State
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetFeedbackMsg, setResetFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Discrete Admin Trigger State
   const [shieldClicks, setShieldClicks] = useState(0);
@@ -276,6 +286,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  // Handle Password Reset Request (Firebase Auth native sendPasswordResetEmail)
+  const handlePasswordResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = resetEmail.trim().toLowerCase();
+
+    if (!cleanEmail) {
+      setResetFeedbackMsg({ 
+        type: 'error', 
+        text: 'Por favor, introduza o seu endereço de e-mail registado.' 
+      });
+      return;
+    }
+
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setResetFeedbackMsg({ 
+        type: 'error', 
+        text: 'Por favor, introduza um formato de e-mail válido (ex: candidato@gmail.com).' 
+      });
+      return;
+    }
+
+    setIsResetting(true);
+    setResetFeedbackMsg(null);
+
+    try {
+      await sendPasswordReset(cleanEmail);
+      setResetFeedbackMsg({
+        type: 'success',
+        text: 'Enviámos um e-mail de redefinição! Verifique a sua caixa de entrada ou pasta de Spam.'
+      });
+    } catch (err: any) {
+      console.warn('Erro ao solicitar recuperação de palavra-passe:', err);
+      setResetFeedbackMsg({
+        type: 'error',
+        text: err?.message || 'Não foi possível enviar o e-mail de redefinição. Verifique o endereço e tente novamente.'
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   // Handle Login Existing Account Submit
   const handleLoginExistingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -411,12 +462,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             {view === 'create_account' && 'Registo de Candidato'}
             {view === 'login_existing' && 'Login na Conta'}
             {view === 'admin_login' && 'Área Técnica (Administrador)'}
+            {view === 'reset_password' && 'Recuperar Palavra-Passe'}
           </h2>
           <p className="text-xs text-slate-600 dark:text-slate-400">
             {view === 'saved_accounts' && 'Selecione uma conta salva ou escolha uma opção abaixo'}
             {view === 'create_account' && 'Preencha todos os campos obrigatórios para criar a sua conta'}
             {view === 'login_existing' && 'Introduza o seu E-mail ou Telemóvel e Palavra-Passe'}
             {view === 'admin_login' && 'Insira o PIN Mestre de Administrador para aceder ao Servidor'}
+            {view === 'reset_password' && 'Introduza o seu e-mail para receber as instruções de recuperação'}
           </p>
         </div>
 
@@ -783,6 +836,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+
+              {/* Link / Botão Esqueceu a palavra-passe */}
+              <div className="flex justify-end mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (loginEmailOrPhone.includes('@')) {
+                      setResetEmail(loginEmailOrPhone.trim());
+                    }
+                    setResetFeedbackMsg(null);
+                    setFeedbackMsg(null);
+                    setView('reset_password');
+                  }}
+                  className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-500 hover:underline transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <KeyRound size={12} className="shrink-0" />
+                  <span>Esqueceu a palavra-passe?</span>
+                </button>
+              </div>
             </div>
 
             <div className="pt-2 flex items-center gap-2">
@@ -803,6 +875,106 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </button>
             </div>
           </form>
+        )}
+
+        {/* VIEW 4: RESET PASSWORD (RECUPERAÇÃO DE PALAVRA-PASSE COM FIREBASE AUTH) */}
+        {view === 'reset_password' && (
+          <div className="space-y-4">
+            {/* Feedback Message */}
+            {resetFeedbackMsg && (
+              <div className={`p-3.5 rounded-xl text-xs font-medium border flex items-start gap-2.5 ${
+                resetFeedbackMsg.type === 'error'
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+              }`}>
+                {resetFeedbackMsg.type === 'error' ? (
+                  <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                ) : (
+                  <CheckCircle2 size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1">
+                  <p className="font-semibold leading-relaxed">{resetFeedbackMsg.text}</p>
+                  {resetFeedbackMsg.type === 'success' && (
+                    <p className="text-[11px] text-emerald-600/90 dark:text-emerald-400/90">
+                      Abra a sua caixa de correio, siga as instruções para definir a nova palavra-passe e retorne para iniciar sessão.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {resetFeedbackMsg?.type === 'success' ? (
+              <div className="space-y-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setView('login_existing');
+                    setResetFeedbackMsg(null);
+                  }}
+                  className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer uppercase tracking-wider"
+                >
+                  <LogIn size={16} />
+                  <span>Voltar ao Login</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetFeedbackMsg(null);
+                  }}
+                  className="w-full py-2 text-center text-[11px] text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+                >
+                  Não recebeu o e-mail? Tentar novamente
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handlePasswordResetSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-[11px] uppercase tracking-[0.15em] text-slate-600 dark:text-slate-400 font-bold mb-1">
+                    E-mail do Candidato *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      autoFocus
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="Ex: pedro@gmail.com"
+                      className="w-full bg-slate-50 dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-xl pl-9 pr-3.5 py-2.5 text-xs font-medium text-slate-900 dark:text-slate-100 focus:outline-none focus:border-amber-500 transition-colors shadow-sm"
+                    />
+                    <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                    Será enviado um link oficial de redefinição de palavra-passe pelo Firebase.
+                  </p>
+                </div>
+
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setView('login_existing');
+                      setResetFeedbackMsg(null);
+                    }}
+                    className="flex-1 py-3 text-xs font-semibold rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer uppercase tracking-wider flex items-center justify-center gap-1.5"
+                  >
+                    <ArrowLeft size={14} />
+                    <span>Voltar</span>
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={isResetting}
+                    className="flex-1 py-3 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider disabled:opacity-50"
+                  >
+                    <Send size={14} />
+                    <span>{isResetting ? 'A Enviar...' : 'Enviar Link'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
         )}
 
         {/* VIEW 4: SECRET ADMIN MASTER PIN LOGIN */}

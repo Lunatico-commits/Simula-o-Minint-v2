@@ -65,7 +65,7 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
   const resolvedAvatarId = avatarId || user?.avatarId || user?.avatar || (user?.photoURL ? undefined : 'pna_1');
   const resolvedGender = gender || user?.gender || getUserGender(user || resolvedAvatarId);
   const resolvedBranch = (branch || user?.branch || 'PNA') as MININTBranch;
-  const resolvedDisplayName = displayName || user?.displayName || user?.name || 'Candidato';
+  const resolvedDisplayName = displayName || user?.displayName || user?.name || (user?.email ? user.email.split('@')[0] : '') || 'Não informado';
   const resolvedPhotoURL = photoURL || user?.photoURL || (typeof user?.avatar === 'string' && user.avatar.startsWith('http') ? user.avatar : undefined);
   
   // Resolve accessories object
