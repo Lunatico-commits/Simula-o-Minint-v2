@@ -1443,16 +1443,18 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   };
 
-  // Join Room by Code with Pre-Join Online Host Validation and 'matched' status update
+  // Join Room by Code with Pre-Join Online Host Validation, 6s timeout, and 'matched' status update
   const handleJoinRoomByCode = async (targetCode?: string) => {
     const rawInput = targetCode || roomCodeInput;
     if (!rawInput || !rawInput.trim()) {
-      setErrorMessage('Introduza um código de sala válido (Ex: MNT-8421).');
+      const msg = 'Introduza o código da sala de duelo (Ex: MNT-8421).';
+      setErrorMessage(msg);
+      showToast(msg, true);
       return;
     }
 
-    // 1. Remova qualquer prefixo como "invite_" da consulta
-    const sanitizedInput = rawInput.trim().replace(/^invite_/i, '');
+    // 1. Remova qualquer prefixo como "invite_" ou "sala:" da consulta
+    const sanitizedInput = rawInput.trim().replace(/^(invite_|sala:|code:|duel:)/i, '');
     // 2. Trate o texto digitado aplicando: const cleanCode = input.trim().toUpperCase().replace(/\s+/g, '')
     const cleanCode = sanitizedInput.trim().toUpperCase().replace(/\s+/g, '');
     const normalizedCode = normalizeRoomCode(cleanCode);
@@ -1460,12 +1462,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setIsJoining(true);
     setLoading(true);
     setErrorMessage('');
+
     try {
-      // 3. Call centralized joinRoom service: updates DB with status: "matched" and adds 2nd player data
-      const result = await joinRoom(cleanCode, profile);
+      // 3. Call centralized joinRoom service with strict 6s timeout: updates DB with status: "matched" and adds 2nd player data
+      const result = await joinRoom(cleanCode, profile, 6000);
 
       if (!result.success || !result.room) {
-        const unavailableMsg = result.errorMessage || 'Esta sala já não está disponível';
+        const unavailableMsg = result.errorMessage || 'Não foi possível conectar à sala';
+        alert(unavailableMsg);
         setErrorMessage(unavailableMsg);
         showToast(unavailableMsg, true);
         setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== cleanCode && r.roomCode !== cleanCode && r.roomCode !== normalizedCode));
@@ -1476,9 +1480,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setCurrentRoom(updatedRoom);
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== updatedRoom.id && r.roomCode !== updatedRoom.roomCode));
       setViewState('room');
+      showToast('⚡ Conectado ao Duelo! A iniciar partida...', false);
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
-      const unavailableMsg = error?.message || 'Falha ao conectar à sala de duelo.';
+      const unavailableMsg = 'Não foi possível conectar à sala';
+      alert(unavailableMsg);
       setErrorMessage(unavailableMsg);
       showToast(unavailableMsg, true);
     } finally {
@@ -2255,10 +2261,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <button
                 onClick={() => handleJoinRoomByCode()}
                 disabled={isJoining || isCreating || loading}
-                className="px-5 py-2.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border border-slate-300 dark:border-white/10 text-slate-900 dark:text-slate-200 font-bold text-xs shrink-0 cursor-pointer uppercase tracking-wider flex items-center gap-1.5"
+                className="px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 cursor-pointer uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isJoining && <Loader2 size={13} className="animate-spin text-amber-500" />}
-                <span>{isJoining ? 'A Entrar...' : 'Entrar'}</span>
+                {isJoining && <Loader2 size={13} className="animate-spin text-slate-950" />}
+                <span>{isJoining ? 'A ENTRAR...' : 'ENTRAR'}</span>
               </button>
             </div>
           </div>

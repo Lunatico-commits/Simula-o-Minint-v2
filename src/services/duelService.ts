@@ -11,7 +11,12 @@ import {
   getDoc, 
   setDoc, 
   deleteDoc, 
-  updateDoc 
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  limit
 } from 'firebase/firestore';
 import { db, rtdb } from '../lib/firebase';
 import { DuelRoom, DuelPlayer } from '../types';
@@ -122,9 +127,12 @@ export async function validateRoomAndHostAvailability(
     let roomData: DuelRoom | null = null;
     let roomDocId: string | null = null;
 
-    // 1. Check RTDB first for instant, real-time live status
+    // 1. Check RTDB first for instant, real-time live status ('duels/{code}' or 'rooms/{code}')
     try {
-      const rtdbSnapshot = await rtdbGet(rtdbRef(rtdb, `duels/${cleanCode}`));
+      let rtdbSnapshot = await rtdbGet(rtdbRef(rtdb, `duels/${cleanCode}`));
+      if (!rtdbSnapshot.exists()) {
+        rtdbSnapshot = await rtdbGet(rtdbRef(rtdb, `rooms/${cleanCode}`));
+      }
       if (rtdbSnapshot.exists()) {
         roomData = rtdbSnapshot.val() as DuelRoom;
         roomDocId = cleanCode;
@@ -140,6 +148,19 @@ export async function validateRoomAndHostAvailability(
         if (firestoreSnap.exists()) {
           roomData = firestoreSnap.data() as DuelRoom;
           roomDocId = firestoreSnap.id;
+        } else {
+          // Check query by roomCode or code field
+          const q = query(
+            collection(db, 'duels'),
+            where('roomCode', '==', cleanCode),
+            limit(1)
+          );
+          const qSnap = await getDocs(q);
+          if (!qSnap.empty) {
+            const firstDoc = qSnap.docs[0];
+            roomData = firstDoc.data() as DuelRoom;
+            roomDocId = firstDoc.id;
+          }
         }
       } catch (e) {
         console.warn('[duelService] Falha ao ler Firestore:', e);
@@ -171,7 +192,7 @@ export async function validateRoomAndHostAvailability(
       return { isValid: false, errorMessage: UNAVAILABLE_MSG };
     }
 
-    // If room already has a player 2
+    // If room already has another player 2
     if (roomData.player2 && roomData.player2.uid && roomData.player2.uid !== joiningUserUid) {
       return { isValid: false, errorMessage: UNAVAILABLE_MSG };
     }
@@ -235,8 +256,9 @@ export async function validateRoomAndHostAvailability(
 export async function cleanupGhostRoom(roomId: string) {
   if (!roomId) return;
   try {
-    // 1. RTDB immediate removal
+    // 1. RTDB immediate removal from both paths
     rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
+    rtdbRemove(rtdbRef(rtdb, `rooms/${roomId}`)).catch(() => {});
 
     // 2. Firestore immediate deletion
     const roomDoc = doc(db, 'duels', roomId);
@@ -287,111 +309,158 @@ export function filterValidLobbyRooms(rooms: DuelRoom[]): DuelRoom[] {
 
 /**
  * Joins an existing duel room:
- * 1. Validates the room existence and host online availability.
- * 2. Prepares player2 data.
- * 3. Updates the room node in Firestore and RTDB with status: "matched" and adds 2nd player data.
- * 4. Configures RTDB onDisconnect for player2.
+ * 1. Wraps all operations in a try/catch/finally block with a 6-second timeout.
+ * 2. Validates the room existence and host online availability.
+ * 3. Prepares player2 data.
+ * 4. Updates the room node in RTDB ('duels/{code}' and 'rooms/{code}') and Firestore with:
+ *    - status: "matched"
+ *    - player2: { uid, name, photoURL, ... }
+ * 5. Configures RTDB onDisconnect for player2.
  */
 export async function joinRoom(
   roomIdOrCode: string,
-  playerProfile: any
+  playerProfile: any,
+  timeoutMs: number = 6000
 ): Promise<{
   success: boolean;
   room?: DuelRoom;
   docId?: string;
   errorMessage?: string;
 }> {
-  try {
-    const userUid = playerProfile?.uid || playerProfile?.id || 'anon';
-    const validation = await validateRoomAndHostAvailability(roomIdOrCode, userUid);
+  const timeoutPromise = new Promise<{
+    success: false;
+    errorMessage: string;
+  }>((_, reject) => {
+    setTimeout(() => {
+      reject(new Error('Não foi possível conectar à sala'));
+    }, timeoutMs);
+  });
 
-    if (!validation.isValid || !validation.room) {
-      return {
-        success: false,
-        errorMessage: validation.errorMessage || 'Esta sala já não está disponível.',
-      };
-    }
-
-    const roomData = validation.room;
-    const roomDocId = validation.docId || roomIdOrCode;
-
-    // Check if user is returning host or returning player2
-    if (roomData.player1?.uid === userUid || roomData.hostUid === userUid || roomData.player2?.uid === userUid) {
-      return {
-        success: true,
-        room: roomData,
-        docId: roomDocId,
-      };
-    }
-
-    // Build safe player2 data
-    const player2Data: DuelPlayer = {
-      uid: userUid,
-      displayName: playerProfile?.displayName || playerProfile?.name || 'Candidato',
-      branch: playerProfile?.branch || 'PNA',
-      avatarId: playerProfile?.avatarId || 'policia',
-      province: playerProfile?.province || 'Luanda',
-      photoURL: playerProfile?.photoURL || playerProfile?.avatar || '',
-      isVipSupporter: !!playerProfile?.isVipSupporter,
-      equippedFrame: playerProfile?.equippedFrame || playerProfile?.avatarAccessories?.frame,
-      equippedBackground: playerProfile?.equippedBackground || playerProfile?.avatarAccessories?.background,
-      equippedUniform: playerProfile?.equippedUniform,
-      avatarAccessories: playerProfile?.avatarAccessories,
-      score: 0,
-      currentQuestionIndex: 0,
-      answers: {},
-      isReady: true,
-      isConnected: true,
-      lastActive: Date.now(),
-    };
-
-    const updatedRoom: DuelRoom = {
-      ...roomData,
-      player2: player2Data,
-      status: 'matched',
-      questionStartTime: Date.now(),
-    };
-
-    const targetId = roomDocId || updatedRoom.id || roomIdOrCode;
-
-    // 1. Update Firestore with status: "matched" and player2
-    const roomRef = doc(db, 'duels', targetId);
-    await setDoc(roomRef, {
-      player2: player2Data,
-      status: 'matched',
-      questionStartTime: Date.now(),
-    }, { merge: true });
-
-    // 2. Update Realtime Database
+  const joinAction = async (): Promise<{
+    success: boolean;
+    room?: DuelRoom;
+    docId?: string;
+    errorMessage?: string;
+  }> => {
     try {
-      await rtdbUpdate(rtdbRef(rtdb, `duels/${targetId}`), {
+      const userUid = playerProfile?.uid || playerProfile?.id || 'anon';
+      const cleanCode = roomIdOrCode?.trim()?.toUpperCase()?.replace(/\s+/g, '') || '';
+      
+      const validation = await validateRoomAndHostAvailability(cleanCode, userUid);
+
+      if (!validation.isValid || !validation.room) {
+        return {
+          success: false,
+          errorMessage: validation.errorMessage || 'Esta sala já não está disponível.',
+        };
+      }
+
+      const roomData = validation.room;
+      const roomDocId = validation.docId || cleanCode;
+
+      // Check if user is returning host or returning player2
+      if (roomData.player1?.uid === userUid || roomData.hostUid === userUid || roomData.player2?.uid === userUid) {
+        return {
+          success: true,
+          room: roomData,
+          docId: roomDocId,
+        };
+      }
+
+      // Build safe player2 data with name, photoURL, and full candidate details
+      const player2Name = playerProfile?.displayName || playerProfile?.name || 'Candidato';
+      const player2Photo = playerProfile?.photoURL || playerProfile?.avatar || '';
+
+      const player2Data: DuelPlayer = {
+        uid: userUid,
+        name: player2Name,
+        displayName: player2Name,
+        photoURL: player2Photo,
+        branch: playerProfile?.branch || 'PNA',
+        avatarId: playerProfile?.avatarId || 'policia',
+        province: playerProfile?.province || 'Luanda',
+        isVipSupporter: !!playerProfile?.isVipSupporter,
+        equippedFrame: playerProfile?.equippedFrame || playerProfile?.avatarAccessories?.frame,
+        equippedBackground: playerProfile?.equippedBackground || playerProfile?.avatarAccessories?.background,
+        equippedUniform: playerProfile?.equippedUniform,
+        avatarAccessories: playerProfile?.avatarAccessories,
+        score: 0,
+        currentQuestionIndex: 0,
+        answers: {},
+        isReady: true,
+        isConnected: true,
+        lastActive: Date.now(),
+      };
+
+      const updatedRoom: DuelRoom = {
+        ...roomData,
         player2: player2Data,
         status: 'matched',
         questionStartTime: Date.now(),
+      };
+
+      const targetId = roomDocId || updatedRoom.id || cleanCode;
+
+      // 1. Update Realtime Database ('duels/{code}' and 'rooms/{code}')
+      const rtdbPayload = {
+        player2: player2Data,
+        status: 'matched',
+        questionStartTime: Date.now(),
+      };
+
+      try {
+        await Promise.all([
+          rtdbUpdate(rtdbRef(rtdb, `duels/${targetId}`), rtdbPayload),
+          rtdbUpdate(rtdbRef(rtdb, `rooms/${targetId}`), rtdbPayload).catch(() => {}),
+        ]);
+      } catch (rtdbErr) {
+        console.warn('[duelService] Erro ao atualizar RTDB ao entrar na sala:', rtdbErr);
+      }
+
+      // 2. Update Firestore with status: "matched" and player2
+      try {
+        const roomRef = doc(db, 'duels', targetId);
+        await setDoc(roomRef, {
+          player2: player2Data,
+          status: 'matched',
+          questionStartTime: Date.now(),
+        }, { merge: true });
+      } catch (fsErr) {
+        console.warn('[duelService] Erro ao atualizar Firestore ao entrar na sala:', fsErr);
+      }
+
+      // 3. Setup onDisconnect for player2 in RTDB
+      setupRoomOnDisconnect({
+        roomId: targetId,
+        userUid: userUid,
+        isHost: false,
+        status: 'active',
+        opponentUid: roomData.player1?.uid,
       });
-    } catch (rtdbErr) {
-      console.warn('[duelService] Erro ao atualizar RTDB ao entrar na sala:', rtdbErr);
+
+      return {
+        success: true,
+        room: updatedRoom,
+        docId: targetId,
+      };
+    } catch (innerErr: any) {
+      console.error('[duelService] Falha interna em joinAction:', innerErr);
+      return {
+        success: false,
+        errorMessage: innerErr?.message || 'Não foi possível conectar à sala',
+      };
     }
+  };
 
-    // 3. Setup onDisconnect for player2
-    setupRoomOnDisconnect({
-      roomId: targetId,
-      userUid: userUid,
-      isHost: false,
-      status: 'active',
-      opponentUid: roomData.player1?.uid,
-    });
-
-    return {
-      success: true,
-      room: updatedRoom,
-      docId: targetId,
-    };
+  try {
+    const result = await Promise.race([joinAction(), timeoutPromise]);
+    return result;
   } catch (error: any) {
-    console.error('[duelService] Erro ao executar joinRoom:', error);
+    console.error('[duelService] Erro/Timeout em joinRoom:', error);
     return {
       success: false,
-      errorMessage: error?.message || 'Falha ao conectar à sala de duelo.',
+      errorMessage: 'Não foi possível conectar à sala',
     };
   }
 }
+

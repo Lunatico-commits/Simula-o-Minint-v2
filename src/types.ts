@@ -329,6 +329,7 @@ export interface SavedAccount {
 export interface DuelPlayer {
   uid: string;
   displayName: string;
+  name?: string;
   branch: MININTBranch;
   avatarId: string;
   province?: string;
