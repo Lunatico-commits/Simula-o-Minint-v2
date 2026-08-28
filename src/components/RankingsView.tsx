@@ -154,30 +154,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<UserProfile | null>(null);
   const [visibleLimit, setVisibleLimit] = useState<number>(10);
-  const [userNode, setUserNode] = useState<HTMLElement | null>(null);
-  const [isUserVisible, setIsUserVisible] = useState(false);
   const [copiedCodeCandidateId, setCopiedCodeCandidateId] = useState<string | null>(null);
-
-  // Intelligent Visibility: observe if the user's card/row is inside viewport
-  useEffect(() => {
-    if (!userNode) {
-      setIsUserVisible(false);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsUserVisible(entry.isIntersecting);
-      },
-      {
-        root: null,
-        threshold: 0.1,
-      }
-    );
-
-    observer.observe(userNode);
-    return () => observer.disconnect();
-  }, [userNode]);
 
   // Reset visible limit to 10 on filter change
   useEffect(() => {
@@ -238,16 +215,23 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const normUserProvince = normalizeProvinceName(userProvince);
   const normSelectedProvince = normalizeProvinceName(selectedProvince);
 
-  // Global position of current user in the real database (1-indexed)
-  const myGlobalRankIndex = leaderboard.findIndex(u => u.uid === currentProfile.uid);
-  const myGlobalRank = myGlobalRankIndex !== -1 ? myGlobalRankIndex + 1 : 1;
+  // 1. Garantir que a lista completa de utilizadores seja PRIMEIRO totalmente ordenada por XP em ordem decrescente
+  const sortedUsers = [...leaderboard].sort((a, b) => (Number(b.xp || b.totalXp || 0)) - (Number(a.xp || a.totalXp || 0)));
 
-  // Rank position within user's home province
-  const userHomeProvinceList = leaderboard.filter(
+  // 2. Calcule a posição nacional APÓS a ordenação
+  const currentUserUid = currentProfile?.uid || (currentProfile as any)?.id;
+  const userIndex = sortedUsers.findIndex(u => (u.uid && currentUserUid && u.uid === currentUserUid) || (u.id && currentUserUid && u.id === currentUserUid) || u.uid === currentUserUid || (u as any).id === currentUserUid);
+  const posicaoNacional = userIndex !== -1 ? userIndex + 1 : (sortedUsers.length > 0 ? sortedUsers.length : 1);
+  const myGlobalRank = posicaoNacional;
+
+  // 3. Aplique a mesma lógica para o ranking por província: filtre primeiro por província, ordene por XP decrescente e só depois faça o findIndex + 1
+  const provinceCandidates = sortedUsers.filter(
     u => isRealHumanCandidate(u) && normalizeProvinceName(getCandidateProvince(u)) === normUserProvince
   );
-  const myHomeProvinceRankIndex = userHomeProvinceList.findIndex(u => u.uid === currentProfile.uid);
-  const myHomeProvinceRank = myHomeProvinceRankIndex !== -1 ? myHomeProvinceRankIndex + 1 : 1;
+  const sortedProvinceUsers = [...provinceCandidates].sort((a, b) => (Number(b.xp || b.totalXp || 0)) - (Number(a.xp || a.totalXp || 0)));
+  const provUserIndex = sortedProvinceUsers.findIndex(u => (u.uid && currentUserUid && u.uid === currentUserUid) || (u.id && currentUserUid && u.id === currentUserUid) || u.uid === currentUserUid || (u as any).id === currentUserUid);
+  const posicaoProvincia = provUserIndex !== -1 ? provUserIndex + 1 : (sortedProvinceUsers.length > 0 ? sortedProvinceUsers.length : 1);
+  const myHomeProvinceRank = posicaoProvincia;
 
   // Following List array & counts with reactive optimistic state
   const [optimisticFollowing, setOptimisticFollowing] = useState<string[]>(() => currentProfile.following || []);
@@ -435,7 +419,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   }, [leaderboard]);
 
   return (
-    <div className="max-w-[850px] mx-auto px-4 py-4 text-slate-900 dark:text-slate-100 space-y-4 animate-fadeIn pb-24">
+    <div className="max-w-[850px] mx-auto px-4 py-4 text-slate-900 dark:text-slate-100 space-y-4 animate-fadeIn pb-12">
       {/* Header Banner */}
       <div className="bg-white dark:bg-gradient-to-b dark:from-[#16181D] dark:to-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl p-4 text-center shadow-md dark:shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-amber-500 to-transparent opacity-50" />
@@ -517,7 +501,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 {myGlobalRank}.º LUGAR
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
-                de {leaderboard.length} {leaderboard.length === 1 ? 'candidato' : 'candidatos'}
+                de {sortedUsers.length} {sortedUsers.length === 1 ? 'candidato' : 'candidatos'}
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1.5">
@@ -767,7 +751,6 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           return (
             <motion.div
               key={candidate.uid || (candidate as any).id || `rank_${rank}`}
-              ref={isMe ? setUserNode : undefined}
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay, ease: [0.22, 1, 0.36, 1] }}
@@ -960,7 +943,6 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                   <motion.div
                     key={candidate.uid || `${getCandidateDisplayName(candidate)}_${idx}`}
                     layout
-                    ref={isMe ? setUserNode : undefined}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
@@ -1137,73 +1119,6 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           </div>
         )}
       </div>
-
-      {/* CARTÃO DA POSIÇÃO DO CANDIDATO (FIXO NO RODAPÉ COM VISIBILIDADE INTELIGENTE) */}
-      <AnimatePresence>
-        {!isUserVisible && (
-          <motion.div
-            initial={{ opacity: 0, y: 30, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 30, scale: 0.98 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="sticky bottom-2 z-30 pt-2"
-          >
-            <div 
-              onClick={() => setSelectedCandidate(currentProfile)}
-              className="bg-slate-950/95 backdrop-blur-md border-2 border-amber-500 rounded-2xl p-3 shadow-[0_4px_25px_rgba(245,158,11,0.35)] flex items-center justify-between text-slate-100 cursor-pointer hover:border-amber-400 hover:scale-[1.01] active:scale-[0.99] transition-all"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                {/* Avatar & Branch Badge */}
-                <div className="shrink-0 flex items-center justify-center">
-                  <UserAvatar user={currentProfile} size="sm" showBranchBadge={true} />
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-[11px] font-extrabold text-amber-400 uppercase tracking-tight">
-                      POSIÇÃO ({scopeFilter === 'province' ? selectedProvince : scopeFilter === 'branch' ? selectedBranch : scopeFilter === 'friends' ? 'AMIGOS' : 'GERAL'}):
-                    </p>
-                    <span className="text-xs font-mono font-black text-slate-950 bg-amber-400 px-1.5 py-0.5 rounded border border-amber-500 shadow-sm">
-                      #{myActiveScopeRank ? myActiveScopeRank : `${myGlobalRank} (Nacional)`}
-                    </span>
-                    <RankChangeIndicator change={myActiveRankChange} />
-                    {isUserOutsideVisible && (
-                      <span className="text-[8px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                        Fora do Top {visibleLimit}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1">
-                    <span>{currentProfile.displayName}</span>
-                    {currentProfile.isVipSupporter && (
-                      <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 font-black flex items-center gap-0.5 shrink-0">
-                        <Sparkles size={8} />
-                        <span>VIP 🌟</span>
-                      </span>
-                    )}
-                    <span>•</span>
-                    <span className="text-amber-300 font-semibold flex items-center gap-0.5">
-                      <MapPin size={9} />
-                      {userProvince} (#{myHomeProvinceRank} na província)
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="text-right shrink-0">
-                <div className="text-sm font-black text-amber-400 font-mono flex items-center justify-end gap-1">
-                  <Zap size={14} className="text-amber-400 fill-amber-400" />
-                  <span>{currentProfile.totalXp.toLocaleString()} XP</span>
-                </div>
-                <p className="text-[9px] text-emerald-400 font-semibold flex items-center justify-end gap-1">
-                  <Swords size={9} />
-                  <span>{currentProfile.multiplayerDuelsWon ?? currentProfile.duelsWon ?? 0} Vitórias</span>
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
         </>
       )}

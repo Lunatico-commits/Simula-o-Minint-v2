@@ -41,6 +41,7 @@ import { trackMissionProgress, updateQuestProgress } from '../utils/dailyMission
 import {
   setupRoomOnDisconnect,
   validateRoomAndHostAvailability,
+  joinRoom,
   filterValidLobbyRooms,
   cleanupGhostRoom,
   MAX_OPEN_ROOM_AGE_MS
@@ -269,6 +270,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [openRooms, setOpenRooms] = useState<DuelRoom[]>([]);
   const [isLoadingOpenRooms, setIsLoadingOpenRooms] = useState<boolean>(true);
   const [loading, setLoading] = useState(false);
+  const [isJoining, setIsJoining] = useState<boolean>(false);
+  const [isCreating, setIsCreating] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -609,7 +612,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   useEffect(() => {
     setAnswerFeedback(null);
     setFloatingParticles([]);
-    if (viewState === 'room' && currentRoom?.status === 'active') {
+    const isNowActive = currentRoom?.status === 'active' || currentRoom?.status === 'matched' || currentRoom?.status === 'in_progress';
+    if (viewState === 'room' && isNowActive) {
       playRoundStartSound();
     }
   }, [currentRoom?.currentQuestionIndex, viewState, currentRoom?.status]);
@@ -823,8 +827,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
           if (viewState === 'room') {
             const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
+            const isRoomMatchActive = currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress';
             // If the room was active, the opponent who stayed wins by forfeit!
-            if (currentRoom.status === 'active' && roomData.player2) {
+            if (isRoomMatchActive && roomData.player2) {
               const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
               const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
               handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
@@ -842,7 +847,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
         setCurrentRoom(roomData);
 
-        if (roomData.status === 'active' && viewState !== 'room') {
+        const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active';
+        if (isMatchStarted && viewState !== 'room') {
           setViewState('room');
         } else if (roomData.status === 'finished' && viewState !== 'finished') {
           setViewState('finished');
@@ -885,7 +891,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
           if (viewState === 'room') {
             const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
-            if (currentRoom.status === 'active' && roomData.player2) {
+            const isRoomMatchActive = currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress';
+            if (isRoomMatchActive && roomData.player2) {
               const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
               const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
               handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
@@ -903,7 +910,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
         setCurrentRoom(roomData);
 
-        if (roomData.status === 'active' && viewState !== 'room') {
+        const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active';
+        if (isMatchStarted && viewState !== 'room') {
           setViewState('room');
         } else if (roomData.status === 'finished' && viewState !== 'finished') {
           setViewState('finished');
@@ -1099,7 +1107,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Cancel or Leave Room
   const handleCancelRoom = (forceConfirm = false) => {
-    if (!forceConfirm && currentRoom?.status === 'active') {
+    const isCurrentActive = currentRoom?.status === 'active' || currentRoom?.status === 'matched' || currentRoom?.status === 'in_progress';
+    if (!forceConfirm && isCurrentActive) {
       setIsExitModalOpen(true);
       return;
     }
@@ -1113,7 +1122,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== roomId && r.roomCode !== roomCode));
 
       if (roomId && !isBot) {
-        if (currentRoom.status === 'active' && currentRoom.player2) {
+        if (isCurrentActive && currentRoom.player2) {
           // Forfeit active multiplayer match to opponent
           const isHost = currentRoom.player1.uid === profile.uid;
           const opponentUid = isHost ? currentRoom.player2.uid : currentRoom.player1.uid;
@@ -1159,7 +1168,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Synchronized Question Timer with Rigid 0s Timeout Advancement
   useEffect(() => {
-    if (viewState !== 'room' || !currentRoom || currentRoom.status !== 'active') return;
+    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
+    if (viewState !== 'room' || !isRoomPlayable) return;
 
     const timeLimit = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
     const qIdx = currentRoom.currentQuestionIndex;
@@ -1213,7 +1223,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Bot Auto Answer Simulation (100% Local - No Firestore)
   useEffect(() => {
-    if (viewState !== 'room' || !currentRoom || currentRoom.status !== 'active') return;
+    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
+    if (viewState !== 'room' || !isRoomPlayable) return;
     const p2 = currentRoom.player2;
     if (!p2 || !p2.isBot) return;
 
@@ -1354,6 +1365,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   };
   const handleCreateRoom = async () => {
+    setIsCreating(true);
     setLoading(true);
     setErrorMessage('');
     try {
@@ -1423,15 +1435,15 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     } catch (error: any) {
       console.error('Erro ao criar sala no Firebase:', error);
       const exactMsg = error?.message || String(error);
-      alert('Erro ao criar sala: ' + exactMsg);
       setErrorMessage('Erro ao criar sala: ' + exactMsg);
       showToast('Erro ao criar sala: ' + exactMsg, true);
     } finally {
+      setIsCreating(false);
       setLoading(false);
     }
   };
 
-  // Join Room by Code with Pre-Join Online Host Validation
+  // Join Room by Code with Pre-Join Online Host Validation and 'matched' status update
   const handleJoinRoomByCode = async (targetCode?: string) => {
     const rawInput = targetCode || roomCodeInput;
     if (!rawInput || !rawInput.trim()) {
@@ -1445,113 +1457,40 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const cleanCode = sanitizedInput.trim().toUpperCase().replace(/\s+/g, '');
     const normalizedCode = normalizeRoomCode(cleanCode);
 
+    setIsJoining(true);
     setLoading(true);
     setErrorMessage('');
     try {
-      // 3. Pre-join validation: ensure room is alive (< 2 min old) and host is STILL ONLINE
-      const validation = await validateRoomAndHostAvailability(cleanCode, profile?.uid || '');
+      // 3. Call centralized joinRoom service: updates DB with status: "matched" and adds 2nd player data
+      const result = await joinRoom(cleanCode, profile);
 
-      if (!validation.isValid) {
-        const unavailableMsg = validation.errorMessage || 'Esta sala já não está disponível';
-        alert(unavailableMsg);
-        showToast(unavailableMsg, true);
+      if (!result.success || !result.room) {
+        const unavailableMsg = result.errorMessage || 'Esta sala já não está disponível';
         setErrorMessage(unavailableMsg);
+        showToast(unavailableMsg, true);
         setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== cleanCode && r.roomCode !== cleanCode && r.roomCode !== normalizedCode));
-        setLoading(false);
         return;
       }
 
-      let roomData: DuelRoom = validation.room!;
-      let roomDocId: string = validation.docId || cleanCode;
-
-      // Re-entry check for host or player 2
-      if (roomData.player1.uid === profile.uid || roomData.player2?.uid === profile.uid) {
-        setCurrentRoom(roomData);
-        setViewState('room');
-        setLoading(false);
-        return;
-      }
-
-      // Check room status and participants count
-      const currentStatus = (roomData.status as string) || '';
-      const isStatusOccupied = 
-        currentStatus === 'playing' || 
-        currentStatus === 'full' || 
-        currentStatus === 'active' || 
-        currentStatus === 'finished' || 
-        currentStatus === 'closed' ||
-        currentStatus === 'abandoned' ||
-        currentStatus === 'cancelled';
-
-      const isWaiting = currentStatus === 'waiting' || currentStatus === 'open';
-      const participantCount = (roomData.player1 ? 1 : 0) + (roomData.player2 ? 1 : 0);
-      const isPlayer2Filled = !!roomData.player2;
-
-      if (isStatusOccupied || !isWaiting || isPlayer2Filled || participantCount >= 2) {
-        const unavailableMsg = 'Esta sala já não está disponível';
-        alert(unavailableMsg);
-        setErrorMessage(unavailableMsg);
-        showToast(unavailableMsg, true);
-        setLoading(false);
-        return;
-      }
-
-      // Join as player 2
-      const updatedPlayer2 = buildSafePlayer(profile);
-
-      const updatedRoom: DuelRoom = {
-        ...roomData,
-        player2: updatedPlayer2,
-        status: 'active',
-        questionStartTime: Date.now(),
-      };
-
-      const targetId = roomDocId || updatedRoom.id;
-      if (targetId) {
-        try {
-          const roomRef = doc(db, 'duels', targetId);
-          setDoc(roomRef, sanitizeFirestoreData({
-            player2: updatedPlayer2,
-            status: 'active',
-            questionStartTime: Date.now(),
-          }), { merge: true }).catch((e) => console.warn('Erro ao atualizar sala no Firestore:', e));
-
-          rtdbUpdate(rtdbRef(rtdb, `duels/${targetId}`), {
-            player2: updatedPlayer2,
-            status: 'active',
-            questionStartTime: Date.now(),
-          }).catch((e) => console.warn('Erro ao atualizar entrada na sala no RTDB:', e));
-
-          // Set onDisconnect for player 2 in active duel
-          setupRoomOnDisconnect({
-            roomId: targetId,
-            userUid: profile.uid,
-            isHost: false,
-            status: 'active',
-            opponentUid: roomData.player1.uid,
-          });
-        } catch (e) {
-          console.warn('Erro ao atualizar entrada na sala nos bancos de dados:', e);
-        }
-      }
-
+      const updatedRoom = result.room;
       setCurrentRoom(updatedRoom);
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== updatedRoom.id && r.roomCode !== updatedRoom.roomCode));
       setViewState('room');
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
-      const unavailableMsg = 'Esta sala já não está disponível';
-      alert(unavailableMsg);
+      const unavailableMsg = error?.message || 'Falha ao conectar à sala de duelo.';
       setErrorMessage(unavailableMsg);
       showToast(unavailableMsg, true);
     } finally {
+      setIsJoining(false);
       setLoading(false);
     }
   };
 
   // Answer Question
   const handleAnswerQuestion = async (chosenOptionIndex: number) => {
-    if (!currentRoom || currentRoom.status !== 'active') return;
+    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
+    if (!isRoomPlayable) return;
 
     const isHost = currentRoom.player1.uid === profile.uid;
     const player = isHost ? currentRoom.player1 : currentRoom.player2;
@@ -2266,16 +2205,16 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 onClick={handleCreateRoom}
-                disabled={loading}
+                disabled={isCreating || isJoining || loading}
                 className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider"
               >
                 <Swords size={16} />
-                <span>{loading ? 'A Criar...' : 'CRIAR SALA ONLINE'}</span>
+                <span>{isCreating ? 'A Criar...' : 'CRIAR SALA ONLINE'}</span>
               </button>
 
               <button
                 onClick={handleCreateBotRoom}
-                disabled={loading}
+                disabled={isCreating || isJoining || loading}
                 className="w-full py-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider border border-indigo-400/30"
               >
                 <Zap size={16} className="text-amber-300" />
@@ -2315,10 +2254,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               />
               <button
                 onClick={() => handleJoinRoomByCode()}
-                disabled={loading}
-                className="px-5 py-2.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border border-slate-300 dark:border-white/10 text-slate-900 dark:text-slate-200 font-bold text-xs shrink-0 cursor-pointer uppercase tracking-wider"
+                disabled={isJoining || isCreating || loading}
+                className="px-5 py-2.5 rounded-lg bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 border border-slate-300 dark:border-white/10 text-slate-900 dark:text-slate-200 font-bold text-xs shrink-0 cursor-pointer uppercase tracking-wider flex items-center gap-1.5"
               >
-                Entrar
+                {isJoining && <Loader2 size={13} className="animate-spin text-amber-500" />}
+                <span>{isJoining ? 'A Entrar...' : 'Entrar'}</span>
               </button>
             </div>
           </div>
@@ -2578,7 +2518,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       {viewState === 'room' && currentRoom && (
         <div className="space-y-4 animate-fadeIn">
           {/* ENHANCED REAL-TIME WAITING ROOM SCREEN */}
-          {currentRoom.status === 'waiting' && (
+          {currentRoom.status === 'waiting' && !currentRoom.player2 && (
             <div className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-3xl p-5 space-y-5 shadow-xl animate-fadeIn">
               {/* Header Status */}
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
@@ -2834,7 +2774,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           )}
 
           {/* ACTIVE DUEL SCREEN WITH MISSING QUESTION FALLBACK */}
-          {currentRoom.status === 'active' && !currentQ && (
+          {(currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress' || !!currentRoom.player2) && currentRoom.status !== 'finished' && currentRoom.status !== 'cancelled' && currentRoom.status !== 'abandoned' && !currentQ && (
             <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-6 text-center space-y-3">
               <Loader2 size={24} className="animate-spin text-amber-500 mx-auto" />
               <p className="text-xs text-slate-300 font-bold">A carregar perguntas do duelo...</p>
@@ -2848,8 +2788,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             </div>
           )}
 
-          {/* ACTIVE DUEL SCREEN */}
-          {currentRoom.status === 'active' && currentQ && (
+          {/* ACTIVE DUEL ARENA SCREEN */}
+          {(currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress' || !!currentRoom.player2) && currentRoom.status !== 'finished' && currentRoom.status !== 'cancelled' && currentRoom.status !== 'abandoned' && currentQ && (
             <div className="space-y-3 relative">
               {/* Floating Score Particles Animation */}
               <AnimatePresence>

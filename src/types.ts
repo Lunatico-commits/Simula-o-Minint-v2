@@ -348,7 +348,7 @@ export interface DuelPlayer {
   lastActive?: number;
 }
 
-export type DuelStatus = 'waiting' | 'active' | 'finished' | 'cancelled' | 'abandoned';
+export type DuelStatus = 'waiting' | 'matched' | 'in_progress' | 'active' | 'finished' | 'cancelled' | 'abandoned';
 
 export interface DuelRoom {
   id: string;
