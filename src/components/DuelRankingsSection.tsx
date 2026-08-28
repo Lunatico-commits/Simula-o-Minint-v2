@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, MININTBranch, isRealHumanCandidate } from '../types';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { LEAGUES_CONFIG, getTimeUntilWeeklyReset, DuelLeague } from '../utils/league';
-import { RankChangeIndicator } from './RankingsView';
+import { RankChangeIndicator, getCandidateDisplayName, getCandidateProvince } from './RankingsView';
 import { UserAvatar } from './UserAvatar';
 import {
   Trophy,
@@ -124,8 +124,8 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
     if (!searchQuery.trim()) return baseList;
     const q = searchQuery.toLowerCase().trim();
     return baseList.filter((c) => {
-      const nameMatch = (c.displayName || '').toLowerCase().includes(q);
-      const provMatch = (c.province || '').toLowerCase().includes(q);
+      const nameMatch = getCandidateDisplayName(c).toLowerCase().includes(q);
+      const provMatch = getCandidateProvince(c).toLowerCase().includes(q);
       const branchMatch = (c.branch || '').toLowerCase().includes(q);
       return nameMatch || provMatch || branchMatch;
     });
@@ -309,7 +309,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                         <UserAvatar user={candidate} size="lg" showBranchBadge={true} isFirstPlace={true} />
                       </div>
                       <p className="w-full truncate whitespace-nowrap text-[12px] font-bold text-center text-amber-300">
-                        {candidate.displayName || 'Candidato'}
+                        {getCandidateDisplayName(candidate)}
                       </p>
                       {isMe && (
                         <span className="bg-amber-500 text-black text-[9px] font-black px-2 py-0.5 rounded-full uppercase mt-1 animate-pulse shadow-sm whitespace-nowrap">
@@ -317,7 +317,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                         </span>
                       )}
                       <p className="w-full truncate whitespace-nowrap text-[9px] text-slate-300 text-center mt-1">
-                        📍 {candidate.province || 'Luanda'} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vitórias
+                        📍 {getCandidateProvince(candidate)} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vitórias
                       </p>
                       <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
                         {candidate.weeklyDuelPoints || 0} Pts
@@ -354,7 +354,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                       <UserAvatar user={candidate} size="lg" showBranchBadge={true} isFirstPlace={true} />
                     </div>
                     <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
-                      {candidate.displayName || 'Candidato'}
+                      {getCandidateDisplayName(candidate)}
                     </p>
                     {isMe && (
                       <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
@@ -362,7 +362,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                       </span>
                     )}
                     <p className="w-full truncate whitespace-nowrap text-[8.5px] text-slate-300 text-center mt-0.5">
-                      📍 {candidate.province || 'Luanda'} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vits
+                      📍 {getCandidateProvince(candidate)} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {candidate.weeklyDuelPoints || 0} Pts
@@ -396,7 +396,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                       <UserAvatar user={candidate} size="md" showBranchBadge={true} />
                     </div>
                     <p className={`w-full truncate whitespace-nowrap text-[10.5px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                      {candidate.displayName || 'Candidato'}
+                      {getCandidateDisplayName(candidate)}
                     </p>
                     {isMe && (
                       <span className="bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.2 rounded-full uppercase mt-0.5 animate-pulse shadow-sm whitespace-nowrap">
@@ -404,7 +404,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                       </span>
                     )}
                     <p className="w-full truncate whitespace-nowrap text-[8.5px] text-slate-400 text-center mt-0.5">
-                      📍 {candidate.province || 'Não informado'} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vits
+                      📍 {getCandidateProvince(candidate)} • {candidate.multiplayerDuelsWon ?? candidate.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {candidate.weeklyDuelPoints || 0} Pts
@@ -441,7 +441,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     </div>
 
                     <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                      {top2.displayName || 'Candidato'}
+                      {getCandidateDisplayName(top2)}
                     </p>
 
                     {isMe && (
@@ -451,7 +451,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     )}
 
                     <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                      📍 {top2.province || 'Não informado'} • {top2.multiplayerDuelsWon ?? top2.duelsWon ?? 0} Vits
+                      📍 {getCandidateProvince(top2)} • {top2.multiplayerDuelsWon ?? top2.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {top2.weeklyDuelPoints || 0} Pts
@@ -486,7 +486,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     </div>
 
                     <p className="w-full truncate whitespace-nowrap text-[11px] font-bold text-center text-amber-300">
-                      {top1.displayName || 'Candidato'}
+                      {getCandidateDisplayName(top1)}
                     </p>
 
                     {isMe && (
@@ -496,7 +496,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     )}
 
                     <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-300 text-center mt-0.5">
-                      📍 {top1.province || 'Não informado'} • {top1.multiplayerDuelsWon ?? top1.duelsWon ?? 0} Vits
+                      📍 {getCandidateProvince(top1)} • {top1.multiplayerDuelsWon ?? top1.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {top1.weeklyDuelPoints || 0} Pts
@@ -531,7 +531,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     </div>
 
                     <p className={`w-full truncate whitespace-nowrap text-[10px] font-bold text-center ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                      {top3.displayName || 'Candidato'}
+                      {getCandidateDisplayName(top3)}
                     </p>
 
                     {isMe && (
@@ -541,7 +541,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                     )}
 
                     <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                      📍 {top3.province || 'Não informado'} • {top3.multiplayerDuelsWon ?? top3.duelsWon ?? 0} Vits
+                      📍 {getCandidateProvince(top3)} • {top3.multiplayerDuelsWon ?? top3.duelsWon ?? 0} Vits
                     </p>
                     <p className="w-full truncate whitespace-nowrap text-[9px] sm:text-[10px] font-bold text-amber-400 text-center font-mono mt-0.5">
                       {top3.weeklyDuelPoints || 0} Pts
@@ -660,7 +660,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                               isMe ? 'text-amber-300 font-extrabold' : 'text-slate-900 dark:text-slate-100'
                             }`}
                           >
-                            {candidate.displayName}
+                            {getCandidateDisplayName(candidate)}
                           </p>
                           {candidate.isVipSupporter && (
                             <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40 font-black shrink-0 flex items-center gap-0.5">
@@ -679,7 +679,7 @@ export const DuelRankingsSection: React.FC<DuelRankingsSectionProps> = ({
                         <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-0.5">
                           <span className="text-amber-400/90 font-medium flex items-center gap-0.5">
                             <MapPin size={9} />
-                            {candidate.province || 'Luanda'}
+                            {getCandidateProvince(candidate)}
                           </span>
                           <span>•</span>
                           <span className="font-semibold text-slate-400 flex items-center gap-0.5">

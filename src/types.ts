@@ -156,6 +156,7 @@ export interface UserProfile {
   academicLevel?: AcademicLevel;
   rankTitle: string;
   totalXp: number;
+  xp?: number;
   previousRank?: number;
   minintCoins?: number;
   streakFreezeCount?: number;
@@ -235,22 +236,34 @@ export function isAdminUser(profile?: UserProfile | null): boolean {
 
 /**
  * Validates if a user/candidate is a genuine human registered user,
- * filtering out any test accounts, AI bots or simulation placeholders.
+ * filtering out ghost/corrupt records, test accounts, AI bots or simulation placeholders.
  */
 export function isRealHumanCandidate(candidate?: Partial<UserProfile> | null | any): boolean {
   if (!candidate) return false;
 
-  // 1. Explicit bot / AI / test flags
+  // 1. UID validation - must have a valid non-empty UID (ignore ghost accounts)
+  const rawUid = String(candidate.uid || candidate.id || '').trim();
+  if (!rawUid || rawUid === 'undefined' || rawUid === 'null' || rawUid.length < 3) {
+    return false;
+  }
+
+  // 2. Email validation - must have a valid email format with '@' (ignore ghost accounts)
+  const rawEmail = String(candidate.email || candidate.emailOrPhone || '').trim();
+  if (!rawEmail || !rawEmail.includes('@') || rawEmail.length < 5) {
+    return false;
+  }
+
+  // 3. Explicit bot / AI / test flags
   if (candidate.isBot === true || candidate.is_bot === true) return false;
   if (candidate.isAi === true || candidate.isAI === true || candidate.is_ai === true) return false;
   if (candidate.isTestAccount === true || candidate.isTest === true || candidate.is_test === true) return false;
 
-  // 2. Roles
+  // 4. Roles
   const role = String(candidate.role || '').toLowerCase().trim();
   if (role === 'bot' || role === 'ai' || role === 'test' || role === 'ia') return false;
 
-  // 3. UID checks
-  const uid = String(candidate.uid || candidate.id || '').toLowerCase().trim();
+  // 5. UID checks for bot prefixes
+  const uid = rawUid.toLowerCase();
   if (
     uid.startsWith('bot_') ||
     uid.startsWith('bot-') ||
@@ -266,7 +279,7 @@ export function isRealHumanCandidate(candidate?: Partial<UserProfile> | null | a
     return false;
   }
 
-  // 4. DisplayName bot / test indicators
+  // 6. DisplayName bot / test indicators
   const name = String(candidate.displayName || candidate.nome || candidate.name || '').trim().toLowerCase();
   if (
     name.includes('[bot]') ||

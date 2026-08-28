@@ -54,7 +54,7 @@ const INITIAL_TESTIMONIALS: Testimonial[] = [
     province: 'Cabinda',
     branch: 'SPCB',
     rating: 5,
-    comment: 'A funcionalidade de poder estudar por matérias como Raciocínio Lógico e Cultura Geral facilitou bastante. Já sou Apoiador VIP para ajudar o projeto!',
+    comment: 'A funcionalidade de poder estudar por matérias como Legislação dos Órgãos e História de Angola facilitou bastante. Já sou Apoiador VIP para ajudar o projeto!',
     isVip: true,
     status: 'approved',
     date: 'Há 3 dias',
@@ -219,7 +219,7 @@ export const FaqAndTestimonials: React.FC<FaqAndTestimonialsProps> = ({
     },
     {
       q: 'Quais são as matérias de estudo disponíveis?',
-      a: 'Os simulados cobrem as matérias exigidas nos exames oficiais de admissão do MININT: Legislação Orgânica do MININT & Constituição da República de Angola (CRA), Língua Portuguesa, Cultura Geral & História de Angola, Raciocínio Lógico & Matemática e Direito Penal & Processual.',
+      a: 'Os simulados cobrem estritamente as 5 matérias oficiais de preparação para o Concurso do MININT:\n1. História de Angola\n2. Constituição da República de Angola (CRA) e Organização Política\n3. Administração Pública\n4. Legislação Orgânica dos Órgãos do MININT (PNA, SIC, SME, SP, SPCB)\n5. Patriotismo e Deveres do Agente',
     },
   ];
 
@@ -304,7 +304,7 @@ export const FaqAndTestimonials: React.FC<FaqAndTestimonialsProps> = ({
 
                   {isOpen && (
                     <div className="px-3.5 pb-3.5 pt-1 text-xs text-slate-300 border-t border-slate-800/60 leading-relaxed animate-fadeIn">
-                      <p>{item.a}</p>
+                      <p className="whitespace-pre-line">{item.a}</p>
                       {item.hasDonateBtn && onOpenSupportModal && (
                         <div className="mt-3">
                           <button

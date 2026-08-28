@@ -8,7 +8,6 @@ import {
   updateDoc, 
   onSnapshot, 
   query,
-  orderBy,
   QuerySnapshot,
   DocumentData
 } from 'firebase/firestore';
@@ -31,24 +30,24 @@ export function normalizeUserProfile(data: DocumentData | any, docId?: string): 
     ? (rawBranch as MININTBranch)
     : ('Não informado' as any);
 
-  // Normalização da Província: "Não informado" se ausente em contas legadas
-  const rawProvince = (data?.provincia || data?.province || '').toString().trim();
-  let province = 'Não informado';
-  if (rawProvince && rawProvince !== 'Não Especificada') {
+  // Normalização da Província com seletores de reserva (fallback para 'Luanda' se ausente)
+  const rawProvince = (data?.provincia || data?.province || data?.location || '').toString().trim();
+  let province = 'Luanda';
+  if (rawProvince && rawProvince !== 'Não Especificada' && rawProvince !== 'Não informado') {
     const matched = PROVINCES_ANGOLA.find(
       (p) => normalizeProvinceName(p) === normalizeProvinceName(rawProvince)
     );
     province = matched || rawProvince;
   }
 
-  // Normalização do Nível Académico: mantido se preenchido
-  const rawLevel = (data?.academicLevel || data?.nivelAcademico || data?.level_academic || '').toString().trim();
-  let academicLevel: AcademicLevel | undefined = undefined;
-  if (rawLevel === '9th_grade' || rawLevel === '9a_classe' || rawLevel === '9') {
+  // Normalização do Nível Académico com seletores de reserva (fallback para 'high_school' / 'Ensino Médio')
+  const rawLevel = (data?.nivelAcademico || data?.academicLevel || data?.escolaridade || data?.level_academic || '').toString().trim().toLowerCase();
+  let academicLevel: AcademicLevel = 'high_school';
+  if (rawLevel === '9th_grade' || rawLevel === '9a_classe' || rawLevel === '9' || rawLevel === '9ª classe' || rawLevel.includes('9')) {
     academicLevel = '9th_grade';
-  } else if (rawLevel === 'higher_education' || rawLevel === 'superior' || rawLevel === 'licenciatura') {
+  } else if (rawLevel === 'higher_education' || rawLevel === 'superior' || rawLevel === 'licenciatura' || rawLevel === 'ensino superior' || rawLevel.includes('superior')) {
     academicLevel = 'higher_education';
-  } else if (rawLevel === 'high_school' || rawLevel === 'medio' || rawLevel === 'ensino_medio') {
+  } else {
     academicLevel = 'high_school';
   }
 
@@ -59,11 +58,15 @@ export function normalizeUserProfile(data: DocumentData | any, docId?: string): 
     badge: 'badge_none',
   };
 
-  const rawName = (data?.displayName || data?.nome || data?.name || data?.userName || '').toString().trim();
+  // Normalização do Nome com seletores de reserva (fallback para 'Candidato MININT' se ausente)
+  const rawName = (data?.displayName || data?.name || data?.nome || data?.userName || '').toString().trim();
   const emailIdentifier = data?.email ? data.email.split('@')[0] : '';
-  const displayName = rawName || emailIdentifier || 'Não informado';
+  const displayName = (rawName && rawName !== 'Não informado') 
+    ? rawName 
+    : (emailIdentifier || 'Candidato MININT');
   
   const totalXp = Number(data?.totalXp ?? data?.xp ?? 0);
+  const safeXp = isNaN(totalXp) ? 0 : totalXp;
   const minintCoins = Number(data?.minintCoins ?? data?.coins ?? 0);
 
   return {
@@ -80,7 +83,8 @@ export function normalizeUserProfile(data: DocumentData | any, docId?: string): 
     province,
     academicLevel,
     rankTitle: data?.rankTitle || data?.titulo || 'Não informado',
-    totalXp: isNaN(totalXp) ? 0 : totalXp,
+    totalXp: safeXp,
+    xp: safeXp,
     previousRank: data?.previousRank,
     minintCoins: isNaN(minintCoins) ? 0 : minintCoins,
     streakFreezeCount: Number(data?.streakFreezeCount ?? 0),
@@ -141,19 +145,13 @@ export async function getTotalUsersRealCount(): Promise<number> {
 }
 
 /**
- * Busca TODOS os utilizadores reais da coleção 'users' sem aplicar filtros de UID ou restrições de perfil ativo.
- * Lê a coleção completa e retorna a lista ordenada por pontos de experiência (XP) de forma decrescente.
+ * Busca TODOS os utilizadores reais da coleção 'users' sem depender de índices do Firestore.
+ * Lê a coleção completa e ordena os dados diretamente em memória JavaScript por XP decrescente.
  */
 export async function fetchAllUsers(): Promise<UserProfile[]> {
   try {
     const usersColl = collection(db, 'users');
-    let snapshot: QuerySnapshot<DocumentData>;
-    try {
-      const q = query(usersColl, orderBy('xp', 'desc'));
-      snapshot = await getDocs(q);
-    } catch {
-      snapshot = await getDocs(usersColl);
-    }
+    const snapshot = await getDocs(usersColl);
     const users: UserProfile[] = [];
 
     snapshot.forEach((docSnap) => {
@@ -161,7 +159,8 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
       users.push(normalized);
     });
 
-    users.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
+    // Ordenação do ranking diretamente em memória JavaScript após receber os dados
+    users.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
     return users;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'users');
@@ -172,24 +171,22 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
 
 /**
  * Consulta global da coleção 'users' do Firestore ('getUsers()').
- * Lê a coleção 'users' COMPLETA sem restringir por UID do utilizador atual,
- * retornando os candidatos ordenados por XP de forma decrescente.
+ * Lê a coleção 'users' COMPLETA e retorna os candidatos ordenados por XP de forma decrescente em memória.
  */
 export async function getUsers(): Promise<UserProfile[]> {
   return fetchAllUsers();
 }
 
 /**
- * Assina atualizações em tempo real de TODOS os utilizadores na coleção 'users'
- * com consulta ordenada por pontos de experiência de forma decrescente: `query(collection(db, 'users'), orderBy('xp', 'desc'))`.
+ * Assina atualizações em tempo real de TODOS os utilizadores na coleção 'users' sem depender de índices no Firestore.
+ * Realiza a ordenação do ranking diretamente em JavaScript em memória após receber os dados.
  */
 export function subscribeToAllUsers(
   onUpdate: (users: UserProfile[]) => void,
   onError?: (error: Error) => void
 ): () => void {
   try {
-    // Busca direta na coleção 'users' do Firestore ordenada por pontos de experiência
-    const q = query(collection(db, 'users'), orderBy('xp', 'desc'));
+    const q = query(collection(db, 'users'));
     return onSnapshot(
       q,
       (snapshot: QuerySnapshot<DocumentData>) => {
@@ -198,35 +195,14 @@ export function subscribeToAllUsers(
           const normalized = normalizeUserProfile(docSnap.data(), docSnap.id);
           users.push(normalized);
         });
-        users.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
+        // Ordenação do ranking diretamente em memória JavaScript após receber os dados
+        users.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
         onUpdate(users);
       },
       (error) => {
-        // Fallback resiliente caso o índice em 'xp' não esteja presente no ambiente
-        console.warn('Fallback para consulta sem orderBy em users:', error);
-        try {
-          const fallbackQ = query(collection(db, 'users'));
-          return onSnapshot(
-            fallbackQ,
-            (snapshot: QuerySnapshot<DocumentData>) => {
-              const users: UserProfile[] = [];
-              snapshot.forEach((docSnap) => {
-                const normalized = normalizeUserProfile(docSnap.data(), docSnap.id);
-                users.push(normalized);
-              });
-              users.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
-              onUpdate(users);
-            },
-            (fallbackErr) => {
-              handleFirestoreError(fallbackErr, OperationType.LIST, 'users');
-              console.error('Erro na subscrição em tempo real de utilizadores:', fallbackErr);
-              if (onError) onError(fallbackErr);
-            }
-          );
-        } catch (innerErr: any) {
-          handleFirestoreError(error, OperationType.LIST, 'users');
-          if (onError) onError(error);
-        }
+        handleFirestoreError(error, OperationType.LIST, 'users');
+        console.error('Erro na subscrição em tempo real de utilizadores:', error);
+        if (onError) onError(error);
       }
     );
   } catch (err: any) {

@@ -32,7 +32,7 @@ import {
 } from '../utils/audio';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Swords, Users, Plus, KeyRound, Sparkles, Trophy, CheckCircle2, XCircle, Clock, Shield, ArrowRight, RotateCcw, AlertCircle, Zap,
+  Swords, Users, Plus, KeyRound, Sparkles, Trophy, CheckCircle2, XCircle, Clock, Shield, ArrowRight, ArrowLeft, X, RotateCcw, AlertCircle, Zap,
   Copy, Check, Share2, Radio, UserCheck, MapPin, Loader2, History, Flame, Trash2, Crosshair, RefreshCw, LogOut, LogIn,
   MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX, WifiOff, UserX, Hourglass, Scale
 } from 'lucide-react';
@@ -620,9 +620,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [isAILoading, setIsAILoading] = useState(false);
   const [modalQuestion, setModalQuestion] = useState<Question | null>(null);
 
-  // Listen for open public rooms in lobby (Firestore Realtime onSnapshot + strictly < 2 min active rooms)
+  // Listen for open public rooms in lobby (Firestore Realtime onSnapshot + RTDB onValue + strictly < 2 min active rooms)
   useEffect(() => {
     let unsubscribeFirestore = () => {};
+    let unsubscribeRtdb = () => {};
     setIsLoadingOpenRooms(true);
 
     try {
@@ -637,7 +638,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
         snapshot.forEach((docSnap) => {
           const r = docSnap.data() as any;
-          if (r && r.status === 'waiting') {
+          if (r && r.status === 'waiting' && !r.player2) {
             const safeP1 = buildSafePlayer(r.player1 || {});
             firestoreRooms.push({
               ...r,
@@ -659,13 +660,44 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setIsLoadingOpenRooms(false);
     }
 
+    try {
+      const duelsRtdbRef = rtdbRef(rtdb, 'duels');
+      unsubscribeRtdb = rtdbOnValue(duelsRtdbRef, (snapshot) => {
+        if (!snapshot.exists()) {
+          return;
+        }
+        const rtdbVal = snapshot.val();
+        if (rtdbVal && typeof rtdbVal === 'object') {
+          const rtdbRooms: DuelRoom[] = [];
+          Object.entries(rtdbVal).forEach(([key, val]: [string, any]) => {
+            if (val && val.status === 'waiting' && !val.player2) {
+              const safeP1 = buildSafePlayer(val.player1 || {});
+              if (safeP1.isConnected !== false) {
+                rtdbRooms.push({
+                  ...val,
+                  id: key,
+                  code: val.code || val.roomCode || key,
+                  roomCode: val.roomCode || val.code || key,
+                  player1: safeP1,
+                });
+              }
+            }
+          });
+          if (rtdbRooms.length > 0) {
+            setOpenRooms(filterValidLobbyRooms(rtdbRooms));
+          }
+        }
+      });
+    } catch (e) {}
+
     // Periodic sweep: clean up any rooms older than 2 minutes in real time without refresh
     const sweepInterval = setInterval(() => {
       setOpenRooms((prev) => filterValidLobbyRooms(prev));
-    }, 4000);
+    }, 3000);
 
     return () => {
       unsubscribeFirestore();
+      unsubscribeRtdb();
       clearInterval(sweepInterval);
     };
   }, []);
@@ -1106,18 +1138,15 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             console.warn('Erro ao notificar desistência no banco de dados:', e);
           }
         } else if (currentRoom.status === 'waiting') {
+          // Immediately eliminate the room node from Realtime Database and Firestore
           try {
             const roomRef = doc(db, 'duels', roomId);
-            deleteDoc(roomRef).catch(() => {
-              updateDoc(roomRef, { status: 'cancelled' }).catch((e) => {
-                console.warn('Erro ao atualizar status no Firestore:', e);
-              });
+            deleteDoc(roomRef).catch((e) => {
+              console.warn('Erro ao deletar documento da sala no Firestore:', e);
             });
 
-            rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {
-              rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), { status: 'cancelled' }).catch((e) => {
-                console.warn('Erro ao cancelar sala no RTDB:', e);
-              });
+            rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch((e) => {
+              console.warn('Erro ao deletar nó da sala no RTDB:', e);
             });
           } catch (e) {
             console.warn('Erro ao encerrar sala no banco de dados:', e);
@@ -2554,7 +2583,16 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               {/* Header Status */}
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="relative flex h-3 w-3">
+                  <button
+                    type="button"
+                    onClick={() => handleCancelRoom(true)}
+                    className="p-1.5 -ml-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                    title="Voltar / Fechar Sala"
+                  >
+                    <ArrowLeft size={16} />
+                    <span className="hidden sm:inline">Voltar</span>
+                  </button>
+                  <span className="relative flex h-3 w-3 ml-1">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                   </span>
@@ -2562,9 +2600,19 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                     SALA DE ESPERA 1V1
                   </span>
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">
-                  RTDB Sincronizado
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">
+                    RTDB Sincronizado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCancelRoom(true)}
+                    className="p-1.5 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                    title="Fechar / Cancelar Sala"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               </div>
 
               {/* Matchup VS Card Display */}
@@ -2779,7 +2827,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                   className="w-full py-2.5 px-4 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 active:scale-95 text-rose-600 dark:text-rose-400 text-xs font-extrabold transition-all cursor-pointer border border-rose-500/30 flex items-center justify-center gap-2 uppercase shadow-2xs"
                 >
                   <LogOut size={15} />
-                  <span>Encerrar / Cancelar Sala</span>
+                  <span>Fechar / Cancelar Duelo</span>
                 </button>
               </div>
             </div>

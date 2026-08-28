@@ -26,18 +26,16 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 // Export Firestore with persistent local cache and designated database ID
 export const db = (() => {
   try {
-    if (firebaseConfig.firestoreDatabaseId) {
-      return initializeFirestore(app, {
-        localCache: persistentLocalCache({
-          tabManager: persistentMultipleTabManager()
-        })
-      }, firebaseConfig.firestoreDatabaseId);
-    }
-    return initializeFirestore(app, {
+    const firestoreSettings = {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
-      })
-    });
+      }),
+      experimentalAutoDetectLongPolling: true,
+    };
+    if (firebaseConfig.firestoreDatabaseId) {
+      return initializeFirestore(app, firestoreSettings, firebaseConfig.firestoreDatabaseId);
+    }
+    return initializeFirestore(app, firestoreSettings);
   } catch (e) {
     return firebaseConfig.firestoreDatabaseId ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : getFirestore(app);
   }
@@ -59,14 +57,18 @@ export const rtdb = (() => {
 
 export const auth = getAuth(app);
 
-// Test connection silently and gracefully on boot
+// Test connection silently and gracefully on boot with quick timeout to avoid hanging
 export async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('connection timeout')), 4000)
+    );
+    await Promise.race([
+      getDocFromServer(doc(db, 'test', 'connection')),
+      timeoutPromise
+    ]);
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firestore operating in offline cache mode.");
-    }
+    // Firestore works seamlessly in persistent offline cache mode
   }
 }
 testConnection();

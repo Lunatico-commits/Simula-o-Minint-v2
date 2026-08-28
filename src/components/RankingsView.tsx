@@ -85,25 +85,69 @@ export const RankChangeIndicator: React.FC<RankChangeIndicatorProps> = ({
   );
 };
 
-// Academic level helper
+// Academic level and Candidate data fallbacks helper
 export const getAcademicLevelLabel = (level?: AcademicLevel | string): string => {
-  switch (level) {
+  const norm = String(level || '').trim().toLowerCase();
+  switch (norm) {
     case '9th_grade':
+    case '9a_classe':
+    case '9':
+    case '9ª classe':
       return '9.ª Classe';
     case 'high_school':
+    case 'medio':
+    case 'ensino_medio':
+    case 'ensino médio':
       return 'Ensino Médio';
     case 'higher_education':
+    case 'superior':
+    case 'licenciatura':
+    case 'ensino superior':
       return 'Ensino Superior';
     default:
-      return level ? String(level) : 'Não informado';
+      return norm && norm !== 'não informado' && norm !== 'undefined' ? String(level) : 'Ensino Médio';
   }
+};
+
+export const getCandidateDisplayName = (user?: Partial<UserProfile> | any): string => {
+  if (!user) return 'Candidato MININT';
+  const name = (user.displayName || user.name || user.nome || '').toString().trim();
+  if (name && name !== 'Não informado' && name !== 'undefined' && name !== 'null') {
+    return name;
+  }
+  // Se o candidato não tiver 'name', 'displayName' ou 'nome', utilize a parte inicial do e-mail antes do '@' (ex: 'candidato123')
+  const email = (user.email || user.emailOrPhone || '').toString().trim();
+  if (email && email.includes('@')) {
+    const emailPrefix = email.split('@')[0].trim();
+    if (emailPrefix) return emailPrefix;
+  }
+  // Se não houver e-mail nem nome, exiba "Candidato MININT"
+  return 'Candidato MININT';
+};
+
+export const getCandidateProvince = (user?: Partial<UserProfile> | any): string => {
+  if (!user) return 'Luanda';
+  const prov = (user.provincia || user.province || user.location || '').toString().trim();
+  if (prov && prov !== 'Não informado' && prov !== 'Não Especificada' && prov !== 'undefined' && prov !== 'null') {
+    return prov;
+  }
+  return 'Luanda';
+};
+
+export const getCandidateAcademicLevelLabel = (user?: Partial<UserProfile> | any): string => {
+  if (!user) return 'Ensino Médio';
+  const raw = user.nivelAcademico || user.academicLevel || user.escolaridade || user.level_academic;
+  return getAcademicLevelLabel(raw);
 };
 
 export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPlayDuel, onUpdateProfile, defaultMode = 'xp' }) => {
   const [activeMode, setActiveMode] = useState<'xp' | 'duels' | 'ligas'>(defaultMode);
-  const [scopeFilter, setScopeFilter] = useState<'national' | 'friends' | 'province'>('national');
+  const [scopeFilter, setScopeFilter] = useState<'national' | 'province' | 'branch' | 'friends'>('national');
   const [selectedProvince, setSelectedProvince] = useState<string>(
     currentProfile.province && currentProfile.province !== 'Não informado' ? currentProfile.province : 'Luanda'
+  );
+  const [selectedBranch, setSelectedBranch] = useState<MININTBranch>(
+    currentProfile.branch && ['PNA', 'SIC', 'SME', 'SP', 'SPCB'].includes(currentProfile.branch) ? currentProfile.branch : 'PNA'
   );
   const [levelFilter, setLevelFilter] = useState<'all' | AcademicLevel>('all');
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
@@ -138,7 +182,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   // Reset visible limit to 10 on filter change
   useEffect(() => {
     setVisibleLimit(10);
-  }, [scopeFilter, selectedProvince, levelFilter, searchQuery]);
+  }, [scopeFilter, selectedProvince, selectedBranch, levelFilter, searchQuery]);
 
   // Keep selected province in sync if user changes profile province and scope is province
   useEffect(() => {
@@ -171,7 +215,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
         }
 
         const combined = Array.from(uniqueMap.values());
-        combined.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
+        combined.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
         setLeaderboard(combined);
       },
       (error) => {
@@ -181,7 +225,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           uniqueMap.set(currentProfile.uid, currentProfile);
         }
         const combined = Array.from(uniqueMap.values());
-        combined.sort((a, b) => (b.totalXp ?? 0) - (a.totalXp ?? 0));
+        combined.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
         setLeaderboard(combined);
       }
     );
@@ -190,7 +234,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   }, [currentProfile]);
 
   // User's Registered Province
-  const userProvince = currentProfile.province || 'Não informado';
+  const userProvince = getCandidateProvince(currentProfile);
   const normUserProvince = normalizeProvinceName(userProvince);
   const normSelectedProvince = normalizeProvinceName(selectedProvince);
 
@@ -200,7 +244,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
   // Rank position within user's home province
   const userHomeProvinceList = leaderboard.filter(
-    u => isRealHumanCandidate(u) && normalizeProvinceName(u.province) === normUserProvince
+    u => isRealHumanCandidate(u) && normalizeProvinceName(getCandidateProvince(u)) === normUserProvince
   );
   const myHomeProvinceRankIndex = userHomeProvinceList.findIndex(u => u.uid === currentProfile.uid);
   const myHomeProvinceRank = myHomeProvinceRankIndex !== -1 ? myHomeProvinceRankIndex + 1 : 1;
@@ -261,8 +305,13 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
 
     // Province scope filter
     if (scopeFilter === 'province') {
-      const candNormProv = normalizeProvinceName(candidate.province);
+      const candNormProv = normalizeProvinceName(getCandidateProvince(candidate));
       if (candNormProv !== normSelectedProvince) return false;
+    }
+
+    // MININT Branch scope filter
+    if (scopeFilter === 'branch') {
+      if (candidate.branch !== selectedBranch) return false;
     }
 
     // Academic level filter
@@ -274,8 +323,8 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
     // Search query filter
     if (searchQuery.trim()) {
       const queryLower = searchQuery.toLowerCase().trim();
-      const matchName = (candidate.displayName || '').toLowerCase().includes(queryLower);
-      const matchProv = (candidate.province || '').toLowerCase().includes(queryLower);
+      const matchName = getCandidateDisplayName(candidate).toLowerCase().includes(queryLower);
+      const matchProv = getCandidateProvince(candidate).toLowerCase().includes(queryLower);
       const matchBranch = (candidate.branch || '').toLowerCase().includes(queryLower);
       const matchCode = (candidate.referralCode || '').toLowerCase().includes(queryLower);
       if (!matchName && !matchProv && !matchBranch && !matchCode) return false;
@@ -289,7 +338,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const myActiveScopeRank = myActiveScopeRankIndex !== -1 ? myActiveScopeRankIndex + 1 : null;
 
   // Scope key for persisting rank snapshots
-  const scopeKey = `${scopeFilter}_${selectedProvince}_${levelFilter}`;
+  const scopeKey = `${scopeFilter}_${selectedProvince}_${selectedBranch}_${levelFilter}`;
 
   // Calculate rank changes for candidates based on previous calculation / stored snapshot
   const rankDeltasMap = React.useMemo(() => {
@@ -365,9 +414,21 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const provinceCountsMap = React.useMemo(() => {
     const map: Record<string, number> = {};
     leaderboard.forEach(u => {
-      const norm = normalizeProvinceName(u.province);
+      const norm = normalizeProvinceName(getCandidateProvince(u));
       if (norm) {
         map[norm] = (map[norm] || 0) + 1;
+      }
+    });
+    return map;
+  }, [leaderboard]);
+
+  // Count candidates per MININT branch for badge counters
+  const branchCountsMap = React.useMemo(() => {
+    const map: Record<string, number> = { PNA: 0, SIC: 0, SME: 0, SP: 0, SPCB: 0 };
+    leaderboard.forEach(u => {
+      const b = u.branch as MININTBranch;
+      if (b && map[b] !== undefined) {
+        map[b] = (map[b] || 0) + 1;
       }
     });
     return map;
@@ -460,7 +521,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1.5">
-              <span className="font-bold text-white">{currentProfile.displayName}</span>
+              <span className="font-bold text-white">{getCandidateDisplayName(currentProfile)}</span>
               <span>•</span>
               <span className="text-amber-300 flex items-center gap-0.5">
                 <MapPin size={10} />
@@ -481,40 +542,20 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
         </div>
       </div>
 
-      {/* 1. SCOPE FILTER (NATIONAL VS FRIENDS VS PROVINCE TABS) */}
+      {/* 1. SCOPE FILTER (GERAL / PROVÍNCIA / ÓRGÃO MININT / AMIGOS TABS) */}
       <div className="bg-slate-950/90 border border-slate-800 p-1.5 rounded-2xl shadow-inner space-y-2">
-        <div className="grid grid-cols-3 gap-1.5 text-xs font-bold">
+        <div className="grid grid-cols-4 gap-1 text-[11px] font-bold">
           <button
             type="button"
             onClick={() => setScopeFilter('national')}
-            className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`py-2 px-1.5 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
               scopeFilter === 'national'
                 ? 'bg-amber-500 text-slate-950 font-black shadow-md scale-[1.01]'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
-            <Globe size={14} className="shrink-0" />
+            <Globe size={13} className="shrink-0" />
             <span className="truncate">Geral</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setScopeFilter('friends')}
-            className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-              scopeFilter === 'friends'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md scale-[1.01]'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-            }`}
-          >
-            <Users size={14} className="shrink-0" />
-            <span className="truncate">Amigos</span>
-            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-mono font-black ${
-              scopeFilter === 'friends'
-                ? 'bg-slate-950 text-amber-400'
-                : 'bg-slate-800 text-slate-400'
-            }`}>
-              {followedCandidatesCount}
-            </span>
           </button>
 
           <button
@@ -525,14 +566,47 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 setSelectedProvince(userProvince);
               }
             }}
-            className={`py-2.5 px-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            className={`py-2 px-1.5 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
               scopeFilter === 'province'
                 ? 'bg-amber-500 text-slate-950 font-black shadow-md scale-[1.01]'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
-            <MapPin size={14} className="shrink-0" />
+            <MapPin size={13} className="shrink-0" />
             <span className="truncate">Província</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setScopeFilter('branch')}
+            className={`py-2 px-1.5 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              scopeFilter === 'branch'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-md scale-[1.01]'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Shield size={13} className="shrink-0" />
+            <span className="truncate">Órgão</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setScopeFilter('friends')}
+            className={`py-2 px-1.5 rounded-xl flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              scopeFilter === 'friends'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-md scale-[1.01]'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+            }`}
+          >
+            <Users size={13} className="shrink-0" />
+            <span className="truncate">Amigos</span>
+            <span className={`text-[9px] px-1 py-0.2 rounded-full font-mono font-black ${
+              scopeFilter === 'friends'
+                ? 'bg-slate-950 text-amber-400'
+                : 'bg-slate-800 text-slate-400'
+            }`}>
+              {followedCandidatesCount}
+            </span>
           </button>
         </div>
 
@@ -570,6 +644,49 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 })}
               </select>
               <ChevronDown size={15} className="absolute right-3 top-3 text-amber-400 pointer-events-none" />
+            </div>
+          </div>
+        )}
+
+        {/* 3. BRANCH SELECTOR BUTTONS (Shown when branch mode is active) */}
+        {scopeFilter === 'branch' && (
+          <div className="pt-1.5 border-t border-slate-800 space-y-2 animate-fadeIn">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 px-1">
+              <span className="flex items-center gap-1 text-amber-400">
+                <Shield size={13} />
+                Selecionar Órgão do MININT
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedBranch((currentProfile.branch && ['PNA', 'SIC', 'SME', 'SP', 'SPCB'].includes(currentProfile.branch)) ? currentProfile.branch : 'PNA')}
+                className="text-[10px] text-amber-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+              >
+                <span>⭐ Meu Órgão ({currentProfile.branch || 'PNA'})</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-5 gap-1 text-xs">
+              {(['PNA', 'SIC', 'SME', 'SP', 'SPCB'] as MININTBranch[]).map((br) => {
+                const count = branchCountsMap[br] || 0;
+                const isSelected = selectedBranch === br;
+                return (
+                  <button
+                    key={br}
+                    type="button"
+                    onClick={() => setSelectedBranch(br)}
+                    className={`py-2 px-1 rounded-xl font-black text-center transition-all border cursor-pointer flex flex-col items-center justify-center gap-0.5 ${
+                      isSelected
+                        ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-md scale-[1.02]'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    <span className="text-[11px]">{br}</span>
+                    <span className={`text-[9px] font-mono font-bold ${isSelected ? 'text-slate-950' : 'text-amber-400'}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -618,6 +735,8 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
           placeholder={
             scopeFilter === 'province'
               ? `Pesquisar candidatos em ${selectedProvince}...`
+              : scopeFilter === 'branch'
+              ? `Pesquisar candidatos no órgão ${selectedBranch}...`
               : 'Pesquisar candidato por nome ou província...'
           }
           className="w-full bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/5 rounded-xl pl-9 pr-4 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-amber-500 font-medium shadow-sm"
@@ -669,7 +788,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
               </div>
 
               <p className={`w-full truncate whitespace-nowrap text-[10.5px] font-bold text-center ${isMe || rank === 1 ? 'text-amber-300' : 'text-white'}`}>
-                {candidate.displayName || 'Não informado'}
+                {getCandidateDisplayName(candidate)}
               </p>
 
               {isMe ? (
@@ -719,7 +838,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
               )}
 
               <p className="w-full truncate whitespace-nowrap text-[8px] sm:text-[9px] text-slate-400 text-center mt-0.5">
-                📍 {candidate.province || 'Não informado'} • {candidate.branch || 'Não informado'}
+                📍 {getCandidateProvince(candidate)} • {candidate.branch ? candidate.branch : 'PNA'}
               </p>
               <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
                 {candidate.totalXp?.toLocaleString() ?? 0} XP
@@ -830,16 +949,16 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                   (candidate.uid && currentProfile.id && candidate.uid === currentProfile.id) ||
                   (candidate.id && currentProfile.uid && candidate.id === currentProfile.uid)
                 );
-                const candUid = candidate.uid || candidate.displayName || `user_${idx}`;
+                const candUid = candidate.uid || getCandidateDisplayName(candidate) || `user_${idx}`;
                 const isFollowing = Boolean(candidate.uid && followingList.includes(candidate.uid));
                 const rankChange = rankDeltasMap[candUid] ?? 0;
                 const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-                const candAvatar = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName, candidate.gender);
-                const levelLabel = getAcademicLevelLabel(candidate.academicLevel);
+                const candAvatar = getAvatarOption(candidate.avatarId, candidate.branch, getCandidateDisplayName(candidate), candidate.gender);
+                const levelLabel = getCandidateAcademicLevelLabel(candidate);
 
                 return (
                   <motion.div
-                    key={candidate.uid || `${candidate.displayName}_${idx}`}
+                    key={candidate.uid || `${getCandidateDisplayName(candidate)}_${idx}`}
                     layout
                     ref={isMe ? setUserNode : undefined}
                     initial={{ opacity: 0, y: 20 }}
@@ -901,7 +1020,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                       <div className="min-w-0 pr-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <p className={`text-xs font-bold truncate ${isMe ? 'text-amber-300 font-extrabold' : 'text-slate-900 dark:text-slate-100'}`}>
-                            {candidate.displayName}
+                            {getCandidateDisplayName(candidate)}
                           </p>
                           {candidate.isVipSupporter && (
                             <span className="text-[8px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-500 border border-amber-500/40 font-black shrink-0 flex items-center gap-0.5" title="Apoiador VIP 🌟">
@@ -983,7 +1102,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                         </div>
                         <span className="text-[9px] text-slate-400 font-mono flex items-center justify-end gap-0.5 mt-0.5">
                           <MapPin size={9} className="text-amber-500" />
-                          <span>{candidate.province || 'Não informado'}</span>
+                          <span>{getCandidateProvince(candidate)}</span>
                         </span>
                       </div>
                     </div>
@@ -1042,7 +1161,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <p className="text-[11px] font-extrabold text-amber-400 uppercase tracking-tight">
-                      POSIÇÃO ({scopeFilter === 'province' ? selectedProvince : 'GERAL'}):
+                      POSIÇÃO ({scopeFilter === 'province' ? selectedProvince : scopeFilter === 'branch' ? selectedBranch : scopeFilter === 'friends' ? 'AMIGOS' : 'GERAL'}):
                     </p>
                     <span className="text-xs font-mono font-black text-slate-950 bg-amber-400 px-1.5 py-0.5 rounded border border-amber-500 shadow-sm">
                       #{myActiveScopeRank ? myActiveScopeRank : `${myGlobalRank} (Nacional)`}
@@ -1123,7 +1242,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 </div>
 
                 <h3 className="text-base font-black text-white flex items-center justify-center gap-1.5 flex-wrap">
-                  <span>{selectedCandidate.displayName}</span>
+                  <span>{getCandidateDisplayName(selectedCandidate)}</span>
                   {selectedCandidate.isVipSupporter && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 font-black flex items-center gap-0.5">
                       <Sparkles size={10} className="fill-amber-400" />
@@ -1198,7 +1317,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                     <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Nível Académico</span>
                     <span className="font-black text-slate-100 flex items-center gap-1 truncate">
                       <GraduationCap size={13} className="text-amber-500 shrink-0" />
-                      <span className="truncate">{getAcademicLevelLabel(selectedCandidate.academicLevel)}</span>
+                      <span className="truncate">{getCandidateAcademicLevelLabel(selectedCandidate)}</span>
                     </span>
                   </div>
                 </div>
@@ -1208,7 +1327,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                     <span className="text-[10px] text-slate-400 font-mono uppercase block mb-0.5">Província</span>
                     <span className="font-black text-slate-100 flex items-center gap-1">
                       <MapPin size={13} className="text-amber-500" />
-                      {selectedCandidate.province || 'Não informado'}
+                      {getCandidateProvince(selectedCandidate)}
                     </span>
                   </div>
 
@@ -1362,8 +1481,8 @@ const PodiumCard: React.FC<{
   onSelectCandidate?: (candidate: UserProfile) => void;
 }> = ({ candidate, rank, rankChange = 0, isMe, elementRef, onSelectCandidate }) => {
   const bInfo = MININT_BRANCHES[candidate.branch] || MININT_BRANCHES.PNA;
-  const avatarOpt = getAvatarOption(candidate.avatarId, candidate.branch, candidate.displayName, candidate.gender);
-  const levelLabel = getAcademicLevelLabel(candidate.academicLevel);
+  const avatarOpt = getAvatarOption(candidate.avatarId, candidate.branch, getCandidateDisplayName(candidate), candidate.gender);
+  const levelLabel = getCandidateAcademicLevelLabel(candidate);
 
   let medalEmoji = '🥇';
   let badgeColor = 'from-amber-400 to-amber-600 text-slate-950';
@@ -1441,7 +1560,7 @@ const PodiumCard: React.FC<{
 
         {/* Candidate Name */}
         <p className={`w-full truncate whitespace-nowrap text-[11px] sm:text-sm font-bold text-center mt-1 ${isMe ? 'text-amber-300' : 'text-slate-100'}`}>
-          {candidate.displayName || 'Não informado'}
+          {getCandidateDisplayName(candidate)}
         </p>
 
         {candidate.isVipSupporter && (
@@ -1461,7 +1580,7 @@ const PodiumCard: React.FC<{
         {/* Province Tag */}
         <span className="w-full truncate whitespace-nowrap text-[9px] sm:text-xs text-slate-400 text-center flex items-center justify-center gap-0.5 mt-0.5">
           <MapPin size={8} className="shrink-0 text-amber-400/80" />
-          <span className="truncate whitespace-nowrap">{candidate.province || 'Não informado'}</span>
+          <span className="truncate whitespace-nowrap">{getCandidateProvince(candidate)}</span>
         </span>
       </div>
 

@@ -432,7 +432,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
 
   const handleBuyComboViaWhatsApp = () => {
     playClickSound();
-    const message = `Olá! Gostaria de adquirir o PDF *💎 COMBO VIP: Todos os 7 PDFs + Simulados Bónus* no valor de *2.500 Kz*.
+    const message = `Olá! Gostaria de adquirir o PDF *💎 COMBO VIP: Todos os 5 PDFs + Banco de Questões Atualizado* no valor de *2.500 Kz*.
 
 💳 *Dados de Pagamento:*
 - IBAN: AO06 0058 0000 06173873101 38
@@ -1406,10 +1406,10 @@ Segue em anexo o meu comprovativo de pagamento para libertação do ficheiro.`;
             </div>
 
             <h3 className="text-base sm:text-lg font-black text-white tracking-tight leading-snug">
-              Combo VIP: Todos os 7 PDFs + 500 Questões Resolvidas
+              Combo VIP: Todos os 5 PDFs + Banco de Questões Atualizado
             </h3>
             <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-              Material completo para o Concurso MININT (PNA, SIC, SME, SP e SPCB). Inclui Legislação Orgânica, Português, Cultura Geral, Informática e Gabaritos Comentados.
+              Material completo e atualizado para o Concurso MININT (PNA, SIC, SME, SP e SPCB). Inclui História de Angola, CRA e Organização Política, Administração Pública, Legislação Orgânica e Patriotismo.
             </p>
 
             <div className="flex items-center gap-3 pt-1 text-xs flex-wrap">

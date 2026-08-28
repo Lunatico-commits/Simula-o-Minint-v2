@@ -62,26 +62,18 @@ export function setupRoomOnDisconnect({
     const playerLastActiveDisconnect = rtdbOnDisconnect(playerLastActiveRef);
     playerLastActiveDisconnect.set(Date.now());
 
-    // 3. Room status onDisconnect depending on room state
+    // 3. Room status onDisconnect:
+    // When the room is waiting for an opponent, if the creator/host loses connection, closes the tab,
+    // or exits the app, the entire room node is immediately deleted from RTDB via onDisconnect().remove()
     const roomRef = rtdbRef(rtdb, `duels/${roomId}`);
-    const roomDisconnect = rtdbOnDisconnect(roomRef);
-
-    if (status === 'waiting') {
-      // If the host disconnects while still waiting for an opponent, mark the room abandoned/closed
-      // or remove it so it disappears from the lobby immediately
-      if (isHost) {
-        roomDisconnect.update({
-          status: 'abandoned',
-          isClosed: true,
-          closedReason: 'host_disconnected',
-          closedAt: Date.now(),
-          'player1/isConnected': false,
-        });
-      }
+    if (status === 'waiting' && isHost) {
+      rtdbOnDisconnect(roomRef).remove().catch((err) => {
+        console.warn('[duelService] Erro ao registrar onDisconnect.remove() no RTDB:', err);
+      });
+    } else if (status === 'active') {
+      // In active duels, cancel automatic room deletion so mobile jitter doesn't drop the active match
+      rtdbOnDisconnect(roomRef).cancel().catch(() => {});
     }
-    // Note: In active duels, we do NOT prematurely trigger forfeit on RTDB socket drops
-    // to protect against momentary mobile network jitter. The match progresses via question timers
-    // unless a player explicitly clicks 'Desistir' or the total timeout expires.
   } catch (error) {
     console.warn('[duelService] Erro ao registrar onDisconnect no RTDB:', error);
   }
@@ -90,12 +82,13 @@ export function setupRoomOnDisconnect({
 /**
  * Cancel or clear RTDB onDisconnect handlers when transitioning state
  */
-export async function clearRoomOnDisconnect(roomId: string, userUid: string) {
-  if (!roomId || !userUid) return;
+export async function clearRoomOnDisconnect(roomId: string, userUid?: string) {
+  if (!roomId) return;
   try {
-    const userPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${userUid}`);
-    await rtdbOnDisconnect(userPresenceRef).cancel();
-
+    if (userUid) {
+      const userPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${userUid}`);
+      await rtdbOnDisconnect(userPresenceRef).cancel();
+    }
     const roomRef = rtdbRef(rtdb, `duels/${roomId}`);
     await rtdbOnDisconnect(roomRef).cancel();
   } catch (e) {
@@ -242,22 +235,12 @@ export async function validateRoomAndHostAvailability(
 export async function cleanupGhostRoom(roomId: string) {
   if (!roomId) return;
   try {
-    // 1. RTDB removal or mark abandoned
-    rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
-      status: 'abandoned',
-      isClosed: true,
-      closedAt: Date.now(),
-    }).catch(() => {});
+    // 1. RTDB immediate removal
+    rtdbRemove(rtdbRef(rtdb, `duels/${roomId}`)).catch(() => {});
 
-    // 2. Firestore mark abandoned or delete
+    // 2. Firestore immediate deletion
     const roomDoc = doc(db, 'duels', roomId);
-    updateDoc(roomDoc, {
-      status: 'abandoned',
-      isClosed: true,
-      closedAt: Date.now(),
-    }).catch(() => {
-      deleteDoc(roomDoc).catch(() => {});
-    });
+    deleteDoc(roomDoc).catch(() => {});
   } catch (e) {
     console.warn('[duelService] Erro ao limpar sala fantasma:', e);
   }
