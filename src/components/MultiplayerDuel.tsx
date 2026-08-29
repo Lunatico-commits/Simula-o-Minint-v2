@@ -46,6 +46,7 @@ import {
   cleanupGhostRoom,
   cleanRoomCode,
   saveRoomToRTDB,
+  createRoom as createRoomService,
   listenToRoom,
   submitDuelAnswer,
   updateDuelRoomNode,
@@ -1354,48 +1355,44 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         createdAt: Date.now(),
       };
 
-      const firestoreDocData = sanitizeFirestoreData({
-        ...newRoom,
-        code: roomCode,
-        roomCode: roomCode,
-        status: 'waiting',
-        createdAt: serverTimestamp(),
-        player2: null,
+      // 1. Grava no Realtime Database com timeout estrito de 5 segundos
+      const createResult = await createRoomService({
+        roomCode,
+        roomData: newRoom,
+        profile,
       });
 
-      // 1. Save room document directly to Firestore using roomCode as document ID
-      await setDoc(doc(db, 'duels', roomCode), firestoreDocData);
-
-      // 2. Sync to Realtime Database & setup onDisconnect using cleanCode
-      try {
-        await saveRoomToRTDB(roomCode, newRoom);
-        setupRoomOnDisconnect({
-          roomId: roomCode,
-          userUid: profile?.uid || 'anon',
-          isHost: true,
-          status: 'waiting',
-        });
-      } catch (rtdbErr) {
-        console.error('Erro ao sincronizar sala no RTDB:', rtdbErr);
+      if (!createResult.success || !createResult.room) {
+        throw new Error(createResult.errorMessage || 'Falha ao criar sala. Verifique a conexão.');
       }
 
-      // 3. Add new room to local openRooms list and set as current room
-      setOpenRooms((prev) => [...(prev || []), newRoom]);
-      setCurrentRoom(newRoom);
+      const activeRoom = createResult.room;
+
+      // 2. Redirecionamento Imediato para a Sala de Espera (SALA DE ESPERA 1V1)
+      setCurrentRoom(activeRoom);
+      setOpenRooms((prev) => [
+        ...(prev || []).filter((r) => r.id !== roomCode && r.roomCode !== roomCode),
+        activeRoom
+      ]);
       setViewState('room');
 
-      // 4. Broadcast push notification for duel invitation
+      // 3. Notificação e convites em background
       sendDuelInvitationNotification(profile, roomCode);
     } catch (error: any) {
-      console.error('Erro ao criar sala no Firebase:', error);
-      const exactMsg = error?.message || String(error);
-      setErrorMessage('Erro ao criar sala: ' + exactMsg);
-      showToast('Erro ao criar sala: ' + exactMsg, true);
+      console.error('[MultiplayerDuel] Erro ao criar sala:', error);
+      const exactMsg = error?.message?.includes('conexão') || error?.message?.includes('timeout') || error?.message?.includes('Falha ao criar sala')
+        ? 'Falha ao criar sala. Verifique a conexão.'
+        : (error?.message || 'Falha ao criar sala. Verifique a conexão.');
+      setErrorMessage(exactMsg);
+      showToast(exactMsg, true);
     } finally {
+      // 4. Garantia absoluta de desbloqueio do botão isCreating e loading
       setIsCreating(false);
       setLoading(false);
     }
   };
+
+  const createRoom = handleCreateRoom;
 
   // Join Room by Code with Pre-Join Online Host Validation, 6s timeout, and 'matched' status update
   const handleJoinRoomByCode = async (targetCode?: string) => {

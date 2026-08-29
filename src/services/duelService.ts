@@ -142,25 +142,143 @@ export async function clearRoomOnDisconnect(roomId: string, userUid?: string) {
 }
 
 /**
- * Grava uma sala de duelo diretamente no Realtime Database usando a chave limpa 'duels/${cleanCode}'
+ * Grava uma sala de duelo no Realtime Database usando a chave limpa 'duels/${cleanCode}'
+ * com timeout de conexão.
  */
 export async function saveRoomToRTDB(code: string, roomData: DuelRoom): Promise<void> {
   const cleanCode = cleanRoomCode(code || roomData.roomCode || roomData.code || roomData.id);
   if (!cleanCode) {
-    throw new Error('Código de sala inválido para gravação no Realtime Database');
+    throw new Error('Código de sala inválido para gravação');
   }
 
+  const sanitizedPayload = sanitizeForRTDB({
+    ...roomData,
+    id: cleanCode,
+    code: cleanCode,
+    roomCode: cleanCode,
+  });
+
+  let timeoutId: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Timeout de conexão com RTDB.'));
+    }, 4500);
+  });
+
   try {
-    const sanitizedPayload = sanitizeForRTDB({
-      ...roomData,
-      id: cleanCode,
-      code: cleanCode,
-      roomCode: cleanCode,
-    });
-    await rtdbSet(rtdbRef(rtdb, `duels/${cleanCode}`), sanitizedPayload);
-  } catch (error) {
-    console.error(`[duelService] Erro ao gravar sala no RTDB duels/${cleanCode}:`, error);
+    const writePromise = rtdbSet(rtdbRef(rtdb, `duels/${cleanCode}`), sanitizedPayload);
+    await Promise.race([writePromise, timeoutPromise]);
+  } catch (error: any) {
+    console.warn(`[duelService] Aviso ao gravar sala no RTDB duels/${cleanCode}:`, error?.message || error);
     throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+export interface CreateRoomResult {
+  success: boolean;
+  room?: DuelRoom;
+  errorMessage?: string;
+}
+
+/**
+ * Cria uma sala de duelo com timeout de conexão de 5 segundos,
+ * gravação no Firestore e RTDB, setup de onDisconnect e transição imediata.
+ */
+export async function createRoom({
+  roomCode,
+  roomData,
+  profile,
+}: {
+  roomCode: string;
+  roomData: DuelRoom;
+  profile?: any;
+}): Promise<CreateRoomResult> {
+  const cleanCode = cleanRoomCode(roomCode || roomData.roomCode || roomData.code || roomData.id);
+  if (!cleanCode) {
+    return {
+      success: false,
+      errorMessage: 'Código de sala inválido.',
+    };
+  }
+
+  const roomToSave: DuelRoom = {
+    ...roomData,
+    id: cleanCode,
+    code: cleanCode,
+    roomCode: cleanCode,
+    hostId: profile?.uid || roomData.hostUid || roomData.hostId || 'anon',
+    hostUid: profile?.uid || roomData.hostUid || roomData.hostId || 'anon',
+    status: 'waiting',
+  };
+
+  try {
+    let timeoutId: any;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error('Falha ao criar sala. Verifique a conexão.'));
+      }, 5000);
+    });
+
+    // 1. Gravação garantida no Firestore
+    const fsTask = (async () => {
+      try {
+        const roomRef = doc(db, 'duels', cleanCode);
+        const fsData: Record<string, any> = {
+          ...roomToSave,
+          createdAt: Date.now(),
+          player2: null,
+        };
+        await setDoc(roomRef, fsData, { merge: true });
+        return true;
+      } catch (fsErr) {
+        console.warn('[duelService] Aviso ao persistir sala no Firestore:', fsErr);
+        return false;
+      }
+    })();
+
+    // 2. Gravação em tempo real no RTDB + setup onDisconnect
+    const rtdbTask = (async () => {
+      try {
+        await saveRoomToRTDB(cleanCode, roomToSave);
+        setupRoomOnDisconnect({
+          roomId: cleanCode,
+          userUid: profile?.uid || roomToSave.hostUid || 'anon',
+          isHost: true,
+          status: 'waiting',
+        });
+        return true;
+      } catch {
+        // RTDB pode estar indisponível ou offline; Firestore atua como fonte principal
+        return false;
+      }
+    })();
+
+    // Sincronização concluída com sucesso assim que qualquer um persistir dentro do timeout de 5s
+    const successResult = await Promise.race([
+      fsTask.then((ok) => (ok ? true : new Promise<never>(() => {}))),
+      rtdbTask.then((ok) => (ok ? true : new Promise<never>(() => {}))),
+      Promise.all([fsTask, rtdbTask]).then(([fsOk, rtdbOk]) => fsOk || rtdbOk),
+      timeoutPromise,
+    ]);
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!successResult) {
+      throw new Error('Falha ao criar sala. Verifique a conexão.');
+    }
+
+    return {
+      success: true,
+      room: roomToSave,
+    };
+  } catch (error: any) {
+    console.error('[duelService] Falha na criação da sala:', error);
+    return {
+      success: false,
+      errorMessage: error?.message || 'Falha ao criar sala. Verifique a conexão.',
+    };
   }
 }
 
