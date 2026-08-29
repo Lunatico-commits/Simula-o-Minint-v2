@@ -44,6 +44,9 @@ import {
   joinRoom,
   filterValidLobbyRooms,
   cleanupGhostRoom,
+  cleanRoomCode,
+  saveRoomToRTDB,
+  listenToRoom,
   MAX_OPEN_ROOM_AGE_MS
 } from '../services/duelService';
 
@@ -796,142 +799,84 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   useEffect(() => {
     if (!currentRoom?.id || currentRoom.player2?.isBot) return;
 
-    let unsubscribeFirestore = () => {};
-    let unsubscribeRtdb = () => {};
+    const targetRoomId = cleanRoomCode(currentRoom.id);
+    if (!targetRoomId) return;
 
-    // 1. Listen Firestore
+    let unsubscribe = () => {};
+
     try {
-      const roomRef = doc(db, 'duels', currentRoom.id);
-      unsubscribeFirestore = onSnapshot(roomRef, (docSnap) => {
-        if (!docSnap.exists()) {
-          // Room deleted
-          if (viewState === 'room') {
-            const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
-            if (!isHost) {
-              // If match was active, award forfeit victory to the player who stayed
-              if (currentRoom.status === 'active' && currentRoom.player2) {
-                handleForfeitVictory(currentRoom, profile.uid, isHost ? currentRoom.player1.uid : currentRoom.player2.uid, 'opponent_left');
-              } else {
-                setIsRoomClosedModalOpen(true);
-              }
-            } else {
-              setViewState('lobby');
-              setCurrentRoom(null);
-            }
-          }
-          return;
-        }
-
-        const roomData = docSnap.data() as DuelRoom;
-
-        if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
-          if (viewState === 'room') {
-            const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
-            const isRoomMatchActive = currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress';
-            // If the room was active, the opponent who stayed wins by forfeit!
-            if (isRoomMatchActive && roomData.player2) {
-              const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
-              const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
-              handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
-            } else {
+      unsubscribe = listenToRoom(
+        targetRoomId,
+        (roomData) => {
+          if (!roomData) {
+            // Room deleted or not found
+            if (viewState === 'room') {
+              const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
               if (!isHost) {
-                setIsRoomClosedModalOpen(true);
+                // If match was active, award forfeit victory to the player who stayed
+                if (currentRoom.status === 'active' && currentRoom.player2) {
+                  handleForfeitVictory(currentRoom, profile.uid, isHost ? currentRoom.player1.uid : currentRoom.player2.uid, 'opponent_left');
+                } else {
+                  setIsRoomClosedModalOpen(true);
+                }
               } else {
                 setViewState('lobby');
                 setCurrentRoom(null);
               }
             }
+            return;
           }
-          return;
-        }
 
-        setCurrentRoom(roomData);
-
-        const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active';
-        if (isMatchStarted && viewState !== 'room') {
-          setViewState('room');
-        } else if (roomData.status === 'finished' && viewState !== 'finished') {
-          setViewState('finished');
-          if (roomData.isForfeit && roomData.winnerUid === profile?.uid) {
-            setIsForfeitModalOpen(true);
-          }
-          if (processedDuelId !== roomData.id) {
-            setProcessedDuelId(roomData.id);
-            handleDuelFinished(roomData);
-          }
-        }
-      });
-    } catch (e) {
-      console.warn('Erro ao inicializar listener Firestore do duelo:', e);
-    }
-
-    // 2. Listen Realtime Database
-    try {
-      const activeRoomRtdbRef = rtdbRef(rtdb, `duels/${currentRoom.id}`);
-      unsubscribeRtdb = rtdbOnValue(activeRoomRtdbRef, (snapshot) => {
-        if (!snapshot.exists()) {
-          if (viewState === 'room') {
-            const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
-            if (!isHost) {
-              if (currentRoom.status === 'active' && currentRoom.player2) {
-                handleForfeitVictory(currentRoom, profile.uid, isHost ? currentRoom.player1.uid : currentRoom.player2.uid, 'opponent_left');
+          if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
+            if (viewState === 'room') {
+              const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
+              const isRoomMatchActive = currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress';
+              if (isRoomMatchActive && roomData.player2) {
+                const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
+                const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
+                handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
               } else {
-                setIsRoomClosedModalOpen(true);
-              }
-            } else {
-              setViewState('lobby');
-              setCurrentRoom(null);
-            }
-          }
-          return;
-        }
-
-        const roomData = snapshot.val() as DuelRoom;
-
-        if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
-          if (viewState === 'room') {
-            const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
-            const isRoomMatchActive = currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress';
-            if (isRoomMatchActive && roomData.player2) {
-              const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
-              const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
-              handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
-            } else {
-              if (!isHost) {
-                setIsRoomClosedModalOpen(true);
-              } else {
-                setViewState('lobby');
-                setCurrentRoom(null);
+                if (!isHost) {
+                  setIsRoomClosedModalOpen(true);
+                } else {
+                  setViewState('lobby');
+                  setCurrentRoom(null);
+                }
               }
             }
+            return;
           }
-          return;
-        }
 
-        setCurrentRoom(roomData);
+          setCurrentRoom(roomData);
 
-        const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active';
-        if (isMatchStarted && viewState !== 'room') {
-          setViewState('room');
-        } else if (roomData.status === 'finished' && viewState !== 'finished') {
-          setViewState('finished');
-          if (roomData.isForfeit && roomData.winnerUid === profile?.uid) {
-            setIsForfeitModalOpen(true);
+          // Redirecionamento INSTANTÂNEO para a arena do duelo ao receber status "matched"
+          const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active' || !!roomData.player2;
+          if (isMatchStarted && viewState !== 'room') {
+            setViewState('room');
+          } else if (roomData.status === 'finished' && viewState !== 'finished') {
+            setViewState('finished');
+            if (roomData.isForfeit && roomData.winnerUid === profile?.uid) {
+              setIsForfeitModalOpen(true);
+            }
+            if (processedDuelId !== roomData.id) {
+              setProcessedDuelId(roomData.id);
+              handleDuelFinished(roomData);
+            }
           }
-          if (processedDuelId !== roomData.id) {
-            setProcessedDuelId(roomData.id);
-            handleDuelFinished(roomData);
-          }
+        },
+        (error) => {
+          console.error('[MultiplayerDuel] Erro no listener em tempo real da sala:', error);
         }
-      });
-    } catch (e) {
-      console.warn('Erro ao inicializar listener RTDB do duelo:', e);
+      );
+    } catch (listenerErr) {
+      console.error('[MultiplayerDuel] Exceção ao registrar listener da sala:', listenerErr);
     }
 
     return () => {
-      unsubscribeFirestore();
-      if (typeof unsubscribeRtdb === 'function') {
-        unsubscribeRtdb();
+      try {
+        unsubscribe();
+      } catch (unsubErr) {
+        console.error('[MultiplayerDuel] Erro ao desinscrever listener:', unsubErr);
       }
     };
   }, [currentRoom?.id, currentRoom?.player2?.isBot, currentRoom?.status, viewState, processedDuelId, profile?.uid]);
@@ -1370,7 +1315,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setErrorMessage('');
     try {
       const rawCode = generateRoomCode();
-      const roomCode = normalizeRoomCode(rawCode); // ex: "MNT-3XDV"
+      const cleanCode = cleanRoomCode(rawCode) || normalizeRoomCode(rawCode);
+      const roomCode = cleanCode; // ex: "MNT-3XDV"
 
       const duelQuestions = getRandomQuestions({
         category: selectedCategory,
@@ -1412,9 +1358,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       // 1. Save room document directly to Firestore using roomCode as document ID
       await setDoc(doc(db, 'duels', roomCode), firestoreDocData);
 
-      // 2. Sync to Realtime Database & setup onDisconnect
+      // 2. Sync to Realtime Database & setup onDisconnect using cleanCode
       try {
-        await rtdbSet(rtdbRef(rtdb, `duels/${roomCode}`), newRoom);
+        await saveRoomToRTDB(roomCode, newRoom);
         setupRoomOnDisconnect({
           roomId: roomCode,
           userUid: profile?.uid || 'anon',
@@ -1422,7 +1368,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           status: 'waiting',
         });
       } catch (rtdbErr) {
-        console.warn('Erro ao sincronizar sala no RTDB:', rtdbErr);
+        console.error('Erro ao sincronizar sala no RTDB:', rtdbErr);
       }
 
       // 3. Add new room to local openRooms list and set as current room
