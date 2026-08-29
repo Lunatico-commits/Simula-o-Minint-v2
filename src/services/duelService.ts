@@ -29,6 +29,29 @@ export const MAX_OPEN_ROOM_AGE_MS = 2 * 60 * 1000;
 export const MAX_INACTIVITY_MS = 25 * 1000;
 
 /**
+ * Recursively strips any `undefined` values from payloads before writing to Firebase Realtime Database.
+ * Realtime Database rejects payloads with `undefined` values (e.g. `equippedUniform: undefined`).
+ */
+export function sanitizeForRTDB<T>(obj: T): T {
+  if (obj === undefined) {
+    return null as any;
+  }
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeForRTDB(item)) as any;
+  }
+  const clean: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      clean[key] = sanitizeForRTDB(value);
+    }
+  }
+  return clean as T;
+}
+
+/**
  * Padroniza o código de sala limpando espaços e convertendo para MAIÚSCULAS
  */
 export function cleanRoomCode(code?: string | null): string {
@@ -128,16 +151,99 @@ export async function saveRoomToRTDB(code: string, roomData: DuelRoom): Promise<
   }
 
   try {
-    await rtdbSet(rtdbRef(rtdb, `duels/${cleanCode}`), {
+    const sanitizedPayload = sanitizeForRTDB({
       ...roomData,
       id: cleanCode,
       code: cleanCode,
       roomCode: cleanCode,
     });
+    await rtdbSet(rtdbRef(rtdb, `duels/${cleanCode}`), sanitizedPayload);
   } catch (error) {
     console.error(`[duelService] Erro ao gravar sala no RTDB duels/${cleanCode}:`, error);
     throw error;
   }
+}
+
+/**
+ * Busca de forma ultrarrápida e não bloqueante a sala tanto no RTDB quanto no Firestore
+ */
+export async function fetchRoomFast(cleanCode: string): Promise<DuelRoom | null> {
+  if (!cleanCode) return null;
+
+  // 1. RTDB fetch com timeout de 3.5 segundos
+  const rtdbTask = new Promise<DuelRoom | null>((resolve) => {
+    try {
+      const timer = setTimeout(() => resolve(null), 3500);
+      rtdbGet(rtdbRef(rtdb, `duels/${cleanCode}`))
+        .then((snap) => {
+          clearTimeout(timer);
+          if (snap && snap.exists()) {
+            resolve(snap.val() as DuelRoom);
+          } else {
+            resolve(null);
+          }
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          resolve(null);
+        });
+    } catch {
+      resolve(null);
+    }
+  });
+
+  // 2. Firestore direct doc fetch com timeout de 3.5 segundos
+  const firestoreDocTask = new Promise<DuelRoom | null>((resolve) => {
+    try {
+      const timer = setTimeout(() => resolve(null), 3500);
+      getDoc(doc(db, 'duels', cleanCode))
+        .then((snap) => {
+          clearTimeout(timer);
+          if (snap && snap.exists()) {
+            resolve(snap.data() as DuelRoom);
+          } else {
+            resolve(null);
+          }
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          resolve(null);
+        });
+    } catch {
+      resolve(null);
+    }
+  });
+
+  // Retorna assim que QUALQUER uma das fontes responder com dados válidos
+  const quickResult = await Promise.race([
+    rtdbTask.then((r) => (r ? r : new Promise<never>(() => {}))),
+    firestoreDocTask.then((r) => (r ? r : new Promise<never>(() => {}))),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 3800)),
+  ]);
+
+  if (quickResult) {
+    return quickResult;
+  }
+
+  // Fallback: se nenhum doc direto com id cleanCode retornou, tenta buscar por query do roomCode no Firestore
+  try {
+    const q = query(
+      collection(db, 'duels'),
+      where('roomCode', '==', cleanCode),
+      limit(1)
+    );
+    const qSnap = await Promise.race([
+      getDocs(q),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+    ]);
+    if (qSnap && !qSnap.empty) {
+      return qSnap.docs[0].data() as DuelRoom;
+    }
+  } catch (err) {
+    console.warn('[duelService] Erro na query de fallback Firestore:', err);
+  }
+
+  return null;
 }
 
 /**
@@ -160,56 +266,21 @@ export async function validateRoomAndHostAvailability(
   const now = Date.now();
 
   try {
-    let roomData: DuelRoom | null = null;
-    let roomDocId: string | null = null;
-
-    // 1. Busca direta no RTDB pelo nó 'duels/${cleanCode}'
-    try {
-      const rtdbSnapshot = await rtdbGet(rtdbRef(rtdb, `duels/${cleanCode}`));
-      if (rtdbSnapshot.exists()) {
-        roomData = rtdbSnapshot.val() as DuelRoom;
-        roomDocId = cleanCode;
-      }
-    } catch (e) {
-      console.error(`[duelService] Erro ao buscar duels/${cleanCode} no RTDB:`, e);
-    }
-
-    // 2. Fallback de busca no Firestore se não encontrado no RTDB
-    if (!roomData) {
-      try {
-        const firestoreSnap = await getDoc(doc(db, 'duels', cleanCode));
-        if (firestoreSnap.exists()) {
-          roomData = firestoreSnap.data() as DuelRoom;
-          roomDocId = firestoreSnap.id;
-        } else {
-          const q = query(
-            collection(db, 'duels'),
-            where('roomCode', '==', cleanCode),
-            limit(1)
-          );
-          const qSnap = await getDocs(q);
-          if (!qSnap.empty) {
-            const firstDoc = qSnap.docs[0];
-            roomData = firstDoc.data() as DuelRoom;
-            roomDocId = firstDoc.id;
-          }
-        }
-      } catch (e) {
-        console.error('[duelService] Erro ao buscar sala no Firestore:', e);
-      }
-    }
+    const roomData = await fetchRoomFast(cleanCode);
 
     // Se o nó não existir
     if (!roomData) {
       return { isValid: false, errorMessage: 'Sala não encontrada ou código incorreto.' };
     }
 
+    const roomDocId = cleanCode;
+
     // Se o utilizador é o próprio host ou o convidado que já estava na sala reconectando
     const isHost = roomData.player1?.uid === joiningUserUid || roomData.hostUid === joiningUserUid;
     const isReturningPlayer2 = roomData.player2?.uid === joiningUserUid;
 
     if (isHost || isReturningPlayer2) {
-      return { isValid: true, room: roomData, docId: roomDocId || cleanCode };
+      return { isValid: true, room: roomData, docId: roomDocId };
     }
 
     // Se a sala já está em andamento, cheia ou terminada
@@ -245,38 +316,14 @@ export async function validateRoomAndHostAvailability(
     }
 
     if (now - createdTime > MAX_OPEN_ROOM_AGE_MS) {
-      cleanupGhostRoom(roomDocId || cleanCode).catch(() => {});
+      cleanupGhostRoom(roomDocId).catch(() => {});
       return { isValid: false, errorMessage: 'Sala não encontrada ou código incorreto.' };
-    }
-
-    // Verifica presença do anfitrião no RTDB
-    const hostUid = roomData.player1?.uid || roomData.hostUid;
-    if (hostUid) {
-      try {
-        const presenceSnap = await rtdbGet(rtdbRef(rtdb, `duels/${cleanCode}/presence/${hostUid}`));
-        if (presenceSnap.exists()) {
-          const presence = presenceSnap.val();
-          if (presence.isConnected === false) {
-            cleanupGhostRoom(roomDocId || cleanCode).catch(() => {});
-            return { isValid: false, errorMessage: 'Sala não encontrada ou código incorreto.' };
-          }
-          if (typeof presence.lastActive === 'number') {
-            const inactiveDuration = now - presence.lastActive;
-            if (inactiveDuration > MAX_INACTIVITY_MS) {
-              cleanupGhostRoom(roomDocId || cleanCode).catch(() => {});
-              return { isValid: false, errorMessage: 'Sala não encontrada ou código incorreto.' };
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[duelService] Erro ao verificar presença do host:', e);
-      }
     }
 
     return {
       isValid: true,
       room: roomData,
-      docId: roomDocId || cleanCode,
+      docId: roomDocId,
     };
   } catch (error) {
     console.error('[duelService] Erro ao validar sala:', error);
@@ -344,7 +391,7 @@ export function filterValidLobbyRooms(rooms: DuelRoom[]): DuelRoom[] {
 export async function joinRoom(
   roomIdOrCode: string,
   playerProfile: any,
-  timeoutMs: number = 6000
+  timeoutMs: number = 12000
 ): Promise<{
   success: boolean;
   room?: DuelRoom;
@@ -379,30 +426,10 @@ export async function joinRoom(
       const guestName = (playerProfile?.displayName || playerProfile?.name || playerProfile?.nome || 'Candidato MININT').toString().trim();
       const guestPhoto = playerProfile?.photoURL || playerProfile?.avatar || '';
 
-      // 1. Busca direta no Realtime Database no nó 'duels/${cleanCode}'
-      let rtdbSnapshot;
-      try {
-        rtdbSnapshot = await rtdbGet(rtdbRef(rtdb, `duels/${cleanCode}`));
-      } catch (rtdbReadError) {
-        console.error(`[duelService] Erro ao ler duels/${cleanCode} no RTDB:`, rtdbReadError);
-      }
+      // 1. Busca rápida não bloqueante no RTDB e Firestore
+      const roomData = await fetchRoomFast(cleanCode);
 
-      let roomData: DuelRoom | null = null;
-      if (rtdbSnapshot && rtdbSnapshot.exists()) {
-        roomData = rtdbSnapshot.val() as DuelRoom;
-      } else {
-        // Fallback: verificar se existe no Firestore
-        try {
-          const fsDoc = await getDoc(doc(db, 'duels', cleanCode));
-          if (fsDoc.exists()) {
-            roomData = fsDoc.data() as DuelRoom;
-          }
-        } catch (fsError) {
-          console.error('[duelService] Erro ao ler Firestore na busca de sala:', fsError);
-        }
-      }
-
-      // Se o nó NÃO existir:
+      // Se a sala NÃO existir:
       if (!roomData) {
         return {
           success: false,
@@ -434,55 +461,61 @@ export async function joinRoom(
       }
 
       // Estruturação dos dados do Convidado / Player 2
-      const guestData: DuelPlayer = {
+      const guestData: DuelPlayer = sanitizeForRTDB({
         uid: userUid,
         name: guestName,
         displayName: guestName,
-        photoURL: guestPhoto,
+        photoURL: guestPhoto || '',
         branch: playerProfile?.branch || 'PNA',
         avatarId: playerProfile?.avatarId || 'policia',
         province: playerProfile?.province || 'Luanda',
         isVipSupporter: !!playerProfile?.isVipSupporter,
-        equippedFrame: playerProfile?.equippedFrame || playerProfile?.avatarAccessories?.frame,
-        equippedBackground: playerProfile?.equippedBackground || playerProfile?.avatarAccessories?.background,
-        equippedUniform: playerProfile?.equippedUniform,
-        avatarAccessories: playerProfile?.avatarAccessories,
+        equippedFrame: playerProfile?.equippedFrame || playerProfile?.avatarAccessories?.frame || null,
+        equippedBackground: playerProfile?.equippedBackground || playerProfile?.avatarAccessories?.background || null,
+        equippedUniform: playerProfile?.equippedUniform || null,
+        avatarAccessories: playerProfile?.avatarAccessories || null,
         score: 0,
         currentQuestionIndex: 0,
         answers: {},
         isReady: true,
         isConnected: true,
         lastActive: Date.now(),
-      };
+      });
 
-      const matchedPayload = {
+      const matchedPayload = sanitizeForRTDB({
         guest: {
           uid: userUid,
           name: guestName,
-          photoURL: guestPhoto,
+          photoURL: guestPhoto || '',
         },
         player2: guestData,
         status: 'matched' as const,
         questionStartTime: Date.now(),
-      };
+      });
 
       const updatedRoom: DuelRoom = {
         ...roomData,
         ...matchedPayload,
       };
 
-      // Atualiza o nó duels/${cleanCode} no Realtime Database com status: "matched"
-      try {
-        await rtdbUpdate(rtdbRef(rtdb, `duels/${cleanCode}`), matchedPayload);
-      } catch (rtdbUpdateError) {
-        console.error(`[duelService] Erro ao atualizar nó duels/${cleanCode} no RTDB:`, rtdbUpdateError);
-        throw rtdbUpdateError;
-      }
+      // Atualiza o nó duels/${cleanCode} no Realtime Database e Firestore com timeout individual
+      const updateRtdbTask = new Promise<void>((resolve) => {
+        const timer = setTimeout(() => resolve(), 3000);
+        rtdbUpdate(rtdbRef(rtdb, `duels/${cleanCode}`), matchedPayload)
+          .then(() => {
+            clearTimeout(timer);
+            resolve();
+          })
+          .catch((rtdbUpdateError) => {
+            clearTimeout(timer);
+            console.warn(`[duelService] Erro ao atualizar RTDB duels/${cleanCode}:`, rtdbUpdateError);
+            resolve();
+          });
+      });
 
-      // Atualiza também o documento no Firestore para sincronização
-      try {
-        const roomRef = doc(db, 'duels', cleanCode);
-        await setDoc(roomRef, {
+      const updateFsTask = new Promise<void>((resolve) => {
+        const timer = setTimeout(() => resolve(), 3000);
+        setDoc(doc(db, 'duels', cleanCode), {
           guest: {
             uid: userUid,
             name: guestName,
@@ -491,10 +524,19 @@ export async function joinRoom(
           player2: guestData,
           status: 'matched',
           questionStartTime: Date.now(),
-        }, { merge: true });
-      } catch (fsErr) {
-        console.error('[duelService] Aviso ao sincronizar Firestore ao entrar na sala:', fsErr);
-      }
+        }, { merge: true })
+          .then(() => {
+            clearTimeout(timer);
+            resolve();
+          })
+          .catch((fsErr) => {
+            clearTimeout(timer);
+            console.warn('[duelService] Aviso ao sincronizar Firestore:', fsErr);
+            resolve();
+          });
+      });
+
+      await Promise.allSettled([updateRtdbTask, updateFsTask]);
 
       // Configura presença onDisconnect para o convidado
       setupRoomOnDisconnect({

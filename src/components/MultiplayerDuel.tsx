@@ -47,6 +47,7 @@ import {
   cleanRoomCode,
   saveRoomToRTDB,
   listenToRoom,
+  sanitizeForRTDB,
   MAX_OPEN_ROOM_AGE_MS
 } from '../services/duelService';
 
@@ -72,7 +73,7 @@ export function normalizeRoomCode(input?: string | null): string {
 }
 
 const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): DuelPlayer => {
-  return {
+  const rawPlayer: DuelPlayer = {
     uid: userProfile?.uid || userProfile?.id || 'anon',
     displayName: userProfile?.displayName || userProfile?.name || 'Candidato',
     branch: userProfile?.branch || 'PNA',
@@ -80,10 +81,10 @@ const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): Due
     province: userProfile?.province || 'Luanda',
     photoURL: userProfile?.photoURL || userProfile?.avatar || '',
     isVipSupporter: !!(userProfile?.isVipSupporter),
-    equippedFrame: userProfile?.equippedFrame || userProfile?.avatarAccessories?.frame,
-    equippedBackground: userProfile?.equippedBackground || userProfile?.avatarAccessories?.background,
-    equippedUniform: userProfile?.equippedUniform,
-    avatarAccessories: userProfile?.avatarAccessories,
+    equippedFrame: userProfile?.equippedFrame || userProfile?.avatarAccessories?.frame || null,
+    equippedBackground: userProfile?.equippedBackground || userProfile?.avatarAccessories?.background || null,
+    equippedUniform: userProfile?.equippedUniform || null,
+    avatarAccessories: userProfile?.avatarAccessories || null,
     score: 0,
     currentQuestionIndex: 0,
     answers: {},
@@ -92,6 +93,7 @@ const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): Due
     lastActive: Date.now(),
     ...overrides,
   };
+  return sanitizeForRTDB(rawPlayer);
 };
 
 const sanitizeFirestoreData = <T extends Record<string, any>>(obj: T): T => {
@@ -780,7 +782,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           player2: finishedRoom.player2 ? sanitizeFirestoreData(finishedRoom.player2) : null,
         }), { merge: true }).catch((e) => console.warn('Erro ao salvar vitória por desistência no Firestore:', e));
 
-        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), {
+        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}`), sanitizeForRTDB({
           status: 'finished',
           winnerUid,
           forfeitedBy: forfeitedByUid,
@@ -788,7 +790,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           isForfeit: true,
           player1: finishedRoom.player1,
           player2: finishedRoom.player2 || null,
-        }).catch((e) => console.warn('Erro ao salvar vitória por desistência no RTDB:', e));
+        })).catch((e) => console.warn('Erro ao salvar vitória por desistência no RTDB:', e));
       } catch (e) {
         console.warn('Erro ao finalizar duelo por abandono:', e);
       }
@@ -910,12 +912,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             player2: updatedRoom.player2 ? sanitizeFirestoreData(updatedRoom.player2) : null,
           }), { merge: true }).catch((e) => console.warn('Erro ao avançar questão no Firestore:', e));
           
-          rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), {
+          rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), sanitizeForRTDB({
             currentQuestionIndex: nextIdx,
             questionStartTime: nextStartTime,
             player1: updatedRoom.player1,
             player2: updatedRoom.player2 || null,
-          }).catch((e) => console.warn('Erro ao avançar questão no RTDB:', e));
+          })).catch((e) => console.warn('Erro ao avançar questão no RTDB:', e));
         } catch (e) {
           console.warn('Erro ao salvar avanço no banco de dados:', e);
         }
@@ -978,12 +980,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             player2: updatedRoom.player2 ? sanitizeFirestoreData(updatedRoom.player2) : null,
           }), { merge: true }).catch((e) => console.warn('Erro ao finalizar duelo no Firestore:', e));
 
-          rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), {
+          rtdbUpdate(rtdbRef(rtdb, `duels/${updatedRoom.id}`), sanitizeForRTDB({
             status: 'finished',
             winnerUid: winner,
             player1: updatedRoom.player1,
             player2: updatedRoom.player2 || null,
-          }).catch((e) => console.warn('Erro ao finalizar duelo no RTDB:', e));
+          })).catch((e) => console.warn('Erro ao finalizar duelo no RTDB:', e));
         } catch (e) {
           console.warn('Erro ao finalizar no banco de dados:', e);
         }
@@ -1410,8 +1412,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setErrorMessage('');
 
     try {
-      // 3. Call centralized joinRoom service with strict 6s timeout: updates DB with status: "matched" and adds 2nd player data
-      const result = await joinRoom(cleanCode, profile, 6000);
+      // 3. Call centralized joinRoom service with 12s timeout: updates DB with status: "matched" and adds 2nd player data
+      const result = await joinRoom(cleanCode, profile, 12000);
 
       if (!result.success || !result.room) {
         const unavailableMsg = result.errorMessage || 'Não foi possível conectar à sala';
@@ -1550,7 +1552,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         if (updatedPlayerData) {
           const safeData = sanitizeFirestoreData({ [playerKey]: updatedPlayerData });
           setDoc(roomRef, safeData, { merge: true }).catch((e) => console.warn('Erro Firestore resposta:', e));
-          rtdbUpdate(rtdbRef(rtdb, `duels/${currentRoom.id}/${playerKey}`), updatedPlayerData).catch((e) => console.warn('Erro RTDB resposta:', e));
+          rtdbUpdate(rtdbRef(rtdb, `duels/${currentRoom.id}/${playerKey}`), sanitizeForRTDB(updatedPlayerData)).catch((e) => console.warn('Erro RTDB resposta:', e));
         }
       } catch (e) {
         console.warn('Erro ao guardar resposta no banco de dados:', e);
@@ -1944,7 +1946,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       await setDoc(doc(db, 'duels', roomCode), firestoreDocData);
 
       try {
-        await rtdbSet(rtdbRef(rtdb, `duels/${roomCode}`), newRoom);
+        await saveRoomToRTDB(roomCode, newRoom);
         setupRoomOnDisconnect({
           roomId: roomCode,
           userUid: profile?.uid || 'anon',
