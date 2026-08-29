@@ -153,12 +153,12 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCandidate, setSelectedCandidate] = useState<UserProfile | null>(null);
-  const [visibleLimit, setVisibleLimit] = useState<number>(10);
+  const [visibleLimit, setVisibleLimit] = useState<number>(50);
   const [copiedCodeCandidateId, setCopiedCodeCandidateId] = useState<string | null>(null);
 
-  // Reset visible limit to 10 on filter change
+  // Reset visible limit on filter change
   useEffect(() => {
-    setVisibleLimit(10);
+    setVisibleLimit(50);
   }, [scopeFilter, selectedProvince, selectedBranch, levelFilter, searchQuery]);
 
   // Keep selected province in sync if user changes profile province and scope is province
@@ -215,21 +215,68 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const normUserProvince = normalizeProvinceName(userProvince);
   const normSelectedProvince = normalizeProvinceName(selectedProvince);
 
-  // 1. Garantir que a lista completa de utilizadores seja PRIMEIRO totalmente ordenada por XP em ordem decrescente
-  const sortedUsers = [...leaderboard].sort((a, b) => (Number(b.xp || b.totalXp || 0)) - (Number(a.xp || a.totalXp || 0)));
+  // Helper to match the current logged-in user reliably
+  const currentUser = currentProfile;
+  const currentUid = currentUser?.uid || (currentUser as any)?.id;
+  const currentEmail = currentUser?.email || (currentUser as any)?.emailOrPhone;
 
-  // 2. Calcule a posição nacional APÓS a ordenação
-  const currentUserUid = currentProfile?.uid || (currentProfile as any)?.id;
-  const userIndex = sortedUsers.findIndex(u => (u.uid && currentUserUid && u.uid === currentUserUid) || (u.id && currentUserUid && u.id === currentUserUid) || u.uid === currentUserUid || (u as any).id === currentUserUid);
-  const posicaoNacional = userIndex !== -1 ? userIndex + 1 : (sortedUsers.length > 0 ? sortedUsers.length : 1);
-  const myGlobalRank = posicaoNacional;
+  const isUserMatch = (u?: UserProfile | null) => {
+    if (!u || !currentUser) return false;
+    const uUid = u.uid || (u as any).id;
+    const uEmail = u.emailOrPhone || (u as any).email;
+    return Boolean(
+      (currentUid && uUid && uUid === currentUid) ||
+      (currentEmail && uEmail && uEmail === currentEmail)
+    );
+  };
 
-  // 3. Aplique a mesma lógica para o ranking por província: filtre primeiro por província, ordene por XP decrescente e só depois faça o findIndex + 1
-  const provinceCandidates = sortedUsers.filter(
-    u => isRealHumanCandidate(u) && normalizeProvinceName(getCandidateProvince(u)) === normUserProvince
+  // 1. Receba a lista completa de utilizadores e garanta que currentUser está presente com o seu XP atualizado em tempo real (ex: Pedro com 205 XP)
+  const allUsers: UserProfile[] = (() => {
+    let replaced = false;
+    const userXp = Number(currentUser.totalXp ?? currentUser.xp ?? 0);
+    const updatedCurrent: UserProfile = {
+      ...currentUser,
+      xp: userXp,
+      totalXp: userXp,
+    };
+
+    const list = leaderboard.map((u) => {
+      if (isUserMatch(u)) {
+        replaced = true;
+        return {
+          ...u,
+          ...updatedCurrent,
+        };
+      }
+      return u;
+    });
+
+    if (!replaced && (currentUid || currentEmail)) {
+      list.push(updatedCurrent);
+    }
+
+    return list;
+  })();
+
+  // 2. Ordene a lista completa por XP em ordem decrescente
+  const sorted = [...allUsers].sort(
+    (a, b) => Number(b.totalXp ?? b.xp ?? 0) - Number(a.totalXp ?? a.xp ?? 0)
   );
-  const sortedProvinceUsers = [...provinceCandidates].sort((a, b) => (Number(b.xp || b.totalXp || 0)) - (Number(a.xp || a.totalXp || 0)));
-  const provUserIndex = sortedProvinceUsers.findIndex(u => (u.uid && currentUserUid && u.uid === currentUserUid) || (u.id && currentUserUid && u.id === currentUserUid) || u.uid === currentUserUid || (u as any).id === currentUserUid);
+  const sortedUsers = sorted;
+
+  // 3. Calcule a posição real comparando por 'uid', 'id' ou 'email':
+  const rankIndex = sorted.findIndex((u) => isUserMatch(u));
+  const posicaoReal = rankIndex !== -1 ? rankIndex + 1 : 1;
+  const myGlobalRank = posicaoReal;
+
+  // 4. Aplique a mesma lógica para o ranking por província
+  const provinceCandidates = sorted.filter(
+    (u) => (isUserMatch(u) || isRealHumanCandidate(u)) && normalizeProvinceName(getCandidateProvince(u)) === normUserProvince
+  );
+  const sortedProvinceUsers = [...provinceCandidates].sort(
+    (a, b) => Number(b.totalXp ?? b.xp ?? 0) - Number(a.totalXp ?? a.xp ?? 0)
+  );
+  const provUserIndex = sortedProvinceUsers.findIndex((u) => isUserMatch(u));
   const posicaoProvincia = provUserIndex !== -1 ? provUserIndex + 1 : (sortedProvinceUsers.length > 0 ? sortedProvinceUsers.length : 1);
   const myHomeProvinceRank = posicaoProvincia;
 
@@ -269,18 +316,15 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
     }
   };
 
-  // Filtered leaderboard by Scope (National vs Friends vs Province), Academic level, and Search query
-  const filteredList = leaderboard.filter(candidate => {
-    // Strictly ignore any bot, AI or test candidate accounts
-    if (!isRealHumanCandidate(candidate)) return false;
+  // Filtered leaderboard by Scope (National vs Friends vs Province), Academic level, and Search query - DERIVADO DE sortedUsers
+  const filteredList = sortedUsers.filter(candidate => {
+    const isMe = isUserMatch(candidate);
 
-    const isMe = Boolean(
-      (candidate.uid && currentProfile.uid && candidate.uid === currentProfile.uid) ||
-      (candidate.id && currentProfile.id && candidate.id === currentProfile.id) ||
-      (candidate.uid && currentProfile.id && candidate.uid === currentProfile.id) ||
-      (candidate.id && currentProfile.uid && candidate.id === currentProfile.uid)
-    );
-    const isFriend = Boolean(candidate.uid && followingList.includes(candidate.uid));
+    // Strictly ignore any bot, AI or test candidate accounts (never ignore currentUser)
+    if (!isMe && !isRealHumanCandidate(candidate)) return false;
+
+    const candUid = candidate.uid || (candidate as any).id;
+    const isFriend = Boolean(candUid && followingList.includes(candUid));
 
     // Friends scope filter
     if (scopeFilter === 'friends') {
@@ -318,7 +362,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   });
 
   // Rank position of user in current active view list
-  const myActiveScopeRankIndex = filteredList.findIndex(u => u.uid === currentProfile.uid);
+  const myActiveScopeRankIndex = filteredList.findIndex(u => isUserMatch(u));
   const myActiveScopeRank = myActiveScopeRankIndex !== -1 ? myActiveScopeRankIndex + 1 : null;
 
   // Scope key for persisting rank snapshots
@@ -397,26 +441,26 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   // Count candidates per province for badge counters
   const provinceCountsMap = React.useMemo(() => {
     const map: Record<string, number> = {};
-    leaderboard.forEach(u => {
+    sortedUsers.forEach(u => {
       const norm = normalizeProvinceName(getCandidateProvince(u));
       if (norm) {
         map[norm] = (map[norm] || 0) + 1;
       }
     });
     return map;
-  }, [leaderboard]);
+  }, [sortedUsers]);
 
   // Count candidates per MININT branch for badge counters
   const branchCountsMap = React.useMemo(() => {
     const map: Record<string, number> = { PNA: 0, SIC: 0, SME: 0, SP: 0, SPCB: 0 };
-    leaderboard.forEach(u => {
+    sortedUsers.forEach(u => {
       const b = u.branch as MININTBranch;
       if (b && map[b] !== undefined) {
         map[b] = (map[b] || 0) + 1;
       }
     });
     return map;
-  }, [leaderboard]);
+  }, [sortedUsers]);
 
   return (
     <div className="max-w-[850px] mx-auto px-4 py-4 text-slate-900 dark:text-slate-100 space-y-4 animate-fadeIn pb-12">
@@ -498,10 +542,10 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Sua Posição Real:</span>
               <span className="px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 font-black text-xs font-mono shadow-sm">
-                {myGlobalRank}.º LUGAR
+                {posicaoReal}.º LUGAR
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
-                de {sortedUsers.length} {sortedUsers.length === 1 ? 'candidato' : 'candidatos'}
+                de {sorted.length} {sorted.length === 1 ? 'candidato' : 'candidatos'}
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1.5">
@@ -518,7 +562,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
         <div className="text-right shrink-0">
           <div className="text-sm font-black text-amber-400 font-mono flex items-center justify-end gap-1">
             <Zap size={14} className="text-amber-400 fill-amber-400" />
-            <span>{currentProfile.totalXp.toLocaleString()} XP</span>
+            <span>{(Number(currentProfile.totalXp || currentProfile.xp || 0)).toLocaleString()} XP</span>
           </div>
           <span className="text-[9px] text-emerald-400 font-semibold block">
             {currentProfile.multiplayerDuelsWon ?? currentProfile.duelsWon ?? 0} Duelos Vencidos
@@ -732,12 +776,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
       {filteredList.length > 0 && (() => {
         const renderPodiumCard = (candidate: UserProfile, rank: 1 | 2 | 3, delay: number, isElevated: boolean = false) => {
           if (!candidate) return null;
-          const isMe = Boolean(
-            (candidate.uid && currentProfile.uid && candidate.uid === currentProfile.uid) ||
-            ((candidate as any).id && (currentProfile as any).id && (candidate as any).id === (currentProfile as any).id) ||
-            (candidate.uid && (currentProfile as any).id && candidate.uid === (currentProfile as any).id) ||
-            ((candidate as any).id && currentProfile.uid && (candidate as any).id === currentProfile.uid)
-          );
+          const isMe = isUserMatch(candidate);
           const isFollowing = Boolean(candidate.uid && followingList.includes(candidate.uid));
 
           const rankBadge = rank === 1 ? '👑 #1' : rank === 2 ? '🥈 #2' : '🥉 #3';
@@ -824,7 +863,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 📍 {getCandidateProvince(candidate)} • {candidate.branch ? candidate.branch : 'PNA'}
               </p>
               <p className="w-full truncate whitespace-nowrap text-[10px] sm:text-[11px] font-bold text-amber-400 text-center font-mono mt-0.5">
-                {candidate.totalXp?.toLocaleString() ?? 0} XP
+                {(Number(candidate.totalXp ?? candidate.xp ?? 0)).toLocaleString()} XP
               </p>
             </motion.div>
           );
@@ -926,12 +965,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
             <AnimatePresence mode="popLayout">
               {visibleClassificatoryList.map((candidate, idx) => {
                 const rankPosition = idx + 4;
-                const isMe = Boolean(
-                  (candidate.uid && currentProfile.uid && candidate.uid === currentProfile.uid) ||
-                  (candidate.id && currentProfile.id && candidate.id === currentProfile.id) ||
-                  (candidate.uid && currentProfile.id && candidate.uid === currentProfile.id) ||
-                  (candidate.id && currentProfile.uid && candidate.id === currentProfile.uid)
-                );
+                const isMe = isUserMatch(candidate);
                 const candUid = candidate.uid || getCandidateDisplayName(candidate) || `user_${idx}`;
                 const isFollowing = Boolean(candidate.uid && followingList.includes(candidate.uid));
                 const rankChange = rankDeltasMap[candUid] ?? 0;
@@ -1080,7 +1114,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                       <div className="text-right">
                         <div className="text-xs font-black text-amber-600 dark:text-amber-400 font-mono flex items-center justify-end gap-1">
                           <Zap size={12} className="text-amber-500 fill-amber-500" />
-                          <span>{candidate.totalXp.toLocaleString()} XP</span>
+                          <span>{(Number(candidate.totalXp ?? candidate.xp ?? 0)).toLocaleString()} XP</span>
                         </div>
                         <span className="text-[9px] text-slate-400 font-mono flex items-center justify-end gap-0.5 mt-0.5">
                           <MapPin size={9} className="text-amber-500" />
