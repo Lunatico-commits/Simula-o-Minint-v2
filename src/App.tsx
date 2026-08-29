@@ -3,6 +3,7 @@ import { UserProfile, SavedAccount, QuestionCategory, normalizeCategory } from '
 import { getOrSignInUser, db, auth } from './lib/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, getDocFromCache, setDoc, updateDoc } from 'firebase/firestore';
+import { saveOrUpdateUserProfile } from './services/userService';
 import { Header } from './components/Header';
 import { PracticeQuiz } from './components/PracticeQuiz';
 import { DailyChallenge } from './components/DailyChallenge';
@@ -618,8 +619,7 @@ export default function App() {
     setIsAuthModalOpen(false);
     try {
       if (newProfile.uid && newProfile.uid !== 'guest_user') {
-        const userRef = doc(db, 'users', newProfile.uid);
-        await setDoc(userRef, newProfile, { merge: true });
+        await saveOrUpdateUserProfile(newProfile.uid, newProfile);
       }
       setProfile(newProfile);
       saveAccountToLocalStorage(newProfile);
@@ -661,8 +661,7 @@ export default function App() {
 
     try {
       if (profile.uid && profile.uid !== 'guest_user') {
-        const userRef = doc(db, 'users', profile.uid);
-        await setDoc(userRef, updatedData, { merge: true });
+        await saveOrUpdateUserProfile(profile.uid, updatedData);
       }
     } catch (error) {
       console.error('Erro ao guardar perfil no Firestore:', error);
@@ -826,31 +825,7 @@ export default function App() {
 
     try {
       if (profile.uid && profile.uid !== 'guest_user') {
-        const userRef = doc(db, 'users', profile.uid);
-        await setDoc(userRef, {
-          totalXp: updated.totalXp,
-          minintCoins: updated.minintCoins || 0,
-          streakFreezeCount: updated.streakFreezeCount || 0,
-          extraHintsCount: updated.extraHintsCount || 0,
-          purchasedItems: updated.purchasedItems || [],
-          rankTitle: updated.rankTitle,
-          quizzesCompleted: updated.quizzesCompleted,
-          correctAnswersCount: updated.correctAnswersCount,
-          totalQuestionsAnswered: updated.totalQuestionsAnswered,
-          duelsPlayed: updated.duelsPlayed,
-          duelsWon: updated.duelsWon,
-          multiplayerDuelsPlayed: updated.multiplayerDuelsPlayed || 0,
-          multiplayerDuelsWon: updated.multiplayerDuelsWon || 0,
-          duelLeague: updated.duelLeague || 'bronze',
-          weeklyDuelPoints: updated.weeklyDuelPoints || 0,
-          lastLeagueResetWeek: updated.lastLeagueResetWeek,
-          categoryStats: updated.categoryStats,
-          dailyStreak: updated.dailyStreak,
-          lastDailyDate: updated.lastDailyDate,
-          unlockedBadges: updated.unlockedBadges || [],
-          unlockedBadgeDates: updated.unlockedBadgeDates || {},
-          updatedAt: updated.updatedAt,
-        }, { merge: true });
+        await saveOrUpdateUserProfile(profile.uid, updated);
       }
     } catch (error) {
       console.error('Erro ao actualizar estatísticas no Firestore:', error);
@@ -1132,7 +1107,7 @@ export default function App() {
         isOpen={isAdminPanelOpen}
         onClose={() => setIsAdminPanelOpen(false)}
         currentProfile={profile}
-        onUpdateProfile={(updated) => setProfile(updated)}
+        onUpdateProfile={(updated) => handleSaveProfile(updated)}
       />
 
       {/* Support / Voluntary Donation Modal */}
@@ -1140,7 +1115,7 @@ export default function App() {
         isOpen={isSupportModalOpen}
         onClose={() => setIsSupportModalOpen(false)}
         currentProfile={profile}
-        onUpdateProfile={(updated) => setProfile(updated)}
+        onUpdateProfile={(updated) => handleSaveProfile(updated)}
       />
 
       {/* Level / Rank Up Modal with Confetti */}

@@ -24,11 +24,11 @@ export function normalizeUserProfile(data: DocumentData | any, docId?: string): 
   const uid = data?.uid || docId || '';
   
   // Normalização do Ramo com valor real ou 'Não informado' se ausente
-  const rawBranch = (data?.branch || data?.ramo || '').toString().trim().toUpperCase();
+  const rawBranch = (data?.branch || data?.ramo || data?.orgao || data?.orgão || '').toString().trim().toUpperCase();
   const validBranches: MININTBranch[] = ['PNA', 'SIC', 'SME', 'SP', 'SPCB'];
   const branch: MININTBranch = validBranches.includes(rawBranch as MININTBranch)
     ? (rawBranch as MININTBranch)
-    : ('Não informado' as any);
+    : ('PNA' as MININTBranch);
 
   // Normalização da Província com seletores de reserva (fallback para 'Luanda' se ausente)
   const rawProvince = (data?.provincia || data?.province || data?.location || '').toString().trim();
@@ -59,7 +59,7 @@ export function normalizeUserProfile(data: DocumentData | any, docId?: string): 
   };
 
   // Normalização do Nome com seletores de reserva (fallback para 'Candidato MININT' se ausente)
-  const rawName = (data?.displayName || data?.name || data?.nome || data?.userName || '').toString().trim();
+  const rawName = (data?.displayName || data?.nome || data?.name || data?.userName || '').toString().trim();
   const emailIdentifier = data?.email ? data.email.split('@')[0] : '';
   const displayName = (rawName && rawName !== 'Não informado') 
     ? rawName 
@@ -155,12 +155,20 @@ export async function fetchAllUsers(): Promise<UserProfile[]> {
     const users: UserProfile[] = [];
 
     snapshot.forEach((docSnap) => {
-      const normalized = normalizeUserProfile(docSnap.data(), docSnap.id);
+      const data = docSnap.data();
+      const rawUser = { ...data, uid: data?.uid || docSnap.id };
+      if (!isRealHumanCandidate(rawUser)) {
+        return;
+      }
+      const normalized = normalizeUserProfile(data, docSnap.id);
+      if (!isRealHumanCandidate(normalized)) {
+        return;
+      }
       users.push(normalized);
     });
 
-    // Ordenação do ranking diretamente em memória JavaScript após receber os dados
-    users.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
+    // Ordenação do ranking diretamente em memória JavaScript por XP decrescente
+    users.sort((a, b) => (Number(b.totalXp ?? b.xp) || 0) - (Number(a.totalXp ?? a.xp) || 0));
     return users;
   } catch (error) {
     handleFirestoreError(error, OperationType.LIST, 'users');
@@ -178,7 +186,7 @@ export async function getUsers(): Promise<UserProfile[]> {
 }
 
 /**
- * Assina atualizações em tempo real de TODOS os utilizadores na coleção 'users' sem depender de índices no Firestore.
+ * Assina atualizações em tempo real de TODOS os utilizadores na coleção 'users' do Firestore.
  * Realiza a ordenação do ranking diretamente em JavaScript em memória após receber os dados.
  */
 export function subscribeToAllUsers(
@@ -192,11 +200,19 @@ export function subscribeToAllUsers(
       (snapshot: QuerySnapshot<DocumentData>) => {
         const users: UserProfile[] = [];
         snapshot.forEach((docSnap) => {
-          const normalized = normalizeUserProfile(docSnap.data(), docSnap.id);
+          const data = docSnap.data();
+          const rawUser = { ...data, uid: data?.uid || docSnap.id };
+          if (!isRealHumanCandidate(rawUser)) {
+            return;
+          }
+          const normalized = normalizeUserProfile(data, docSnap.id);
+          if (!isRealHumanCandidate(normalized)) {
+            return;
+          }
           users.push(normalized);
         });
-        // Ordenação do ranking diretamente em memória JavaScript após receber os dados
-        users.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
+        // Ordenação do ranking diretamente em memória JavaScript por XP decrescente
+        users.sort((a, b) => (Number(b.totalXp ?? b.xp) || 0) - (Number(a.totalXp ?? a.xp) || 0));
         onUpdate(users);
       },
       (error) => {
@@ -241,24 +257,69 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 }
 
 /**
- * Guarda ou atualiza o perfil de um utilizador no Firestore com merge seguro.
+ * Guarda ou atualiza o perfil de um utilizador diretamente no Firestore na coleção 'users'.
+ * Garante que os campos essenciais (uid, displayName/nome, xp/totalXp, provincia/province, branch/ramo/orgão)
+ * sejam gravados e sincronizados com merge seguro.
  */
-export async function saveOrUpdateUserProfile(uid: string, profile: Partial<UserProfile>): Promise<void> {
-  if (!uid) return;
+export async function saveOrUpdateUserProfile(uid: string, profile: Partial<UserProfile> | any): Promise<void> {
+  if (!uid || uid === 'guest_user') return;
   try {
     const userDocRef = doc(db, 'users', uid);
-    await setDoc(
-      userDocRef,
-      {
-        ...profile,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    const xpVal = Number(profile.totalXp ?? profile.xp ?? 0);
+    const safeXp = isNaN(xpVal) ? 0 : xpVal;
+    const nameVal = (profile.displayName || profile.nome || profile.name || '').toString().trim();
+    const branchVal = (profile.branch || profile.ramo || profile.orgao || profile.orgão || 'PNA').toString().trim();
+    const provVal = (profile.province || profile.provincia || 'Luanda').toString().trim();
+
+    const dataToSave: Record<string, any> = {
+      ...profile,
+      uid,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (nameVal) {
+      dataToSave.displayName = nameVal;
+      dataToSave.nome = nameVal;
+      dataToSave.name = nameVal;
+    }
+    if (profile.totalXp !== undefined || profile.xp !== undefined) {
+      dataToSave.totalXp = safeXp;
+      dataToSave.xp = safeXp;
+    }
+    if (provVal) {
+      dataToSave.province = provVal;
+      dataToSave.provincia = provVal;
+    }
+    if (branchVal) {
+      dataToSave.branch = branchVal;
+      dataToSave.ramo = branchVal;
+      dataToSave.orgao = branchVal;
+      dataToSave.orgão = branchVal;
+    }
+
+    await setDoc(userDocRef, dataToSave, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${uid}`);
     throw error;
   }
+}
+
+/**
+ * Atualiza o XP de um utilizador diretamente na coleção 'users' do Firestore.
+ */
+export async function updateUserXpInFirestore(
+  uid: string,
+  newTotalXp: number,
+  extraFields: Partial<UserProfile> = {}
+): Promise<void> {
+  if (!uid || uid === 'guest_user') return;
+  const safeXp = Number(newTotalXp) || 0;
+  await saveOrUpdateUserProfile(uid, {
+    ...extraFields,
+    uid,
+    totalXp: safeXp,
+    xp: safeXp,
+  });
 }
 
 /**

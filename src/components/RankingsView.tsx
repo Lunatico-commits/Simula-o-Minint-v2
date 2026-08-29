@@ -169,41 +169,44 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   }, [currentProfile.province]);
 
   useEffect(() => {
-    // Consulta direta em tempo real ao Firestore ordenada por XP decrescente
+    // Consulta direta em tempo real a TODOS os utilizadores da coleção 'users' no Firestore ordenada por XP decrescente
     const unsubscribe = subscribeToRankings(
       (users) => {
-        // Strict Map deduplication by uid with human validation
         const uniqueMap = new Map<string, UserProfile>();
 
+        // Adiciona apenas os utilizadores reais retornados do Firestore
         users.forEach((u) => {
-          if (u && u.uid && isRealHumanCandidate(u)) {
+          if (u && isRealHumanCandidate(u)) {
             uniqueMap.set(u.uid, u);
           }
         });
 
-        // Ensure current profile is present and updated if human
-        if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
+        // Garante que o perfil atual autenticado está presente com seus dados e XP mais recentes (se for conta real)
+        if (currentProfile && isRealHumanCandidate(currentProfile)) {
           const existing = uniqueMap.get(currentProfile.uid);
+          const currentXp = Number(currentProfile.totalXp ?? currentProfile.xp ?? 0);
+          const existingXp = Number(existing?.totalXp ?? existing?.xp ?? 0);
+          const highestXp = Math.max(existingXp, currentXp);
+
           uniqueMap.set(currentProfile.uid, {
             ...(existing || {}),
             ...currentProfile,
-            totalXp: Math.max(existing?.totalXp ?? 0, currentProfile.totalXp ?? 0),
+            totalXp: highestXp,
+            xp: highestXp,
           });
         }
 
-        const combined = Array.from(uniqueMap.values());
-        combined.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
+        const combined = Array.from(uniqueMap.values()).filter(isRealHumanCandidate);
+        combined.sort((a, b) => (Number(b.totalXp ?? b.xp) || 0) - (Number(a.totalXp ?? a.xp) || 0));
         setLeaderboard(combined);
       },
       (error) => {
         console.error('Erro ao buscar ranking do Firestore:', error);
-        const uniqueMap = new Map<string, UserProfile>();
-        if (currentProfile && currentProfile.uid && isRealHumanCandidate(currentProfile)) {
-          uniqueMap.set(currentProfile.uid, currentProfile);
+        if (currentProfile && isRealHumanCandidate(currentProfile)) {
+          setLeaderboard([currentProfile]);
+        } else {
+          setLeaderboard([]);
         }
-        const combined = Array.from(uniqueMap.values());
-        combined.sort((a, b) => (Number(b.xp ?? b.totalXp) || 0) - (Number(a.xp ?? a.totalXp) || 0));
-        setLeaderboard(combined);
       }
     );
 
@@ -215,66 +218,26 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
   const normUserProvince = normalizeProvinceName(userProvince);
   const normSelectedProvince = normalizeProvinceName(selectedProvince);
 
-  // Helper to match the current logged-in user reliably
-  const currentUser = currentProfile;
-  const currentUid = currentUser?.uid || (currentUser as any)?.id;
-  const currentEmail = currentUser?.email || (currentUser as any)?.emailOrPhone;
-
+  // Helper para verificar com precisão se um candidato é o utilizador autenticado
   const isUserMatch = (u?: UserProfile | null) => {
-    if (!u || !currentUser) return false;
-    const uUid = u.uid || (u as any).id;
-    const uEmail = u.emailOrPhone || (u as any).email;
-    return Boolean(
-      (currentUid && uUid && uUid === currentUid) ||
-      (currentEmail && uEmail && uEmail === currentEmail)
-    );
+    if (!u || !currentProfile) return false;
+    return Boolean(u.uid && currentProfile.uid && u.uid === currentProfile.uid);
   };
 
-  // 1. Receba a lista completa de utilizadores e garanta que currentUser está presente com o seu XP atualizado em tempo real (ex: Pedro com 205 XP)
-  const allUsers: UserProfile[] = (() => {
-    let replaced = false;
-    const userXp = Number(currentUser.totalXp ?? currentUser.xp ?? 0);
-    const updatedCurrent: UserProfile = {
-      ...currentUser,
-      xp: userXp,
-      totalXp: userXp,
-    };
+  // Lista completa de todos os utilizadores ordenados por XP de forma decrescente
+  const sortedUsers = leaderboard;
 
-    const list = leaderboard.map((u) => {
-      if (isUserMatch(u)) {
-        replaced = true;
-        return {
-          ...u,
-          ...updatedCurrent,
-        };
-      }
-      return u;
-    });
-
-    if (!replaced && (currentUid || currentEmail)) {
-      list.push(updatedCurrent);
-    }
-
-    return list;
-  })();
-
-  // 2. Ordene a lista completa por XP em ordem decrescente
-  const sorted = [...allUsers].sort(
-    (a, b) => Number(b.totalXp ?? b.xp ?? 0) - Number(a.totalXp ?? a.xp ?? 0)
-  );
-  const sortedUsers = sorted;
-
-  // 3. Calcule a posição real comparando por 'uid', 'id' ou 'email':
-  const rankIndex = sorted.findIndex((u) => isUserMatch(u));
+  // Cálculo da Posição Real do utilizador no ranking geral global
+  const rankIndex = sortedUsers.findIndex((u) => isUserMatch(u));
   const posicaoReal = rankIndex !== -1 ? rankIndex + 1 : 1;
   const myGlobalRank = posicaoReal;
 
-  // 4. Aplique a mesma lógica para o ranking por província
-  const provinceCandidates = sorted.filter(
-    (u) => (isUserMatch(u) || isRealHumanCandidate(u)) && normalizeProvinceName(getCandidateProvince(u)) === normUserProvince
+  // Cálculo da Posição do utilizador no ranking da sua província
+  const provinceCandidates = sortedUsers.filter(
+    (u) => normalizeProvinceName(getCandidateProvince(u)) === normUserProvince
   );
   const sortedProvinceUsers = [...provinceCandidates].sort(
-    (a, b) => Number(b.totalXp ?? b.xp ?? 0) - Number(a.totalXp ?? a.xp ?? 0)
+    (a, b) => (Number(b.totalXp ?? b.xp) || 0) - (Number(a.totalXp ?? a.xp) || 0)
   );
   const provUserIndex = sortedProvinceUsers.findIndex((u) => isUserMatch(u));
   const posicaoProvincia = provUserIndex !== -1 ? provUserIndex + 1 : (sortedProvinceUsers.length > 0 ? sortedProvinceUsers.length : 1);
@@ -545,7 +508,7 @@ export const RankingsView: React.FC<RankingsViewProps> = ({ currentProfile, onPl
                 {posicaoReal}.º LUGAR
               </span>
               <span className="text-[10px] text-slate-400 font-mono">
-                de {sorted.length} {sorted.length === 1 ? 'candidato' : 'candidatos'}
+                de {sortedUsers.length} {sortedUsers.length === 1 ? 'candidato' : 'candidatos'}
               </span>
             </div>
             <p className="text-[11px] text-slate-300 font-medium truncate mt-0.5 flex items-center gap-1.5">

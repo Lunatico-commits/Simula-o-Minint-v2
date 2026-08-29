@@ -241,28 +241,30 @@ export function isAdminUser(profile?: UserProfile | null): boolean {
 export function isRealHumanCandidate(candidate?: Partial<UserProfile> | null | any): boolean {
   if (!candidate) return false;
 
-  // 1. UID validation - must have a valid non-empty UID (ignore ghost accounts)
+  // 1. UID validation - must have a valid non-empty UID (ignore ghost and guest accounts)
   const rawUid = String(candidate.uid || candidate.id || '').trim();
-  if (!rawUid || rawUid === 'undefined' || rawUid === 'null' || rawUid.length < 3) {
+  if (!rawUid || rawUid === 'undefined' || rawUid === 'null' || rawUid === 'guest_user' || rawUid.length < 3) {
     return false;
   }
 
-  // 2. Email validation - must have a valid email format with '@' (ignore ghost accounts)
-  const rawEmail = String(candidate.email || candidate.emailOrPhone || '').trim();
-  if (!rawEmail || !rawEmail.includes('@') || rawEmail.length < 5) {
+  // 2. Email / account identifier validation - rejeitar contas sem email/telefone nem uid válidos
+  const rawEmail = String(candidate.email || candidate.emailOrPhone || candidate.userEmail || '').trim();
+  if (!rawEmail && rawUid.length < 5) {
     return false;
   }
 
-  // 3. Explicit bot / AI / test flags
-  if (candidate.isBot === true || candidate.is_bot === true) return false;
+  // 3. Propriedades explícitas: isMock, isBot, isTest, isDummy (e suas variações)
+  if (candidate.isMock === true || candidate.is_mock === true || candidate.isMock === 'true') return false;
+  if (candidate.isBot === true || candidate.is_bot === true || candidate.isBot === 'true') return false;
   if (candidate.isAi === true || candidate.isAI === true || candidate.is_ai === true) return false;
-  if (candidate.isTestAccount === true || candidate.isTest === true || candidate.is_test === true) return false;
+  if (candidate.isTestAccount === true || candidate.isTest === true || candidate.is_test === true || candidate.isTest === 'true') return false;
+  if (candidate.isDummy === true || candidate.is_dummy === true || candidate.isDummy === 'true') return false;
 
-  // 4. Roles
+  // 4. Roles não humanas
   const role = String(candidate.role || '').toLowerCase().trim();
-  if (role === 'bot' || role === 'ai' || role === 'test' || role === 'ia') return false;
+  if (role === 'bot' || role === 'ai' || role === 'test' || role === 'ia' || role === 'dummy' || role === 'mock') return false;
 
-  // 5. UID checks for bot prefixes
+  // 5. Prefixos de UID de bots, testes, mocks ou dummies
   const uid = rawUid.toLowerCase();
   if (
     uid.startsWith('bot_') ||
@@ -272,22 +274,46 @@ export function isRealHumanCandidate(candidate?: Partial<UserProfile> | null | a
     uid.startsWith('ia_') ||
     uid.startsWith('ia-') ||
     uid.startsWith('mock_') ||
+    uid.startsWith('mock-') ||
     uid.startsWith('test_') ||
+    uid.startsWith('test-') ||
+    uid.startsWith('dummy_') ||
+    uid.startsWith('dummy-') ||
     uid.startsWith('simulated_') ||
-    uid === 'bot_candidate_ai'
+    uid === 'bot_candidate_ai' ||
+    uid === 'guest_user'
   ) {
     return false;
   }
 
-  // 6. DisplayName bot / test indicators
-  const name = String(candidate.displayName || candidate.nome || candidate.name || '').trim().toLowerCase();
+  // 6. Verificação do nome: filtrar qualquer conta cujo nome seja estritamente "Candidato MININT" ou variantes genéricas/bots
+  const rawName = String(candidate.displayName || candidate.nome || candidate.name || candidate.userName || '').trim();
+  const name = rawName.toLowerCase();
+
+  if (
+    name === 'candidato minint' ||
+    name === 'candidato minint angola' ||
+    name === 'candidato' ||
+    name === 'não informado' ||
+    name === 'desconhecido' ||
+    name === 'anónimo' ||
+    name === 'anonimo' ||
+    name === ''
+  ) {
+    return false;
+  }
+
   if (
     name.includes('[bot]') ||
     name.includes('[ia]') ||
     name.includes('[test]') ||
+    name.includes('[mock]') ||
+    name.includes('[dummy]') ||
     name.includes('(bot)') ||
     name.includes('(ia)') ||
     name.includes('(test)') ||
+    name.includes('(mock)') ||
+    name.includes('(dummy)') ||
     name.startsWith('bot ') ||
     name.startsWith('ia ') ||
     name.startsWith('robô ') ||
