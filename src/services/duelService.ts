@@ -347,15 +347,27 @@ export async function cleanupGhostRoom(roomId: string) {
 }
 
 /**
- * Filtra salas abertas para a listagem do lobby
+ * Filtra salas abertas para a listagem do lobby.
+ * Exibe apenas salas com status === 'waiting', sem player2 e exclui salas criadas pelo próprio usuário.
  */
-export function filterValidLobbyRooms(rooms: DuelRoom[]): DuelRoom[] {
+export function filterValidLobbyRooms(rooms: DuelRoom[], currentUserId?: string | null): DuelRoom[] {
   const now = Date.now();
   const cutoffTime = now - MAX_OPEN_ROOM_AGE_MS;
 
   return (rooms || []).filter((room) => {
     if (!room || room.status !== 'waiting') return false;
     if (room.player2) return false;
+
+    // Filtra para NÃO exibir salas criadas pelo próprio usuário
+    if (currentUserId) {
+      if (
+        room.hostUid === currentUserId ||
+        room.player1?.uid === currentUserId ||
+        room.hostId === currentUserId
+      ) {
+        return false;
+      }
+    }
 
     let createdTime = 0;
     if (typeof room.createdAt === 'number') {
@@ -665,3 +677,103 @@ export function listenToRoom(
     }
   };
 }
+
+/**
+ * 4. Submissão e Sincronização em Tempo Real de Respostas no Duelo:
+ * - Escreve no nó específico: duels/${cleanCode}/answers/${questionIndex}/${uid}
+ * - Atualiza o jogador no RTDB (player1 ou player2)
+ * - Sincroniza em background com o Firestore
+ */
+export async function submitDuelAnswer({
+  roomIdOrCode,
+  questionIndex,
+  uid,
+  chosenIndex,
+  isCorrect,
+  timeSeconds,
+  newScore,
+  isHost,
+}: {
+  roomIdOrCode: string;
+  questionIndex: number;
+  uid: string;
+  chosenIndex: number;
+  isCorrect: boolean;
+  timeSeconds: number;
+  newScore: number;
+  isHost: boolean;
+}): Promise<void> {
+  const cleanCode = cleanRoomCode(roomIdOrCode);
+  if (!cleanCode || !uid) return;
+
+  const answerPayload = sanitizeForRTDB({
+    uid,
+    chosenIndex,
+    isCorrect,
+    timeSeconds,
+    score: newScore,
+    answeredAt: Date.now(),
+  });
+
+  const playerKey = isHost ? 'player1' : 'player2';
+
+  try {
+    // 1. Escreve no nó específico de respostas em tempo real
+    const answerNodeRef = rtdbRef(rtdb, `duels/${cleanCode}/answers/${questionIndex}/${uid}`);
+    rtdbSet(answerNodeRef, answerPayload).catch((err) => {
+      console.warn(`[duelService] Erro ao gravar resposta em duels/${cleanCode}/answers/${questionIndex}/${uid}:`, err);
+    });
+
+    // 2. Atualiza o objeto do jogador correspondente no RTDB
+    const playerAnswerRef = rtdbRef(rtdb, `duels/${cleanCode}/${playerKey}/answers/${questionIndex}`);
+    rtdbSet(playerAnswerRef, sanitizeForRTDB({ chosenIndex, isCorrect, timeSeconds })).catch(() => {});
+
+    const playerScoreRef = rtdbRef(rtdb, `duels/${cleanCode}/${playerKey}/score`);
+    rtdbSet(playerScoreRef, newScore).catch(() => {});
+
+    const playerLastActiveRef = rtdbRef(rtdb, `duels/${cleanCode}/${playerKey}/lastActive`);
+    rtdbSet(playerLastActiveRef, Date.now()).catch(() => {});
+
+    // 3. Sincroniza com o Firestore
+    const fsDocRef = doc(db, 'duels', cleanCode);
+    setDoc(
+      fsDocRef,
+      {
+        [`answers.${questionIndex}.${uid}`]: answerPayload,
+        [`${playerKey}.answers.${questionIndex}`]: { chosenIndex, isCorrect, timeSeconds },
+        [`${playerKey}.score`]: newScore,
+        [`${playerKey}.lastActive`]: Date.now(),
+      },
+      { merge: true }
+    ).catch((fsErr) => {
+      console.warn('[duelService] Aviso ao sincronizar resposta no Firestore:', fsErr);
+    });
+  } catch (err) {
+    console.error('[duelService] Erro ao submeter resposta no duelo:', err);
+  }
+}
+
+/**
+ * Atualiza nós parciais da sala no RTDB e Firestore de forma rápida
+ */
+export async function updateDuelRoomNode(roomIdOrCode: string, payload: Partial<DuelRoom>): Promise<void> {
+  const cleanCode = cleanRoomCode(roomIdOrCode);
+  if (!cleanCode) return;
+
+  const sanitized = sanitizeForRTDB(payload);
+
+  try {
+    const targetRtdbRef = rtdbRef(rtdb, `duels/${cleanCode}`);
+    rtdbUpdate(targetRtdbRef, sanitized).catch((err) => {
+      console.warn(`[duelService] Erro ao atualizar nó RTDB duels/${cleanCode}:`, err);
+    });
+
+    const docRef = doc(db, 'duels', cleanCode);
+    setDoc(docRef, sanitized, { merge: true }).catch((err) => {
+      console.warn(`[duelService] Erro ao atualizar documento Firestore duels/${cleanCode}:`, err);
+    });
+  } catch (err) {
+    console.error('[duelService] Erro em updateDuelRoomNode:', err);
+  }
+}
+

@@ -394,6 +394,7 @@ export interface DuelRoom {
   player1: DuelPlayer;
   player2?: DuelPlayer;
   winnerUid?: string | 'draw';
+  answers?: Record<number, Record<string, { chosenIndex: number; isCorrect: boolean; timeSeconds: number; score?: number; answeredAt?: number }>>;
   createdAt: number | any;
   presence?: Record<string, { isConnected: boolean; lastActive: number; disconnectedAt?: number }>;
   forfeitedBy?: string;

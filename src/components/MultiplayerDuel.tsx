@@ -16,7 +16,7 @@ import { explainQuestionWithAI } from '../services/apiService';
 import { AIExplanationModal } from './AIExplanationModal';
 import { MemeGeneratorModal } from './MemeGeneratorModal';
 import { sendDuelInvitationNotification } from '../utils/notifications';
-import { fireConfetti, fireHonorVictoryConfetti, fireDuelVictoryFullScreenConfetti } from '../utils/confetti';
+import { fireConfetti, fireHonorVictoryConfetti, fireDuelVictoryFullScreenConfetti, clearConfetti } from '../utils/confetti';
 import { LEAGUES_CONFIG, DuelLeague } from '../utils/league';
 import { 
   playCorrectSound, 
@@ -47,6 +47,8 @@ import {
   cleanRoomCode,
   saveRoomToRTDB,
   listenToRoom,
+  submitDuelAnswer,
+  updateDuelRoomNode,
   sanitizeForRTDB,
   MAX_OPEN_ROOM_AGE_MS
 } from '../services/duelService';
@@ -302,6 +304,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Centralized Function to Completely Clear Match State & Return to Clean Lobby
   const clearDuelSessionAndReturnToLobby = () => {
+    // 0. Cancel any running confetti particles immediately
+    clearConfetti();
+
     // 1. Reset all state to clean lobby
     setCurrentRoom(null);
     setProcessedDuelId(null);
@@ -443,6 +448,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     } catch (e) {}
 
     return () => {
+      clearConfetti();
       const room = currentRoomRef.current;
       if (room && !room.player2?.isBot && room.status === 'waiting') {
         const roomId = room.id || room.roomCode;
@@ -658,7 +664,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             });
           }
         });
-        setOpenRooms(filterValidLobbyRooms(firestoreRooms));
+        setOpenRooms(filterValidLobbyRooms(firestoreRooms, profile?.uid));
         setIsLoadingOpenRooms(false);
       }, (error) => {
         console.warn('Erro ao escutar salas públicas no Firestore:', error);
@@ -693,7 +699,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             }
           });
           if (rtdbRooms.length > 0) {
-            setOpenRooms(filterValidLobbyRooms(rtdbRooms));
+            setOpenRooms(filterValidLobbyRooms(rtdbRooms, profile?.uid));
           }
         }
       });
@@ -701,7 +707,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     // Periodic sweep: clean up any rooms older than 2 minutes in real time without refresh
     const sweepInterval = setInterval(() => {
-      setOpenRooms((prev) => filterValidLobbyRooms(prev));
+      setOpenRooms((prev) => filterValidLobbyRooms(prev, profile?.uid));
     }, 3000);
 
     return () => {
@@ -709,7 +715,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       unsubscribeRtdb();
       clearInterval(sweepInterval);
     };
-  }, []);
+  }, [profile?.uid]);
 
   const [processedDuelId, setProcessedDuelId] = useState<string | null>(null);
   const processedTimeoutRef = useRef<string>('');
@@ -1515,11 +1521,31 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     const newScore = player.score + ptsEarned;
     const isBot = currentRoom.player2?.isBot;
 
-    // Build updated room state locally
-    let updatedRoom: DuelRoom = { ...currentRoom };
+    // Build updated room state locally with answers dictionary
+    const existingAnswers = currentRoom.answers || {};
+    const qAnswers = existingAnswers[qIndex] || {};
+    const updatedAnswersMap = {
+      ...existingAnswers,
+      [qIndex]: {
+        ...qAnswers,
+        [profile.uid]: {
+          chosenIndex: chosenOptionIndex,
+          isCorrect,
+          timeSeconds: timeSpent,
+          score: newScore,
+          answeredAt: Date.now(),
+        },
+      },
+    };
+
+    let updatedRoom: DuelRoom = { 
+      ...currentRoom,
+      answers: updatedAnswersMap,
+    };
+
     if (isHost) {
       updatedRoom = {
-        ...currentRoom,
+        ...updatedRoom,
         player1: {
           ...currentRoom.player1,
           answers: newAnswers,
@@ -1528,7 +1554,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       };
     } else if (currentRoom.player2) {
       updatedRoom = {
-        ...currentRoom,
+        ...updatedRoom,
         player2: {
           ...currentRoom.player2,
           answers: newAnswers,
@@ -1542,26 +1568,27 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     // Only update Firestore + Realtime Database if it's an online multiplayer game (NOT a bot game)
     if (!isBot) {
-      try {
-        const roomRef = doc(db, 'duels', currentRoom.id);
-        const playerKey = isHost ? 'player1' : 'player2';
-        const updatedPlayerData = isHost
-          ? { ...currentRoom.player1, answers: newAnswers, score: newScore }
-          : (currentRoom.player2 ? { ...currentRoom.player2, answers: newAnswers, score: newScore } : null);
-
-        if (updatedPlayerData) {
-          const safeData = sanitizeFirestoreData({ [playerKey]: updatedPlayerData });
-          setDoc(roomRef, safeData, { merge: true }).catch((e) => console.warn('Erro Firestore resposta:', e));
-          rtdbUpdate(rtdbRef(rtdb, `duels/${currentRoom.id}/${playerKey}`), sanitizeForRTDB(updatedPlayerData)).catch((e) => console.warn('Erro RTDB resposta:', e));
-        }
-      } catch (e) {
-        console.warn('Erro ao guardar resposta no banco de dados:', e);
-      }
+      submitDuelAnswer({
+        roomIdOrCode: currentRoom.id,
+        questionIndex: qIndex,
+        uid: profile.uid,
+        chosenIndex: chosenOptionIndex,
+        isCorrect,
+        timeSeconds: timeSpent,
+        newScore,
+        isHost,
+      }).catch((err) => console.warn('[MultiplayerDuel] Erro ao submeter resposta:', err));
     }
 
     // Check if both players answered
     const otherPlayer = isHost ? updatedRoom.player2 : updatedRoom.player1;
-    if (otherPlayer && otherPlayer.answers && otherPlayer.answers[qIndex] !== undefined) {
+    const otherUid = otherPlayer?.uid;
+    const isOtherAnswered = Boolean(
+      (otherPlayer && otherPlayer.answers && otherPlayer.answers[qIndex] !== undefined) ||
+      (otherUid && updatedAnswersMap[qIndex] && updatedAnswersMap[qIndex][otherUid] !== undefined)
+    );
+
+    if (isOtherAnswered) {
       // Both answered! Advance to next question or finish after 1.5s delay
       setTimeout(() => {
         advanceOrFinishDuel(updatedRoom, qIndex);
@@ -2225,63 +2252,78 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           )}
 
           {/* Open Public Rooms List */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-300 flex items-center gap-1.5">
-              <Users size={16} className="text-amber-500" />
-              <span>Salas Abertas em Tempo Real ({openRooms.length})</span>
-            </h3>
+          {(() => {
+            const visibleOpenRooms = openRooms.filter((room) => {
+              if (!room || room.status !== 'waiting') return false;
+              if (room.player2) return false;
+              if (profile?.uid) {
+                if (room.hostUid === profile.uid || room.player1?.uid === profile.uid || room.hostId === profile.uid) {
+                  return false;
+                }
+              }
+              return true;
+            });
 
-            {isLoadingOpenRooms ? (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex items-center justify-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 shadow-xs">
-                <Loader2 size={18} className="animate-spin text-amber-500" />
-                <span className="font-medium">A carregar salas em tempo real...</span>
-              </div>
-            ) : openRooms.length === 0 ? (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 text-center text-xs text-slate-600 dark:text-slate-400 shadow-xs">
-                Nenhuma sala aberta no momento. Crie uma sala ou treine contra a IA!
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {openRooms.map((room) => {
-                  return (
-                    <div
-                      key={room.id}
-                      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-3.5 flex items-center justify-between transition-all shadow-xs"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="shrink-0 flex items-center justify-center">
-                          <UserAvatar user={room.player1} size="sm" showBranchBadge={true} />
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{room.player1.displayName}</p>
-                          <p className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-semibold flex items-center gap-1.5 mt-0.5 flex-wrap">
-                            <span>Código: {room.roomCode}</span>
-                            <span className="px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[9px] font-bold">
-                              {getCategoryDisplayName(room.category)}
-                            </span>
-                            {(room.mode === 'relampago' || room.timePerQuestion === 30) && (
-                              <span className="px-1.5 py-0.2 rounded bg-rose-500/15 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
-                                <Zap size={10} className="text-amber-400" />
-                                <span>30s Relâmpago</span>
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
+            return (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-300 flex items-center gap-1.5">
+                  <Users size={16} className="text-amber-500" />
+                  <span>Salas Abertas em Tempo Real ({visibleOpenRooms.length})</span>
+                </h3>
 
-                      <button
-                        onClick={() => handleJoinRoomByCode(room.roomCode || room.code)}
-                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1"
-                      >
-                        <LogIn size={13} />
-                        <span>Entrar</span>
-                      </button>
-                    </div>
-                  );
-                })}
+                {isLoadingOpenRooms ? (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex items-center justify-center gap-2.5 text-xs text-slate-500 dark:text-slate-400 shadow-xs">
+                    <Loader2 size={18} className="animate-spin text-amber-500" />
+                    <span className="font-medium">A carregar salas em tempo real...</span>
+                  </div>
+                ) : visibleOpenRooms.length === 0 ? (
+                  <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 text-center text-xs text-slate-600 dark:text-slate-400 shadow-xs">
+                    Nenhuma sala de outros candidatos aberta no momento. Crie uma sala ou treine contra a IA!
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {visibleOpenRooms.map((room) => {
+                      return (
+                        <div
+                          key={room.id}
+                          className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 rounded-2xl p-3.5 flex items-center justify-between transition-all shadow-xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="shrink-0 flex items-center justify-center">
+                              <UserAvatar user={room.player1} size="sm" showBranchBadge={true} />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-900 dark:text-slate-100">{room.player1.displayName}</p>
+                              <p className="text-[10px] text-amber-600 dark:text-amber-400 font-mono font-semibold flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span>Código: {room.roomCode}</span>
+                                <span className="px-1.5 py-0.2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[9px] font-bold">
+                                  {getCategoryDisplayName(room.category)}
+                                </span>
+                                {(room.mode === 'relampago' || room.timePerQuestion === 30) && (
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-500/15 border border-rose-500/30 text-rose-500 dark:text-rose-400 text-[9px] font-black uppercase tracking-wider flex items-center gap-0.5">
+                                    <Zap size={10} className="text-amber-400" />
+                                    <span>30s Relâmpago</span>
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleJoinRoomByCode(room.roomCode || room.code)}
+                            className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black shadow-sm transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <LogIn size={13} />
+                            <span>Entrar</span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* HISTÓRICO DE DUELOS & DESAFIAR NOVAMENTE (REVANCHE) */}
           <div className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-2xl p-4 space-y-3.5 shadow-sm">
@@ -2769,14 +2811,26 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 const isUrgent = questionTimer <= 5;
                 const isWarning = questionTimer <= 10 && questionTimer > 5;
 
-                const myScore = myPlayer?.score || 0;
-                const oppScore = opponent?.score || 0;
+                const myUid = profile.uid;
+                const oppUid = opponent?.uid;
+
+                const myAnswerFromRoom = currentRoom?.answers?.[qIndex]?.[myUid];
+                const oppAnswerFromRoom = oppUid ? currentRoom?.answers?.[qIndex]?.[oppUid] : undefined;
+
+                const myAnswered = Boolean(
+                  (myPlayer?.answers && myPlayer.answers[qIndex] !== undefined) ||
+                  myAnswerFromRoom !== undefined
+                );
+                const oppAnswered = Boolean(
+                  (opponent?.answers && opponent.answers[qIndex] !== undefined) ||
+                  oppAnswerFromRoom !== undefined
+                );
+
+                const myScore = myPlayer?.score ?? myAnswerFromRoom?.score ?? 0;
+                const oppScore = opponent?.score ?? oppAnswerFromRoom?.score ?? 0;
                 const totalScore = myScore + oppScore;
                 const myPct = totalScore === 0 ? 50 : Math.round((myScore / totalScore) * 100);
                 const oppPct = totalScore === 0 ? 50 : 100 - myPct;
-
-                const myAnswered = myPlayer?.answers && myPlayer.answers[qIndex] !== undefined;
-                const oppAnswered = opponent?.answers && opponent.answers[qIndex] !== undefined;
 
                 const myStreak = Math.max(consecutiveCorrectStreak, computeConsecutiveStreak(myPlayer?.answers));
                 const oppStreak = computeConsecutiveStreak(opponent?.answers);
@@ -3829,7 +3883,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto"
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto"
           >
             <motion.div
               initial={{ scale: 0.8, y: 30, opacity: 0 }}
@@ -3945,7 +3999,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
                 type="button"
-                onClick={() => setShowHonorVictoryOverlay(false)}
+                onClick={() => {
+                  clearConfetti();
+                  setShowHonorVictoryOverlay(false);
+                }}
                 className="w-full mt-5 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
               >
                 <span>VER RESULTADO COMPLETO</span>
