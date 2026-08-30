@@ -303,6 +303,32 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     currentRoomRef.current = currentRoom;
   }, [currentRoom]);
 
+  // Profile, ViewState, and ProcessedDuelId refs for stable listener callbacks
+  const profileRef = useRef(profile);
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  const viewStateRef = useRef(viewState);
+  useEffect(() => {
+    viewStateRef.current = viewState;
+  }, [viewState]);
+
+  const processedDuelIdRef = useRef<string | null>(null);
+
+  // Control ref to ensure navigation to DuelArena is triggered EXACTLY ONCE on match start
+  const hasNavigatedRef = useRef<boolean>(false);
+
+  // Active room code extraction for strictly controlled useEffect dependencies
+  const currentRoomId = currentRoom?.id || currentRoom?.roomCode || '';
+  const isCurrentRoomBot = !!currentRoom?.player2?.isBot;
+  const activeRoomCode = (!isCurrentRoomBot && currentRoomId) ? cleanRoomCode(currentRoomId) : '';
+
+  // Reset navigation flag whenever room code changes
+  useEffect(() => {
+    hasNavigatedRef.current = false;
+  }, [activeRoomCode]);
+
   // Centralized Function to Completely Clear Match State & Return to Clean Lobby
   const clearDuelSessionAndReturnToLobby = () => {
     // 0. Cancel any running confetti particles immediately
@@ -805,26 +831,26 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   };
 
   // Real-time Listener for current active room (Online Multiplayer only - RTDB + Firestore)
+  // Strictly keyed by activeRoomCode with single navigation flag to eliminate flicker & loop
   useEffect(() => {
-    if (!currentRoom?.id || currentRoom.player2?.isBot) return;
-
-    const targetRoomId = cleanRoomCode(currentRoom.id);
-    if (!targetRoomId) return;
+    if (!activeRoomCode) return;
 
     let unsubscribe = () => {};
 
     try {
       unsubscribe = listenToRoom(
-        targetRoomId,
+        activeRoomCode,
         (roomData) => {
           if (!roomData) {
             // Room deleted or not found
-            if (viewState === 'room') {
-              const isHost = currentRoom.hostUid ? (currentRoom.hostUid === profile?.uid) : (currentRoom.player1?.uid === profile?.uid);
+            const activeRoom = currentRoomRef.current;
+            const currentProfile = profileRef.current;
+            if (viewStateRef.current === 'room' && activeRoom) {
+              const isHost = activeRoom.hostUid ? (activeRoom.hostUid === currentProfile?.uid) : (activeRoom.player1?.uid === currentProfile?.uid);
               if (!isHost) {
                 // If match was active, award forfeit victory to the player who stayed
-                if (currentRoom.status === 'active' && currentRoom.player2) {
-                  handleForfeitVictory(currentRoom, profile.uid, isHost ? currentRoom.player1.uid : currentRoom.player2.uid, 'opponent_left');
+                if (activeRoom.status === 'active' && activeRoom.player2) {
+                  handleForfeitVictory(activeRoom, currentProfile.uid, isHost ? activeRoom.player1.uid : activeRoom.player2.uid, 'opponent_left');
                 } else {
                   setIsRoomClosedModalOpen(true);
                 }
@@ -837,11 +863,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           }
 
           if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
-            if (viewState === 'room') {
-              const isHost = roomData.hostUid ? (roomData.hostUid === profile?.uid) : (roomData.player1?.uid === profile?.uid);
-              const isRoomMatchActive = currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress';
+            const activeRoom = currentRoomRef.current;
+            const currentProfile = profileRef.current;
+            if (viewStateRef.current === 'room' && activeRoom) {
+              const isHost = roomData.hostUid ? (roomData.hostUid === currentProfile?.uid) : (roomData.player1?.uid === currentProfile?.uid);
+              const isRoomMatchActive = activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'in_progress';
               if (isRoomMatchActive && roomData.player2) {
-                const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || profile?.uid);
+                const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || currentProfile?.uid);
                 const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
                 handleForfeitVictory(roomData, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
               } else {
@@ -856,22 +884,30 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             return;
           }
 
-          setCurrentRoom(roomData);
-
-          // Redirecionamento INSTANTÂNEO para a arena do duelo ao receber status "matched"
+          // Redirecionamento Único e Sem Oscilação para a Arena
           const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active' || !!roomData.player2;
-          if (isMatchStarted && viewState !== 'room') {
-            setViewState('room');
-          } else if (roomData.status === 'finished' && viewState !== 'finished') {
+          if (isMatchStarted && !hasNavigatedRef.current) {
+            hasNavigatedRef.current = true;
+            playRoundStartSound();
+            if (viewStateRef.current !== 'room') {
+              setViewState('room');
+            }
+          }
+
+          if (roomData.status === 'finished' && viewStateRef.current !== 'finished') {
             setViewState('finished');
-            if (roomData.isForfeit && roomData.winnerUid === profile?.uid) {
+            if (roomData.isForfeit && roomData.winnerUid === profileRef.current?.uid) {
               setIsForfeitModalOpen(true);
             }
-            if (processedDuelId !== roomData.id) {
+            if (processedDuelIdRef.current !== roomData.id) {
+              processedDuelIdRef.current = roomData.id;
               setProcessedDuelId(roomData.id);
               handleDuelFinished(roomData);
             }
           }
+
+          // Atualiza os dados da sala sincronizados sem recriar o listener
+          setCurrentRoom(roomData);
         },
         (error) => {
           console.error('[MultiplayerDuel] Erro no listener em tempo real da sala:', error);
@@ -888,7 +924,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         console.error('[MultiplayerDuel] Erro ao desinscrever listener:', unsubErr);
       }
     };
-  }, [currentRoom?.id, currentRoom?.player2?.isBot, currentRoom?.status, viewState, processedDuelId, profile?.uid]);
+  }, [activeRoomCode]);
 
   // Helper to advance question or finish duel
   const advanceOrFinishDuel = (updatedRoom: DuelRoom, qIndex: number) => {
