@@ -5,6 +5,7 @@ import {
   get as rtdbGet, 
   remove as rtdbRemove,
   onValue as rtdbOnValue,
+  off as rtdbOff,
   onDisconnect as rtdbOnDisconnect
 } from 'firebase/database';
 import { 
@@ -184,7 +185,7 @@ export interface CreateRoomResult {
 
 /**
  * Cria uma sala de duelo com timeout de conexão de 5 segundos,
- * gravação no Firestore e RTDB, setup de onDisconnect e transição imediata.
+ * gravando hostUid, questions e status: 'waiting' no nó duels/${cleanCode}.
  */
 export async function createRoom({
   roomCode,
@@ -203,14 +204,35 @@ export async function createRoom({
     };
   }
 
+  const hostUid = profile?.uid || roomData.hostUid || roomData.hostId || 'anon';
+
   const roomToSave: DuelRoom = {
     ...roomData,
     id: cleanCode,
     code: cleanCode,
     roomCode: cleanCode,
-    hostId: profile?.uid || roomData.hostUid || roomData.hostId || 'anon',
-    hostUid: profile?.uid || roomData.hostUid || roomData.hostId || 'anon',
+    hostId: hostUid,
+    hostUid: hostUid,
     status: 'waiting',
+    questions: roomData.questions || [],
+    currentQuestionIndex: 0,
+    questionStartTime: null,
+    timePerQuestion: roomData.timePerQuestion || (roomData.mode === 'relampago' ? 30 : 20),
+    player1: roomData.player1 || {
+      uid: hostUid,
+      displayName: profile?.displayName || profile?.name || 'Anfitrião',
+      branch: profile?.branch || 'PNA',
+      avatarId: profile?.avatarId || 'policia',
+      province: profile?.province || 'Luanda',
+      score: 0,
+      currentQuestionIndex: 0,
+      answers: {},
+      isReady: true,
+      isConnected: true,
+      lastActive: Date.now(),
+    },
+    player2: undefined,
+    createdAt: Date.now(),
   };
 
   try {
@@ -244,18 +266,16 @@ export async function createRoom({
         await saveRoomToRTDB(cleanCode, roomToSave);
         setupRoomOnDisconnect({
           roomId: cleanCode,
-          userUid: profile?.uid || roomToSave.hostUid || 'anon',
+          userUid: hostUid,
           isHost: true,
           status: 'waiting',
         });
         return true;
       } catch {
-        // RTDB pode estar indisponível ou offline; Firestore atua como fonte principal
         return false;
       }
     })();
 
-    // Sincronização concluída com sucesso assim que qualquer um persistir dentro do timeout de 5s
     const successResult = await Promise.race([
       fsTask.then((ok) => (ok ? true : new Promise<never>(() => {}))),
       rtdbTask.then((ok) => (ok ? true : new Promise<never>(() => {}))),
@@ -725,9 +745,10 @@ export function listenToRoom(
   let unsubscribeRtdb: (() => void) | null = null;
   let unsubscribeFirestore: (() => void) | null = null;
 
+  const targetRtdbRef = rtdbRef(rtdb, `duels/${cleanCode}`);
+
   // 1. Escuta em tempo real no Realtime Database: duels/${cleanCode}
   try {
-    const targetRtdbRef = rtdbRef(rtdb, `duels/${cleanCode}`);
     unsubscribeRtdb = rtdbOnValue(
       targetRtdbRef,
       (snapshot) => {
@@ -785,6 +806,11 @@ export function listenToRoom(
       } catch (err) {
         console.error('[duelService] Erro ao desinscrever RTDB listener:', err);
       }
+    }
+    try {
+      rtdbOff(targetRtdbRef);
+    } catch (err) {
+      // Ignorar se já cancelado
     }
     if (typeof unsubscribeFirestore === 'function') {
       try {
