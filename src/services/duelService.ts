@@ -205,6 +205,7 @@ export async function createRoom({
   }
 
   const hostUid = profile?.uid || roomData.hostUid || roomData.hostId || 'anon';
+  const hostName = (profile?.displayName || profile?.name || roomData.hostName || 'Anfitrião').toString().trim();
 
   const roomToSave: DuelRoom = {
     ...roomData,
@@ -213,6 +214,7 @@ export async function createRoom({
     roomCode: cleanCode,
     hostId: hostUid,
     hostUid: hostUid,
+    hostName: hostName,
     status: 'waiting',
     questions: roomData.questions || [],
     currentQuestionIndex: 0,
@@ -220,7 +222,8 @@ export async function createRoom({
     timePerQuestion: roomData.timePerQuestion || (roomData.mode === 'relampago' ? 30 : 20),
     player1: roomData.player1 || {
       uid: hostUid,
-      displayName: profile?.displayName || profile?.name || 'Anfitrião',
+      name: hostName,
+      displayName: hostName,
       branch: profile?.branch || 'PNA',
       avatarId: profile?.avatarId || 'policia',
       province: profile?.province || 'Luanda',
@@ -633,13 +636,15 @@ export async function joinRoom(
       });
 
       const matchedPayload = sanitizeForRTDB({
+        status: 'matched' as const,
+        guestUid: userUid,
+        guestName: guestName,
         guest: {
           uid: userUid,
           name: guestName,
           photoURL: guestPhoto || '',
         },
         player2: guestData,
-        status: 'matched' as const,
         questionStartTime: Date.now(),
       });
 

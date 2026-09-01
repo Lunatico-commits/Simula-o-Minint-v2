@@ -383,6 +383,10 @@ export interface DuelRoom {
   roomCode: string;
   hostId?: string;
   hostUid: string;
+  hostName?: string;
+  guestUid?: string;
+  guestName?: string;
+  guest?: { uid: string; name: string; photoURL?: string };
   status: DuelStatus;
   category: QuestionCategory | 'misto';
   mode?: 'padrao' | 'relampago';

@@ -38,6 +38,7 @@ import {
   MessageCircle, Link2, Bot, BarChart2, Target, BookOpen, Volume2, VolumeX, WifiOff, UserX, Hourglass, Scale
 } from 'lucide-react';
 import { ConfirmExitModal } from './ConfirmExitModal';
+import { VsBattleOverlay } from './VsBattleOverlay';
 import { trackMissionProgress, updateQuestProgress } from '../utils/dailyMissions';
 import {
   setupRoomOnDisconnect,
@@ -292,6 +293,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [isRoomClosedModalOpen, setIsRoomClosedModalOpen] = useState(false);
   // Forfeit Victory Alert Modal State
   const [isForfeitModalOpen, setIsForfeitModalOpen] = useState(false);
+  // Pre-game animated 'VS' screen overlay State
+  const [showVsOverlay, setShowVsOverlay] = useState<boolean>(false);
 
   // Opponent Inactivity & Connection State for active multiplayer matches
   const [opponentInactivitySeconds, setOpponentInactivitySeconds] = useState<number>(0);
@@ -339,6 +342,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setCurrentRoom(null);
     setProcessedDuelId(null);
     setShowHonorVictoryOverlay(false);
+    setShowVsOverlay(false);
     setIsRoomClosedModalOpen(false);
     setIsExitModalOpen(false);
     setIsForfeitModalOpen(false);
@@ -890,6 +894,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           if (isMatchStarted && !hasNavigatedRef.current) {
             hasNavigatedRef.current = true;
             playRoundStartSound();
+            setShowVsOverlay(true);
+            // Fechar imediatamente qualquer modal ou alerta aberto
+            setIsExitModalOpen(false);
+            setIsRoomClosedModalOpen(false);
+            setIsForfeitModalOpen(false);
+            setIsAIModalOpen(false);
+            setIsMemeModalOpen(false);
+            setIsClearHistoryModalOpen(false);
+            setErrorMessage('');
+            setLoading(false);
+            setIsJoining(false);
             if (viewStateRef.current !== 'room') {
               setViewState('room');
             }
@@ -1347,6 +1362,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
       // 100% Local initialization - NO FIRESTORE CALL AT ALL
       setCurrentRoom(newRoom);
+      setShowVsOverlay(true);
       setViewState('room');
     } catch (error: any) {
       console.error('Erro ao criar duelo com bot:', error);
@@ -1467,8 +1483,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const updatedRoom = result.room;
       setCurrentRoom(updatedRoom);
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== updatedRoom.id && r.roomCode !== updatedRoom.roomCode));
-      setViewState('room');
-      showToast('⚡ Conectado ao Duelo! A iniciar partida...', false);
+      showToast('⚡ Conectado ao Duelo! A sincronizar arena...', false);
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
       const unavailableMsg = 'Não foi possível conectar à sala';
@@ -2071,7 +2086,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const opponentAnswer = opponent?.answers ? opponent.answers[qIndex] : undefined;
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 text-slate-900 dark:text-slate-100">
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="max-w-md mx-auto px-4 py-4 text-slate-900 dark:text-slate-100"
+    >
       {/* LOBBY VIEW */}
       {viewState === 'lobby' && (
         <div className="space-y-4 animate-fadeIn">
@@ -2549,7 +2569,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         <div className="space-y-4 animate-fadeIn">
           {/* ENHANCED REAL-TIME WAITING ROOM SCREEN */}
           {currentRoom.status === 'waiting' && !currentRoom.player2 && (
-            <div className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-3xl p-5 space-y-5 shadow-xl animate-fadeIn">
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="bg-white dark:bg-[#0F1115] border border-slate-200 dark:border-white/10 rounded-3xl p-5 space-y-5 shadow-xl"
+            >
               {/* Header Status */}
               <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/10 pb-3">
                 <div className="flex items-center gap-2">
@@ -2800,7 +2825,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                   <span>Fechar / Cancelar Duelo</span>
                 </button>
               </div>
-            </div>
+            </motion.div>
           )}
 
           {/* ACTIVE DUEL ARENA SCREEN */}
@@ -3621,7 +3646,22 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         )}
       </AnimatePresence>
 
+      {/* Pre-Game Cinematic 'VS' Battle Overlay */}
+      <VsBattleOverlay
+        isOpen={showVsOverlay && !!currentRoom?.player1 && (!!currentRoom?.player2 || !!currentRoom?.guest)}
+        hostPlayer={currentRoom?.player1}
+        guestPlayer={currentRoom?.player2 || currentRoom?.guest}
+        category={currentRoom?.category || selectedCategory}
+        mode={currentRoom?.mode || selectedMode}
+        roomCode={currentRoom?.roomCode || currentRoom?.id}
+        totalQuestions={currentRoom?.questions?.length || 5}
+        timePerQuestion={currentRoom?.timePerQuestion || (currentRoom?.mode === 'relampago' ? 30 : 20)}
+        durationSeconds={3}
+        onComplete={() => {
+          setShowVsOverlay(false);
+        }}
+      />
 
-    </div>
+    </motion.div>
   );
 };

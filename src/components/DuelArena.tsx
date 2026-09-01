@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
+  ref as rtdbRef, 
+  onValue as rtdbOnValue, 
+  off as rtdbOff 
+} from 'firebase/database';
+import { rtdb } from '../lib/firebase';
+import { cleanRoomCode } from '../services/duelService';
+import { 
   Swords, 
   Clock, 
   Zap, 
@@ -145,6 +152,36 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
   const totalTime = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
   const [questionTimer, setQuestionTimer] = useState<number>(totalTime);
 
+  // Escuta em tempo real dedicada no nó 'answers' para refletir respostas instantaneamente
+  const cleanCode = cleanRoomCode(currentRoom.id || currentRoom.roomCode || currentRoom.code);
+  const [liveAnswers, setLiveAnswers] = useState<Record<number, Record<string, any>>>(currentRoom.answers || {});
+
+  useEffect(() => {
+    if (!cleanCode || currentRoom.player2?.isBot) return;
+
+    const answersRef = rtdbRef(rtdb, `duels/${cleanCode}/answers`);
+    const unsubscribe = rtdbOnValue(
+      answersRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const val = snapshot.val();
+          if (val) {
+            setLiveAnswers(val);
+          }
+        }
+      },
+      (err) => {
+        console.warn('[DuelArena] Erro no listener do nó answers:', err);
+      }
+    );
+
+    return () => {
+      try {
+        rtdbOff(answersRef);
+      } catch (e) {}
+    };
+  }, [cleanCode, currentRoom.player2?.isBot]);
+
   // Synchronized Question Timer with Strict Guard on Both Players Loaded
   useEffect(() => {
     if (!isBothPlayersLoaded || !currentRoom.questionStartTime) {
@@ -228,8 +265,8 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
   const myUid = profile.uid;
   const oppUid = opponent?.uid;
 
-  const myAnswerFromRoom = currentRoom?.answers?.[qIndex]?.[myUid];
-  const oppAnswerFromRoom = oppUid ? currentRoom?.answers?.[qIndex]?.[oppUid] : undefined;
+  const myAnswerFromRoom = liveAnswers?.[qIndex]?.[myUid] || currentRoom?.answers?.[qIndex]?.[myUid];
+  const oppAnswerFromRoom = oppUid ? (liveAnswers?.[qIndex]?.[oppUid] || currentRoom?.answers?.[qIndex]?.[oppUid]) : undefined;
 
   const myAnswer = myPlayer?.answers?.[qIndex] || myAnswerFromRoom;
   const opponentAnswer = opponent?.answers?.[qIndex] || oppAnswerFromRoom;
