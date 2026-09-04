@@ -28,6 +28,8 @@ import {
   playTickSound, 
   playRelampagoTickSound,
   playRoundStartSound,
+  stopAllCombatSounds,
+  stopAndDestroyAudioElement,
   getSoundEnabled,
   setSoundEnabled
 } from '../utils/audio';
@@ -295,6 +297,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [isForfeitModalOpen, setIsForfeitModalOpen] = useState(false);
   // Pre-game animated 'VS' screen overlay State
   const [showVsOverlay, setShowVsOverlay] = useState<boolean>(false);
+  // Match phase control: 'waiting' | 'preparing' | 'playing' | 'finished'
+  const [matchPhase, setMatchPhase] = useState<'waiting' | 'preparing' | 'playing' | 'finished'>('waiting');
 
   // Opponent Inactivity & Connection State for active multiplayer matches
   const [opponentInactivitySeconds, setOpponentInactivitySeconds] = useState<number>(0);
@@ -337,12 +341,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const clearDuelSessionAndReturnToLobby = () => {
     // 0. Cancel any running confetti particles immediately
     clearConfetti();
+    stopAllCombatSounds();
 
     // 1. Reset all state to clean lobby
     setCurrentRoom(null);
     setProcessedDuelId(null);
     setShowHonorVictoryOverlay(false);
     setShowVsOverlay(false);
+    setMatchPhase('waiting');
     setIsRoomClosedModalOpen(false);
     setIsExitModalOpen(false);
     setIsForfeitModalOpen(false);
@@ -868,6 +874,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           }
 
           if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
+            setShowVsOverlay(false);
+            setMatchPhase('waiting');
+            stopAllCombatSounds();
             const activeRoom = currentRoomRef.current;
             const currentProfile = profileRef.current;
             if (viewStateRef.current === 'room' && activeRoom) {
@@ -889,11 +898,31 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             return;
           }
 
+          // Confirmação Rigorosa de AMBOS os jogadores no nó do Firebase (Requisito 3)
+          const isHostConfirmed = Boolean(roomData.player1 && roomData.player1.uid);
+          const isGuestConfirmed = Boolean(
+            (roomData.player2 && (roomData.player2.uid || roomData.player2.isBot)) ||
+            (roomData.guest && roomData.guest.uid) ||
+            roomData.guestUid
+          );
+          const isBothPlayersConfirmedInDb = isHostConfirmed && isGuestConfirmed && (
+            roomData.status === 'matched' ||
+            roomData.status === 'in_progress' ||
+            roomData.status === 'active'
+          );
+
+          // Se um dos jogadores sair durante a preparação, cancela a contagem e áudios pendentes
+          if (hasNavigatedRef.current && (showVsOverlay || matchPhase === 'preparing') && !isGuestConfirmed) {
+            setShowVsOverlay(false);
+            setMatchPhase('waiting');
+            stopAllCombatSounds();
+          }
+
           // Redirecionamento Único e Sem Oscilação para a Arena
-          const isMatchStarted = roomData.status === 'matched' || roomData.status === 'in_progress' || roomData.status === 'active' || !!roomData.player2;
-          if (isMatchStarted && !hasNavigatedRef.current) {
+          if (isBothPlayersConfirmedInDb && !hasNavigatedRef.current) {
             hasNavigatedRef.current = true;
             playRoundStartSound();
+            setMatchPhase('preparing');
             setShowVsOverlay(true);
             // Fechar imediatamente qualquer modal ou alerta aberto
             setIsExitModalOpen(false);
@@ -911,6 +940,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           }
 
           if (roomData.status === 'finished' && viewStateRef.current !== 'finished') {
+            setShowVsOverlay(false);
+            setMatchPhase('finished');
+            stopAllCombatSounds();
             setViewState('finished');
             if (roomData.isForfeit && roomData.winnerUid === profileRef.current?.uid) {
               setIsForfeitModalOpen(true);
@@ -1175,7 +1207,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   // Synchronized Question Timer with Rigid 0s Timeout Advancement
   useEffect(() => {
     const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
-    if (viewState !== 'room' || !isRoomPlayable) return;
+    // Não executa o cronómetro de perguntas enquanto estiver na fase de preparação ('preparing') do VS
+    if (viewState !== 'room' || !isRoomPlayable || matchPhase === 'preparing') return;
 
     const timeLimit = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
     const qIdx = currentRoom.currentQuestionIndex;
@@ -1215,7 +1248,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     return () => clearInterval(interval);
   }, [
-    viewState, 
+    viewState,
+    matchPhase,
     currentRoom?.id, 
     currentRoom?.status, 
     currentRoom?.questionStartTime, 
@@ -2843,6 +2877,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               floatingParticles={floatingParticles}
               opponentInactivitySeconds={opponentInactivitySeconds}
               onForcedTimeout={handleForcedQuestionTimeout}
+              matchPhase={matchPhase}
             />
           )}
         </div>
@@ -3649,6 +3684,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       {/* Pre-Game Cinematic 'VS' Battle Overlay */}
       <VsBattleOverlay
         isOpen={showVsOverlay && !!currentRoom?.player1 && (!!currentRoom?.player2 || !!currentRoom?.guest)}
+        isBothPlayersConfirmed={Boolean(
+          currentRoom?.player1?.uid &&
+          ((currentRoom?.player2?.uid || currentRoom?.player2?.isBot) || (currentRoom?.guest && currentRoom?.guest?.uid) || currentRoom?.guestUid)
+        )}
         hostPlayer={currentRoom?.player1}
         guestPlayer={currentRoom?.player2 || currentRoom?.guest}
         category={currentRoom?.category || selectedCategory}
@@ -3658,7 +3697,9 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         timePerQuestion={currentRoom?.timePerQuestion || (currentRoom?.mode === 'relampago' ? 30 : 20)}
         durationSeconds={3}
         onComplete={() => {
+          stopAllCombatSounds();
           setShowVsOverlay(false);
+          setMatchPhase('playing');
         }}
       />
 

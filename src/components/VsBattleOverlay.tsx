@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Swords, Zap, Shield, MapPin, Sparkles, Flame, Clock } from 'lucide-react';
 import { UserProfile, DuelPlayer, MININTBranch, QuestionCategory } from '../types';
 import { UserAvatar } from './UserAvatar';
 import { MININT_BRANCHES } from '../data/branches';
-import { playRoundStartSound, playTickSound } from '../utils/audio';
+import { playRoundStartSound, playTickSound, stopAllCombatSounds, stopAndDestroyAudioElement } from '../utils/audio';
 
 export interface VsBattleOverlayProps {
   isOpen: boolean;
@@ -17,6 +17,7 @@ export interface VsBattleOverlayProps {
   timePerQuestion?: number;
   onComplete: () => void;
   durationSeconds?: number;
+  isBothPlayersConfirmed?: boolean;
 }
 
 export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
@@ -30,35 +31,83 @@ export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
   timePerQuestion = 20,
   onComplete,
   durationSeconds = 3,
+  isBothPlayersConfirmed = true,
 }) => {
   const [countdown, setCountdown] = useState<number>(durationSeconds);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const hasCompletedRef = useRef<boolean>(false);
+
+  // Interrompe e destrói imediatamente qualquer som do cronómetro
+  const stopAndDestroyAudio = useCallback(() => {
+    if (audioRef.current) {
+      stopAndDestroyAudioElement(audioRef.current);
+      audioRef.current = null;
+    }
+    stopAllCombatSounds();
+  }, []);
+
+  // Finalização imediata no mesmo milissegundo
+  const handleImmediateFinish = useCallback(() => {
+    if (hasCompletedRef.current) return;
+    hasCompletedRef.current = true;
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    stopAndDestroyAudio();
+    onComplete();
+  }, [onComplete, stopAndDestroyAudio]);
 
   useEffect(() => {
-    if (!isOpen) {
+    // Se a tela não estiver aberta ou se um dos jogadores tiver saído durante a preparação
+    if (!isOpen || !isBothPlayersConfirmed) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      stopAndDestroyAudio();
       setCountdown(durationSeconds);
+      hasCompletedRef.current = false;
       return;
     }
 
-    // Play battle round start sound on mount
+    hasCompletedRef.current = false;
+    setCountdown(durationSeconds);
+
+    // Inicializa o som de início de combate
     playRoundStartSound();
 
-    setCountdown(durationSeconds);
-    const interval = setInterval(() => {
+    // Inicia a contagem regressiva apenas com ambos os jogadores confirmados
+    intervalRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          clearInterval(interval);
-          setTimeout(() => {
-            onComplete();
-          }, 300);
+          // Quando chega a 0: para e destrói o som IMEDIATAMENTE e faz a transição no mesmo milissegundo
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          stopAndDestroyAudio();
+          handleImmediateFinish();
           return 0;
         }
-        playTickSound();
+
+        // Toca o som do cronómetro da contagem
+        playTickSound(prev - 1);
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(interval);
-  }, [isOpen, durationSeconds, onComplete]);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      stopAndDestroyAudio();
+    };
+  }, [isOpen, isBothPlayersConfirmed, durationSeconds, handleImmediateFinish, stopAndDestroyAudio]);
 
   if (!isOpen) return null;
 
@@ -311,7 +360,7 @@ export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
           {/* Quick Skip Button */}
           <button
             type="button"
-            onClick={onComplete}
+            onClick={handleImmediateFinish}
             className="text-[11px] font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors cursor-pointer py-1 px-4 rounded-full bg-slate-900/60 hover:bg-slate-800/80 border border-slate-700/60 active:scale-95"
           >
             Começar Já →

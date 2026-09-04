@@ -609,4 +609,35 @@ export function playRoundStartSound(): void {
   }
 }
 
+/**
+ * Interrompe e destrói imediatamente qualquer instância de HTMLAudioElement
+ * Executa audio.pause() e audio.currentTime = 0 com segurança.
+ */
+export function stopAndDestroyAudioElement(audio: HTMLAudioElement | null | undefined): void {
+  if (!audio) return;
+  try {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.src = '';
+  } catch (e) {
+    console.warn('Erro ao destruir elemento de áudio:', e);
+  }
+}
+
+/**
+ * Interrompe imediatamente todos os sons gerados via Web Audio API,
+ * suspendendo o contexto de áudio em execução.
+ */
+export function stopAllCombatSounds(): void {
+  if (audioCtx) {
+    try {
+      if (audioCtx.state === 'running') {
+        audioCtx.suspend().catch(() => {});
+      }
+    } catch (e) {
+      console.warn('Erro ao suspender AudioContext:', e);
+    }
+  }
+}
+
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ref as rtdbRef, 
@@ -26,7 +26,8 @@ import { DuelRoom, UserProfile, DuelPlayer } from '../types';
 import { UserAvatar } from './UserAvatar';
 import { 
   playTickSound, 
-  playRelampagoTickSound 
+  playRelampagoTickSound,
+  stopAllCombatSounds
 } from '../utils/audio';
 
 interface DuelArenaProps {
@@ -42,6 +43,7 @@ interface DuelArenaProps {
   floatingParticles: { id: number; text: string }[];
   opponentInactivitySeconds: number;
   onForcedTimeout: (room: DuelRoom, qIndex: number) => void;
+  matchPhase?: 'waiting' | 'preparing' | 'playing' | 'finished';
 }
 
 export const CircularTimerRing: React.FC<{
@@ -132,6 +134,7 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
   floatingParticles,
   opponentInactivitySeconds,
   onForcedTimeout,
+  matchPhase = 'playing',
 }) => {
   const isHost = currentRoom.player1.uid === profile.uid;
   const myPlayer = isHost ? currentRoom.player1 : currentRoom.player2;
@@ -152,14 +155,27 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
   const totalTime = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
   const [questionTimer, setQuestionTimer] = useState<number>(totalTime);
 
-  // Escuta em tempo real dedicada no nó 'answers' para refletir respostas instantaneamente
-  const cleanCode = cleanRoomCode(currentRoom.id || currentRoom.roomCode || currentRoom.code);
+  // 1. Escuta em tempo real dedicada no nó 'answers' usando referências estáveis (useRef)
+  // e garantindo que SEMPRE retorne a função de destruição (off(answersRef) e unsubscribe)
+  const stableCleanCode = useMemo(
+    () => cleanRoomCode(currentRoom.id || currentRoom.roomCode || currentRoom.code),
+    [currentRoom.id, currentRoom.roomCode, currentRoom.code]
+  );
+  const isBotMatch = Boolean(currentRoom.player2?.isBot);
+
   const [liveAnswers, setLiveAnswers] = useState<Record<number, Record<string, any>>>(currentRoom.answers || {});
+  const answersRefRef = useRef<any>(null);
+  const answersUnsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    if (!cleanCode || currentRoom.player2?.isBot) return;
+    // Se não houver código de sala válido ou for bot offline, não abre conexão com Firebase
+    if (!stableCleanCode || isBotMatch) {
+      return;
+    }
 
-    const answersRef = rtdbRef(rtdb, `duels/${cleanCode}/answers`);
+    const answersRef = rtdbRef(rtdb, `duels/${stableCleanCode}/answers`);
+    answersRefRef.current = answersRef;
+
     const unsubscribe = rtdbOnValue(
       answersRef,
       (snapshot) => {
@@ -171,39 +187,62 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
         }
       },
       (err) => {
-        console.warn('[DuelArena] Erro no listener do nó answers:', err);
+        console.warn('[DuelArena] Erro no listener estável do nó answers:', err);
       }
     );
 
-    return () => {
-      try {
-        rtdbOff(answersRef);
-      } catch (e) {}
-    };
-  }, [cleanCode, currentRoom.player2?.isBot]);
+    answersUnsubscribeRef.current = unsubscribe;
 
-  // Synchronized Question Timer with Strict Guard on Both Players Loaded
+    // Retorne SEMPRE a função de destruição (off(roomRef)) para evitar milhares de leituras
+    return () => {
+      if (answersUnsubscribeRef.current) {
+        try {
+          answersUnsubscribeRef.current();
+        } catch (e) {}
+        answersUnsubscribeRef.current = null;
+      }
+      if (answersRefRef.current) {
+        try {
+          rtdbOff(answersRefRef.current);
+        } catch (e) {}
+        answersRefRef.current = null;
+      }
+    };
+  }, [stableCleanCode, isBotMatch]);
+
+  // 2. Synchronized Question Timer with Strict Guard on Both Players Loaded and MatchPhase === 'playing'
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const currentRoomRef = useRef(currentRoom);
+  currentRoomRef.current = currentRoom;
+
   useEffect(() => {
-    if (!isBothPlayersLoaded || !currentRoom.questionStartTime) {
+    // Não inicia o temporizador se ambos os jogadores não estiverem carregados,
+    // se não houver questionStartTime, ou se estiver na fase de preparação ('preparing')
+    if (!isBothPlayersLoaded || !currentRoom.questionStartTime || matchPhase === 'preparing') {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
       return;
     }
 
     const timeLimit = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
     const currentQIdx = currentRoom.currentQuestionIndex;
 
-    const interval = setInterval(() => {
-      if (!currentRoom.questionStartTime) return;
+    timerIntervalRef.current = setInterval(() => {
+      const room = currentRoomRef.current;
+      if (!room || !room.questionStartTime) return;
       const now = Date.now();
-      const elapsed = (now - currentRoom.questionStartTime) / 1000;
+      const elapsed = (now - room.questionStartTime) / 1000;
       const remaining = Math.max(0, Math.ceil(timeLimit - elapsed));
       setQuestionTimer(remaining);
 
       // Play progressive sound alert if player has not answered yet
-      const player = isHost ? currentRoom.player1 : currentRoom.player2;
+      const player = isHost ? room.player1 : room.player2;
       const hasAnswered = Boolean(player?.answers && player.answers[currentQIdx] !== undefined);
 
       if (!hasAnswered && remaining > 0) {
-        if (currentRoom.mode === 'relampago') {
+        if (room.mode === 'relampago') {
           playRelampagoTickSound(remaining, timeLimit);
         } else if (remaining <= 5) {
           playTickSound(remaining);
@@ -218,22 +257,24 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
       // 2. Rigid Question Timer Enforcement:
       // When timer reaches 0s (elapsed >= timeLimit), AUTOMATICALLY advance the round for both players.
       if (remaining <= 0 || elapsed >= timeLimit) {
-        onForcedTimeout(currentRoom, currentQIdx);
+        onForcedTimeout(room, currentQIdx);
       }
     }, 250);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      stopAllCombatSounds();
+    };
   }, [
     isBothPlayersLoaded,
-    currentRoom.id,
-    currentRoom.roomCode,
-    currentRoom.status,
+    matchPhase,
     currentRoom.questionStartTime,
     currentRoom.currentQuestionIndex,
     currentRoom.timePerQuestion,
     currentRoom.mode,
-    currentRoom.player1?.answers,
-    currentRoom.player2?.answers,
     isHost,
     onAnswerQuestion,
     onForcedTimeout,
