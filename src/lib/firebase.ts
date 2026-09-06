@@ -41,19 +41,8 @@ export const db = (() => {
   }
 })();
 
-// Realtime Database for quick 1v1 multiplayer duels (with safe fallback)
-export const rtdb = (() => {
-  try {
-    const dbUrl = (firebaseConfig as any).databaseURL || `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
-    return getDatabase(app, dbUrl);
-  } catch (e) {
-    try {
-      return getDatabase(app);
-    } catch {
-      return {} as any;
-    }
-  }
-})();
+// Realtime Database for quick 1v1 multiplayer duels (garantindo conexão direta com o servidor)
+export const rtdb = getDatabase(app);
 
 export const auth = getAuth(app);
 

@@ -1593,12 +1593,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setErrorMessage('');
 
     try {
-      // 3. Call centralized joinRoom service with 12s timeout: updates DB with status: "matched" and adds 2nd player data
-      const result = await joinRoom(cleanCode, profile, 12000);
+      // 3. Chamada de joinRoom com timeout razoável (15-20s): atualiza DB com status: "matched" e dados do 2º jogador
+      const result = await joinRoom(cleanCode, profile, 18000);
 
       if (!result.success || !result.room) {
-        const unavailableMsg = result.errorMessage || 'Não foi possível conectar à sala';
-        alert(unavailableMsg);
+        const unavailableMsg = result.errorMessage || 'Sala não encontrada. Verifique o código inserido.';
         setErrorMessage(unavailableMsg);
         showToast(unavailableMsg, true);
         setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== cleanCode && r.roomCode !== cleanCode && r.roomCode !== normalizedCode));
@@ -1618,8 +1617,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       showToast('⚡ Conectado ao Duelo! A sincronizar arena...', false);
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
-      const unavailableMsg = 'Não foi possível conectar à sala';
-      alert(unavailableMsg);
+      const unavailableMsg = error?.message || 'Sala não encontrada. Verifique o código inserido.';
       setErrorMessage(unavailableMsg);
       showToast(unavailableMsg, true);
     } finally {

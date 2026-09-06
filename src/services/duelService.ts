@@ -579,18 +579,18 @@ export function filterValidLobbyRooms(rooms: DuelRoom[], currentUserId?: string 
 }
 
 /**
- * 3. Função joinRoom Simplificada:
- * A função joinRoom(code, guestData) deve APENAS:
- * 1. Formatar o código: const cleanCode = code.trim().toUpperCase()
- * 2. Ler 'duels/${cleanCode}'. Se existir e estiver 'waiting', atualizar com:
- *    { status: "matched", guest: guestData }
- * 3. Retorna cleanCode e os dados atualizados para que o estado local do Convidado
- *    defina activeRoomCode = cleanCode e o seu próprio escutador acione a transição para a 'arena'.
+ * 2. Função joinRoom Otimizada com Timeout Razoável (15-20s):
+ * - Limpa o código: const cleanCode = code.trim().toUpperCase()
+ * - Obtém snapshot de duels/${cleanCode} usando get(ref(rtdb, `duels/${cleanCode}`))
+ * - Se a sala existir e status === "waiting", faz update imediato:
+ *   update(ref(rtdb, `duels/${cleanCode}`), { status: "matched", guest: guestData })
+ * - Se a sala NÃO existir ou não responder, retorna erro tratado:
+ *   "Sala não encontrada. Verifique o código inserido."
  */
 export async function joinRoom(
   roomIdOrCode: string,
   playerProfile: any,
-  timeoutMs: number = 12000
+  timeoutMs: number = 18000
 ): Promise<{
   success: boolean;
   cleanCode?: string;
@@ -604,16 +604,20 @@ export async function joinRoom(
   if (!cleanCode) {
     return {
       success: false,
-      errorMessage: 'Sala não encontrada ou código incorreto.',
+      errorMessage: 'Sala não encontrada. Verifique o código inserido.',
     };
   }
 
+  // Timeout razoável de 15-20s gerido sem mensagens artificiais de erro
   const timeoutPromise = new Promise<{
-    success: false;
+    success: boolean;
     errorMessage: string;
-  }>((_, reject) => {
+  }>((resolve) => {
     setTimeout(() => {
-      reject(new Error('Tempo limite esgotado ao tentar conectar à sala.'));
+      resolve({
+        success: false,
+        errorMessage: 'Sala não encontrada. Verifique o código inserido.',
+      });
     }, timeoutMs);
   });
 
@@ -629,19 +633,34 @@ export async function joinRoom(
       const guestName = (playerProfile?.displayName || playerProfile?.name || playerProfile?.nome || 'Candidato MININT').toString().trim();
       const guestPhoto = playerProfile?.photoURL || playerProfile?.avatar || '';
 
-      // 2. Ler 'duels/${cleanCode}'
+      // 2. Obter o snapshot do nó 'duels/${cleanCode}' usando 'get(ref(rtdb, `duels/${cleanCode}`))'
       const roomRef = rtdbRef(rtdb, `duels/${cleanCode}`);
-      const snap = await rtdbGet(roomRef);
+      let snap = await rtdbGet(roomRef).catch((rtdbErr) => {
+        console.warn(`[duelService] Aviso ao ler RTDB duels/${cleanCode}:`, rtdbErr);
+        return null;
+      });
 
-      // Se a sala NÃO existir:
-      if (!snap || !snap.exists()) {
-        return {
-          success: false,
-          errorMessage: 'Sala não encontrada ou código incorreto.',
-        };
+      let roomData = snap && snap.exists() ? snap.val() : null;
+
+      // Fallback de resiliência caso o RTDB ainda esteja sincronizando com o servidor
+      if (!roomData) {
+        try {
+          const fsDoc = await getDoc(doc(db, 'duels', cleanCode));
+          if (fsDoc.exists()) {
+            roomData = fsDoc.data();
+          }
+        } catch (fsErr) {
+          console.warn('[duelService] Fallback Firestore na busca de sala:', fsErr);
+        }
       }
 
-      const roomData = snap.val();
+      // 4. Se a sala NÃO existir, lance o erro tratado: "Sala não encontrada. Verifique o código inserido."
+      if (!roomData) {
+        return {
+          success: false,
+          errorMessage: 'Sala não encontrada. Verifique o código inserido.',
+        };
+      }
 
       // Se o usuário é o próprio anfitrião ou o convidado já cadastrado reconectando
       const isHost = roomData.player1?.uid === userUid || roomData.hostUid === userUid;
@@ -692,7 +711,8 @@ export async function joinRoom(
         province: playerProfile?.province || 'Luanda',
       };
 
-      // Se existir e estiver 'waiting', atualizar com: { status: "matched", guest: guestData }
+      // 3. Se a sala existir e 'status === "waiting"', faça o update imediato:
+      // update(ref(rtdb, `duels/${cleanCode}`), { status: "matched", guest: guestData })
       const matchedPayload = sanitizeForRTDB({
         status: 'matched' as const,
         guestUid: userUid,
@@ -715,7 +735,7 @@ export async function joinRoom(
         questions: updatedRoom.questions,
       });
 
-      // Atualiza o nó duels/${cleanCode} no Realtime Database
+      // Atualiza imediatamente o nó duels/${cleanCode} no Realtime Database
       await rtdbUpdate(roomRef, rtdbPayload);
 
       // Sincronização em background no Firestore para persistência
@@ -739,7 +759,7 @@ export async function joinRoom(
         opponentUid: roomData.player1?.uid || roomData.hostUid,
       });
 
-      // 3. Retorna cleanCode para definir activeRoomCode = cleanCode no estado local do Convidado
+      // Retorna cleanCode e dados para acionar a navegação reativa
       return {
         success: true,
         cleanCode,
@@ -750,7 +770,7 @@ export async function joinRoom(
       console.error('[duelService] Erro interno em joinAction:', innerErr);
       return {
         success: false,
-        errorMessage: innerErr?.message || 'Sala não encontrada ou código incorreto.',
+        errorMessage: 'Sala não encontrada. Verifique o código inserido.',
       };
     }
   };
@@ -759,10 +779,10 @@ export async function joinRoom(
     const result = await Promise.race([joinAction(), timeoutPromise]);
     return result;
   } catch (error: any) {
-    console.error('[duelService] Erro/Timeout em joinRoom:', error);
+    console.error('[duelService] Erro em joinRoom:', error);
     return {
       success: false,
-      errorMessage: error?.message || 'Sala não encontrada ou código incorreto.',
+      errorMessage: 'Sala não encontrada. Verifique o código inserido.',
     };
   }
 }
