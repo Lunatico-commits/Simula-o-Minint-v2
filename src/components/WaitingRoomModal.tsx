@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ref as rtdbRef, onValue as rtdbOnValue, off as rtdbOff } from 'firebase/database';
-import { rtdb } from '../lib/firebase';
 import { DuelRoom, DuelPlayer } from '../types';
-import { cleanRoomCode, normalizeRoomData } from '../services/duelService';
+import { cleanRoomCode } from '../services/duelService';
 import { MININT_BRANCHES } from '../data/branches';
 import { UserAvatar } from './UserAvatar';
 import { 
@@ -26,8 +24,8 @@ export interface WaitingRoomModalProps {
   roomCode: string;
   room?: DuelRoom | null;
   activeRoom?: DuelRoom | null;
-  setActiveRoom: (room: DuelRoom | null) => void;
-  setCurrentView: (view: 'lobby' | 'room' | 'arena' | 'finished') => void;
+  setActiveRoom?: (room: DuelRoom | null) => void;
+  setCurrentView?: (view: 'lobby' | 'room' | 'arena' | 'finished') => void;
   profile?: any;
   onCancel?: () => void;
   onMatched?: (room: DuelRoom) => void;
@@ -54,60 +52,6 @@ export const WaitingRoomModal: React.FC<WaitingRoomModalProps> = ({
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
-
-  // 1. Escuta Ativa do Anfitrião na Sala de Espera:
-  // Enquanto o Anfitrião estiver no ecrã/modal "SALA DE ESPERA 1V1", mantenha um escutador 'onValue' ativo no caminho exato 'duels/${roomCode}'.
-  // Sempre que o nó 'duels/${roomCode}' for atualizado na base de dados, analise a propriedade 'status'.
-  useEffect(() => {
-    if (!isVisible || !cleanCode) return;
-
-    const targetRef = rtdbRef(rtdb, `duels/${cleanCode}`);
-
-    const unsubscribe = rtdbOnValue(
-      targetRef,
-      (snapshot) => {
-        if (!snapshot.exists()) return;
-
-        const val = snapshot.val();
-        const status = val?.status;
-        const hasGuest = Boolean(
-          val?.guest ||
-          val?.player2 ||
-          val?.guestUid ||
-          (val?.player2 && (val.player2.uid || val.player2.isBot))
-        );
-
-        // 2. Transição Automática Obrigatória para o Anfitrião:
-        // Assim que 'status === "matched"' (ou quando os dados do 'guest' passarem a existir no snapshot):
-        // * Feche IMEDIATAMENTE o modal/janela da Sala de Espera ('setShowWaitingModal(false)')
-        // * Atualize o objeto da sala ativa com os dados completos do Convidado ('setActiveRoom(snapshot.val())')
-        // * Altere o estado de visualização do Anfitrião para 'setCurrentView('arena')'
-        if (status === 'matched' || hasGuest || status === 'playing' || status === 'in_progress' || status === 'active') {
-          if (setShowWaitingModal) {
-            setShowWaitingModal(false);
-          }
-          const normalized = normalizeRoomData(val) || val;
-          setActiveRoom(normalized);
-          setCurrentView('arena');
-          if (onMatched) {
-            onMatched(normalized);
-          }
-        }
-      },
-      (error) => {
-        console.error(`[WaitingRoomModal] Erro ao escutar duels/${cleanCode}:`, error);
-      }
-    );
-
-    return () => {
-      try {
-        unsubscribe();
-      } catch (e) {}
-      try {
-        rtdbOff(targetRef);
-      } catch (e) {}
-    };
-  }, [isVisible, cleanCode, setShowWaitingModal, setActiveRoom, setCurrentView, onMatched]);
 
   if (!isVisible) return null;
 

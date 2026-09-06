@@ -332,10 +332,11 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   // Control ref to ensure navigation to DuelArena is triggered EXACTLY ONCE on match start
   const hasNavigatedRef = useRef<boolean>(false);
 
-  // Active room code extraction for strictly controlled useEffect dependencies
+  // Active room code state and extraction for strictly controlled useEffect dependencies
+  const [activeRoomCodeState, setActiveRoomCode] = useState<string>('');
   const currentRoomId = currentRoom?.id || currentRoom?.roomCode || '';
   const isCurrentRoomBot = !!currentRoom?.player2?.isBot;
-  const activeRoomCode = (!isCurrentRoomBot && currentRoomId) ? cleanRoomCode(currentRoomId) : '';
+  const activeRoomCode = activeRoomCodeState || ((!isCurrentRoomBot && currentRoomId) ? cleanRoomCode(currentRoomId) : '');
 
   // Reset navigation flag whenever room code changes
   useEffect(() => {
@@ -346,6 +347,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const setActiveRoom = (room: DuelRoom | null) => {
     const normalized = room ? (normalizeRoomData(room) || room) : null;
     setCurrentRoom(normalized);
+    if (normalized && !normalized.player2?.isBot) {
+      const code = cleanRoomCode(normalized.roomCode || normalized.id || normalized.code);
+      if (code) {
+        setActiveRoomCode(code);
+      }
+    }
   };
 
   const setCurrentView = (view: 'lobby' | 'room' | 'arena' | 'finished') => {
@@ -367,6 +374,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     // 1. Reset all state to clean lobby
     setCurrentRoom(null);
+    setActiveRoomCode('');
     setShowWaitingModal(false);
     setCurrentView('lobby');
     hasNavigatedRef.current = false;
@@ -893,157 +901,163 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   };
 
-  // Real-time Listener for current active room (Online Multiplayer only - RTDB)
-  // Strictly keyed by activeRoomCode with single navigation flag to eliminate flicker & loop
+  // Escutador Unificado no Componente Pai (Online Multiplayer - RTDB):
+  // O escutador monitoriza o nó exato: ref(rtdb, `duels/${activeRoomCode}`)
+  // Quando o snapshot retornar status === "matched":
+  // - Se a modal da Sala de Espera estiver aberta, feche-a (setShowWaitingModal(false))
+  // - Atualize os dados da sala ativa com o snapshot retornado (setActiveRoom(fullRoomData))
+  // - Mude a vista principal para 'arena' (setCurrentView('arena')) em AMBOS os dispositivos
   useEffect(() => {
     if (!activeRoomCode) return;
+    const cleanCode = cleanRoomCode(activeRoomCode).trim().toUpperCase();
+    if (!cleanCode) return;
 
-    let unsubscribe = () => {};
+    const roomRef = rtdbRef(rtdb, `duels/${cleanCode}`);
 
-    try {
-      unsubscribe = listenToRoom(
-        activeRoomCode,
-        (roomData, rawSnapshotVal) => {
-          if (!roomData && !rawSnapshotVal) {
-            // Se o duelo estiver em preparação ou ativo, NUNCA resetar a sala por causa de snapshot nulo transitório
-            if (matchPhase === 'preparing' || matchPhase === 'playing' || viewStateRef.current === 'finished') {
-              console.warn('[MultiplayerDuel] Snapshot nulo ignorado durante duelo ativo para prevenir kickback.');
-              return;
+    const unsubscribe = rtdbOnValue(
+      roomRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          // Se o duelo estiver em preparação ou ativo, NUNCA resetar a sala por causa de snapshot nulo transitório
+          if (matchPhase === 'preparing' || matchPhase === 'playing' || viewStateRef.current === 'finished') {
+            console.warn('[MultiplayerDuel] Snapshot nulo ignorado durante duelo ativo para prevenir kickback.');
+            return;
+          }
+
+          const activeRoom = currentRoomRef.current;
+          const currentProfile = profileRef.current;
+          if (viewStateRef.current === 'room' && activeRoom) {
+            const isHost = activeRoom.hostUid ? (activeRoom.hostUid === currentProfile?.uid) : (activeRoom.player1?.uid === currentProfile?.uid);
+            if (!isHost) {
+              // If match was active, award forfeit victory to the player who stayed
+              if ((activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'playing') && activeRoom.player2) {
+                handleForfeitVictory(activeRoom, currentProfile.uid, isHost ? activeRoom.player1.uid : activeRoom.player2.uid, 'opponent_left');
+              } else {
+                setIsRoomClosedModalOpen(true);
+              }
+            } else {
+              setViewState('lobby');
+              setCurrentRoom(null);
+              setActiveRoomCode('');
             }
+          }
+          return;
+        }
 
-            const activeRoom = currentRoomRef.current;
-            const currentProfile = profileRef.current;
-            if (viewStateRef.current === 'room' && activeRoom) {
-              const isHost = activeRoom.hostUid ? (activeRoom.hostUid === currentProfile?.uid) : (activeRoom.player1?.uid === currentProfile?.uid);
+        const snapshotVal = snapshot.val();
+        const roomData = normalizeRoomData(snapshotVal) || snapshotVal;
+        const status = roomData?.status || snapshotVal?.status;
+
+        if (status === 'abandoned' || status === 'cancelled') {
+          setShowVsOverlay(false);
+          stopAllCombatSounds();
+          const activeRoom = currentRoomRef.current;
+          const currentProfile = profileRef.current;
+          if (viewStateRef.current === 'room' && activeRoom) {
+            const isHost = roomData?.hostUid ? (roomData.hostUid === currentProfile?.uid) : (roomData?.player1?.uid === currentProfile?.uid);
+            const isRoomMatchActive = activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'playing' || activeRoom.status === 'in_progress';
+            if (isRoomMatchActive && (roomData?.player2 || snapshotVal?.player2)) {
+              const p2 = roomData?.player2 || snapshotVal?.player2;
+              const remainingWinnerUid = isHost ? (roomData?.player1?.uid || activeRoom.player1.uid) : (p2?.uid || currentProfile?.uid);
+              const leaverUid = isHost ? p2?.uid : (roomData?.player1?.uid || activeRoom.player1.uid);
+              handleForfeitVictory(roomData || activeRoom, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
+            } else {
               if (!isHost) {
-                // If match was active, award forfeit victory to the player who stayed
-                if ((activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'playing') && activeRoom.player2) {
-                  handleForfeitVictory(activeRoom, currentProfile.uid, isHost ? activeRoom.player1.uid : activeRoom.player2.uid, 'opponent_left');
-                } else {
-                  setIsRoomClosedModalOpen(true);
-                }
+                setIsRoomClosedModalOpen(true);
               } else {
                 setViewState('lobby');
                 setCurrentRoom(null);
+                setActiveRoomCode('');
               }
             }
-            return;
           }
-
-          const snapshotVal = rawSnapshotVal || roomData;
-          const status = roomData?.status || snapshotVal?.status;
-
-          if (status === 'abandoned' || status === 'cancelled') {
-            setShowVsOverlay(false);
-            stopAllCombatSounds();
-            const activeRoom = currentRoomRef.current;
-            const currentProfile = profileRef.current;
-            if (viewStateRef.current === 'room' && activeRoom) {
-              const isHost = roomData?.hostUid ? (roomData.hostUid === currentProfile?.uid) : (roomData?.player1?.uid === currentProfile?.uid);
-              const isRoomMatchActive = activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'playing' || activeRoom.status === 'in_progress';
-              if (isRoomMatchActive && (roomData?.player2 || snapshotVal?.player2)) {
-                const p2 = roomData?.player2 || snapshotVal?.player2;
-                const remainingWinnerUid = isHost ? (roomData?.player1?.uid || activeRoom.player1.uid) : (p2?.uid || currentProfile?.uid);
-                const leaverUid = isHost ? p2?.uid : (roomData?.player1?.uid || activeRoom.player1.uid);
-                handleForfeitVictory(roomData || activeRoom, remainingWinnerUid, leaverUid || 'opponent', 'opponent_left');
-              } else {
-                if (!isHost) {
-                  setIsRoomClosedModalOpen(true);
-                } else {
-                  setViewState('lobby');
-                  setCurrentRoom(null);
-                }
-              }
-            }
-            return;
-          }
-
-          // Confirmação Rigorosa de Convidado e status 'matched'
-          const hasGuestData = Boolean(
-            (roomData?.player2 && (roomData.player2.uid || roomData.player2.isBot)) ||
-            (snapshotVal?.player2 && (snapshotVal.player2.uid || snapshotVal.player2.isBot)) ||
-            (roomData?.guest && (roomData.guest.uid || roomData.guest.name)) ||
-            (snapshotVal?.guest && (snapshotVal.guest.uid || snapshotVal.guest.name)) ||
-            roomData?.guestUid ||
-            snapshotVal?.guestUid
-          );
-          const isMatchedStatus = status === 'matched' ||
-            hasGuestData ||
-            status === 'playing' ||
-            status === 'in_progress' ||
-            status === 'active';
-
-          // Se um dos jogadores sair durante a preparação, cancela a contagem e áudios pendentes
-          if (hasNavigatedRef.current && showVsOverlay && matchPhase === 'preparing' && !hasGuestData && !isMatchedStatus) {
-            setShowVsOverlay(false);
-            setMatchPhase('waiting');
-            stopAllCombatSounds();
-          }
-
-          // 2. Transição Automática Obrigatória para o Anfitrião:
-          // Assim que 'status === "matched"' (ou quando os dados do 'guest' passarem a existir no snapshot):
-          // * Feche IMEDIATAMENTE o modal/janela da Sala de Espera ('setShowWaitingModal(false)').
-          // * Atualize o objeto da sala ativa com os dados completos do Convidado ('setActiveRoom(snapshot.val())').
-          // * Altere o estado de visualização do Anfitrião para 'setCurrentView('arena')'.
-          if (isMatchedStatus && (!hasNavigatedRef.current || showWaitingModal || matchPhase === 'waiting' || currentView !== 'arena')) {
-            hasNavigatedRef.current = true;
-            // Fecha imediatamente a modal / ecrã da Sala de Espera
-            setShowWaitingModal(false);
-            // Atualiza com os dados completos do snapshot (com perguntas e dados do Convidado)
-            const fullRoomData = normalizeRoomData(snapshotVal) || roomData;
-            setActiveRoom(fullRoomData);
-            // Altera obrigatoriamente a visualização para 'arena'
-            setCurrentView('arena');
-            setMatchPhase('preparing');
-            setShowVsOverlay(true);
-            playRoundStartSound();
-            // Fechar imediatamente qualquer modal ou alerta aberto
-            setIsExitModalOpen(false);
-            setIsRoomClosedModalOpen(false);
-            setIsForfeitModalOpen(false);
-            setIsAIModalOpen(false);
-            setIsMemeModalOpen(false);
-            setIsClearHistoryModalOpen(false);
-            setErrorMessage('');
-            setLoading(false);
-            setIsJoining(false);
-          }
-
-          if (status === 'finished' && viewStateRef.current !== 'finished') {
-            setShowVsOverlay(false);
-            setMatchPhase('finished');
-            stopAllCombatSounds();
-            setViewState('finished');
-            if (roomData?.isForfeit && roomData.winnerUid === profileRef.current?.uid) {
-              setIsForfeitModalOpen(true);
-            }
-            const finishedId = roomData?.id || snapshotVal?.id || activeRoomCode;
-            if (processedDuelIdRef.current !== finishedId) {
-              processedDuelIdRef.current = finishedId;
-              setProcessedDuelId(finishedId);
-              handleDuelFinished(roomData || snapshotVal);
-            }
-          }
-
-          // Atualiza os dados da sala sincronizados sem recriar o listener
-          if (roomData) {
-            setCurrentRoom(roomData);
-          }
-        },
-        (error) => {
-          console.warn('[MultiplayerDuel] Erro no listener da sala:', error);
+          return;
         }
-      );
-    } catch (e) {
-      console.warn('Erro ao configurar listener de sala:', e);
-    }
 
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        try {
-          unsubscribe();
-        } catch (e) {}
+        // Confirmação Rigorosa de Convidado e status 'matched'
+        const hasGuestData = Boolean(
+          (roomData?.player2 && (roomData.player2.uid || roomData.player2.isBot)) ||
+          (snapshotVal?.player2 && (snapshotVal.player2.uid || snapshotVal.player2.isBot)) ||
+          (roomData?.guest && (roomData.guest.uid || roomData.guest.name)) ||
+          (snapshotVal?.guest && (snapshotVal.guest.uid || snapshotVal.guest.name)) ||
+          roomData?.guestUid ||
+          snapshotVal?.guestUid
+        );
+        const isMatchedStatus = status === 'matched' ||
+          hasGuestData ||
+          status === 'playing' ||
+          status === 'in_progress' ||
+          status === 'active';
+
+        // Se um dos jogadores sair durante a preparação, cancela a contagem e áudios pendentes
+        if (hasNavigatedRef.current && showVsOverlay && matchPhase === 'preparing' && !hasGuestData && !isMatchedStatus) {
+          setShowVsOverlay(false);
+          setMatchPhase('waiting');
+          stopAllCombatSounds();
+        }
+
+        // REGRA DE OURO - Navegação Reativa pelo Banco de Dados:
+        // Tanto o Anfitrião quanto o Convidado DEVEM mudar para o ecrã 'arena' APENAS quando o escutador do Firebase detetar 'status === "matched"'.
+        if (isMatchedStatus && (!hasNavigatedRef.current || showWaitingModal || matchPhase === 'waiting' || currentView !== 'arena')) {
+          hasNavigatedRef.current = true;
+          // Fecha imediatamente a modal / ecrã da Sala de Espera
+          setShowWaitingModal(false);
+          // Atualiza os dados da sala ativa com o snapshot retornado (com perguntas e dados do Convidado)
+          const fullRoomData = normalizeRoomData(snapshotVal) || roomData;
+          setActiveRoom(fullRoomData);
+          // Mude a vista principal para 'arena' ('setCurrentView('arena')') em AMBOS os dispositivos
+          setCurrentView('arena');
+          setMatchPhase('preparing');
+          setShowVsOverlay(true);
+          playRoundStartSound();
+          // Fechar imediatamente qualquer modal ou alerta aberto
+          setIsExitModalOpen(false);
+          setIsRoomClosedModalOpen(false);
+          setIsForfeitModalOpen(false);
+          setIsAIModalOpen(false);
+          setIsMemeModalOpen(false);
+          setIsClearHistoryModalOpen(false);
+          setErrorMessage('');
+          setLoading(false);
+          setIsJoining(false);
+        }
+
+        if (status === 'finished' && viewStateRef.current !== 'finished') {
+          setShowVsOverlay(false);
+          setMatchPhase('finished');
+          stopAllCombatSounds();
+          setViewState('finished');
+          if (roomData?.isForfeit && roomData.winnerUid === profileRef.current?.uid) {
+            setIsForfeitModalOpen(true);
+          }
+          const finishedId = roomData?.id || snapshotVal?.id || activeRoomCode;
+          if (processedDuelIdRef.current !== finishedId) {
+            processedDuelIdRef.current = finishedId;
+            setProcessedDuelId(finishedId);
+            handleDuelFinished(roomData || snapshotVal);
+          }
+        }
+
+        // Atualiza os dados da sala sincronizados sem recriar o listener
+        if (roomData) {
+          setCurrentRoom(roomData);
+        }
+      },
+      (error) => {
+        console.warn(`[MultiplayerDuel] Erro no listener RTDB duels/${cleanCode}:`, error);
       }
+    );
+
+    // 4. Prevenção de Loops e Purga de Escutadores:
+    // Dentro do 'useEffect' que cria o 'onValue', retorne obrigatoriamente a função de limpeza:
+    // 'return () => off(roomRef);'
+    return () => {
+      try {
+        unsubscribe();
+      } catch (e) {}
+      try {
+        rtdbOff(roomRef);
+      } catch (e) {}
     };
   }, [activeRoomCode]);
 
@@ -1592,26 +1606,16 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }
 
       const updatedRoomData = normalizeRoomData(result.room)!;
-      // 1. Defina imediatamente setActiveRoom(updatedRoomData)
+      // REGRA DE OURO - Navegação Reativa pelo Banco de Dados:
+      // PROÍBA a função 'joinRoom' de mudar diretamente a tela do Convidado ('setCurrentView('arena')').
+      // Tanto o Anfitrião quanto o Convidado DEVEM mudar para o ecrã 'arena' APENAS quando o escutador do Firebase detetar 'status === "matched"'.
+      // 3. Definir 'activeRoomCode = cleanCode' no estado local do Convidado para que o seu próprio escutador acione a transição para a 'arena':
+      setActiveRoomCode(cleanCode);
       setActiveRoom(updatedRoomData);
-      // 2. Mude imediatamente o ecrã principal para 'setCurrentView('arena')'
-      setCurrentView('arena');
-      // 3. Forçar abertura da DuelArena no telemóvel do Convidado sem qualquer atraso
-      hasNavigatedRef.current = true;
-      setMatchPhase('preparing');
-      setShowVsOverlay(true);
-      playRoundStartSound();
-      setIsExitModalOpen(false);
-      setIsRoomClosedModalOpen(false);
-      setIsForfeitModalOpen(false);
-      setIsAIModalOpen(false);
-      setIsMemeModalOpen(false);
-      setIsClearHistoryModalOpen(false);
-      setErrorMessage('');
-      setLoading(false);
       setIsJoining(false);
+      setLoading(false);
       setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== updatedRoomData.id && r.roomCode !== updatedRoomData.roomCode));
-      showToast('⚡ Conectado ao Duelo! A iniciar combate...', false);
+      showToast('⚡ Conectado ao Duelo! A sincronizar arena...', false);
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
       const unavailableMsg = 'Não foi possível conectar à sala';
