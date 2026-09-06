@@ -55,6 +55,7 @@ import {
   submitDuelAnswer,
   updateDuelRoomNode,
   sanitizeForRTDB,
+  normalizeRoomData,
   MAX_OPEN_ROOM_AGE_MS
 } from '../services/duelService';
 
@@ -336,6 +337,21 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   useEffect(() => {
     hasNavigatedRef.current = false;
   }, [activeRoomCode]);
+
+  // Funções centrais de controle de navegação e sala ativa
+  const setActiveRoom = (room: DuelRoom | null) => {
+    setCurrentRoom(room);
+  };
+
+  const setCurrentView = (view: 'lobby' | 'room' | 'arena' | 'finished') => {
+    if (view === 'arena' || view === 'room') {
+      setViewState('room');
+    } else if (view === 'finished') {
+      setViewState('finished');
+    } else {
+      setViewState('lobby');
+    }
+  };
 
   // Centralized Function to Completely Clear Match State & Return to Clean Lobby
   const clearDuelSessionAndReturnToLobby = () => {
@@ -929,34 +945,36 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             return;
           }
 
-          // Confirmação Rigorosa de AMBOS os jogadores no nó do Firebase
+          // Confirmação Rigorosa de AMBOS os jogadores no nó do Firebase ou transição para matched
           const isHostConfirmed = Boolean(roomData.player1 && roomData.player1.uid);
           const isGuestConfirmed = Boolean(
             (roomData.player2 && (roomData.player2.uid || roomData.player2.isBot)) ||
             (roomData.guest && roomData.guest.uid) ||
             roomData.guestUid
           );
-          const isBothPlayersConfirmedInDb = isHostConfirmed && isGuestConfirmed && (
-            roomData.status === 'matched' ||
+          const isMatchedStatus = roomData.status === 'matched' ||
             roomData.status === 'playing' ||
             roomData.status === 'in_progress' ||
-            roomData.status === 'active'
-          );
+            roomData.status === 'active';
 
           // Se um dos jogadores sair durante a preparação, cancela a contagem e áudios pendentes
           // Apenas se ainda estiver na fase de preparação ('preparing')
-          if (hasNavigatedRef.current && showVsOverlay && matchPhase === 'preparing' && !isGuestConfirmed) {
+          if (hasNavigatedRef.current && showVsOverlay && matchPhase === 'preparing' && !isGuestConfirmed && !isMatchedStatus) {
             setShowVsOverlay(false);
             setMatchPhase('waiting');
             stopAllCombatSounds();
           }
 
-          // Redirecionamento Único e Sem Oscilação para a Arena
-          if (isBothPlayersConfirmedInDb && !hasNavigatedRef.current) {
+          // Transição Automática do Anfitrião (Host Listener):
+          // Quando o snapshot detetar status === "matched", feche a modal da Sala de Espera e mude OBRIGATORIAMENTE o estado do ecrã principal para 'setCurrentView('arena')'
+          if (isMatchedStatus && (!hasNavigatedRef.current || matchPhase === 'waiting' || viewStateRef.current !== 'room')) {
             hasNavigatedRef.current = true;
-            playRoundStartSound();
+            // Fecha a modal / ecrã da Sala de Espera
             setMatchPhase('preparing');
+            // Mude OBRIGATORIAMENTE o estado do ecrã principal para 'setCurrentView('arena')'
+            setCurrentView('arena');
             setShowVsOverlay(true);
+            playRoundStartSound();
             // Fechar imediatamente qualquer modal ou alerta aberto
             setIsExitModalOpen(false);
             setIsRoomClosedModalOpen(false);
@@ -967,9 +985,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             setErrorMessage('');
             setLoading(false);
             setIsJoining(false);
-            if (viewStateRef.current !== 'room') {
-              setViewState('room');
-            }
+            setActiveRoom(roomData);
           }
 
           if (roomData.status === 'finished' && viewStateRef.current !== 'finished') {
@@ -1547,10 +1563,27 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         return;
       }
 
-      const updatedRoom = result.room;
-      setCurrentRoom(updatedRoom);
-      setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== updatedRoom.id && r.roomCode !== updatedRoom.roomCode));
-      showToast('⚡ Conectado ao Duelo! A sincronizar arena...', false);
+      const updatedRoomData = normalizeRoomData(result.room)!;
+      // 1. Defina imediatamente setActiveRoom(updatedRoomData)
+      setActiveRoom(updatedRoomData);
+      // 2. Mude imediatamente o ecrã principal para 'setCurrentView('arena')'
+      setCurrentView('arena');
+      // 3. Forçar abertura da DuelArena no telemóvel do Convidado sem qualquer atraso
+      hasNavigatedRef.current = true;
+      setMatchPhase('preparing');
+      setShowVsOverlay(true);
+      playRoundStartSound();
+      setIsExitModalOpen(false);
+      setIsRoomClosedModalOpen(false);
+      setIsForfeitModalOpen(false);
+      setIsAIModalOpen(false);
+      setIsMemeModalOpen(false);
+      setIsClearHistoryModalOpen(false);
+      setErrorMessage('');
+      setLoading(false);
+      setIsJoining(false);
+      setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== updatedRoomData.id && r.roomCode !== updatedRoomData.roomCode));
+      showToast('⚡ Conectado ao Duelo! A iniciar combate...', false);
     } catch (error: any) {
       console.error('Erro ao entrar na sala:', error);
       const unavailableMsg = 'Não foi possível conectar à sala';

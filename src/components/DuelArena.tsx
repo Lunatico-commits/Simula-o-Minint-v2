@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { DuelRoom, UserProfile, DuelPlayer } from '../types';
 import { UserAvatar } from './UserAvatar';
+import { getRandomQuestions } from '../utils/questionSelector';
 import { 
   playTickSound, 
   playRelampagoTickSound,
@@ -140,15 +141,38 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
   const myPlayer = isHost ? currentRoom.player1 : currentRoom.player2;
   const opponent = isHost ? currentRoom.player2 : currentRoom.player1;
   const qIndex = currentRoom.currentQuestionIndex || 0;
-  const currentQ = currentRoom.questions ? currentRoom.questions[qIndex] : null;
+
+  // Normalização e extração garantida da lista de perguntas pré-carregadas
+  const questionsList = useMemo(() => {
+    let list: any[] = [];
+    if (Array.isArray(currentRoom.questions)) {
+      list = currentRoom.questions.filter(Boolean);
+    } else if (currentRoom.questions && typeof currentRoom.questions === 'object') {
+      list = Object.values(currentRoom.questions).filter(Boolean);
+    }
+    if (!list || list.length === 0) {
+      list = getRandomQuestions({
+        category: (currentRoom.category as any) || 'misto',
+        count: 5,
+        modeKey: 'duel',
+      });
+    }
+    return list;
+  }, [currentRoom.questions, currentRoom.category]);
+
+  const currentQ = questionsList.length > 0 ? (questionsList[qIndex] || questionsList[0]) : null;
 
   // Requirement 4: Ensure both players and current question are fully loaded before starting the timer countdown
+  const isOpponentLoaded = Boolean(
+    opponent &&
+    (opponent.uid || opponent.isBot || (currentRoom as any).guestUid) &&
+    (opponent.displayName || opponent.name || opponent.isBot || 'Adversário')
+  );
+
   const isBothPlayersLoaded = Boolean(
     myPlayer &&
-    myPlayer.uid &&
-    opponent &&
-    (opponent.uid || opponent.isBot) &&
-    (opponent.displayName || opponent.name || opponent.isBot) &&
+    (myPlayer.uid || myPlayer.name) &&
+    isOpponentLoaded &&
     currentQ
   );
 

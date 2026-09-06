@@ -22,12 +22,50 @@ import {
 } from 'firebase/firestore';
 import { db, rtdb } from '../lib/firebase';
 import { DuelRoom, DuelPlayer } from '../types';
+import { getRandomQuestions } from '../utils/questionSelector';
 
 /** Maximum room age in milliseconds for open lobby rooms (2 minutes) */
 export const MAX_OPEN_ROOM_AGE_MS = 2 * 60 * 1000;
 
 /** Maximum inactivity threshold in milliseconds before considering a player/host offline (25 seconds) */
 export const MAX_INACTIVITY_MS = 25 * 1000;
+
+/**
+ * Normaliza e valida a estrutura de uma sala de duelo, garantindo que
+ * o array de perguntas ('questions') esteja sempre presente e pré-carregado.
+ */
+export function normalizeRoomData(raw: any): DuelRoom | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const room = { ...raw };
+
+  // 1. Normalizar questions (caso o Firebase RTDB tenha armazenado como objeto {0: {...}, 1: {...}})
+  if (room.questions) {
+    if (Array.isArray(room.questions)) {
+      room.questions = room.questions.filter(Boolean);
+    } else if (typeof room.questions === 'object') {
+      room.questions = Object.values(room.questions).filter(Boolean);
+    }
+  }
+
+  // 2. Garantir que a lista de perguntas venha pré-carregada e nunca vazia
+  if (!room.questions || !Array.isArray(room.questions) || room.questions.length === 0) {
+    room.questions = getRandomQuestions({
+      category: (room.category as any) || 'misto',
+      count: 5,
+      modeKey: 'duel',
+    });
+  }
+
+  // 3. Normalizar código e IDs
+  const cleanCode = cleanRoomCode(room.id || room.code || room.roomCode);
+  if (cleanCode) {
+    room.id = cleanCode;
+    room.code = cleanCode;
+    room.roomCode = cleanCode;
+  }
+
+  return room as DuelRoom;
+}
 
 /**
  * Recursively strips any `undefined` values from payloads before writing to Firebase Realtime Database.
@@ -363,7 +401,7 @@ export async function fetchRoomFast(cleanCode: string): Promise<DuelRoom | null>
   ]);
 
   if (quickResult) {
-    return quickResult;
+    return normalizeRoomData(quickResult);
   }
 
   // Fallback: se nenhum doc direto com id cleanCode retornou, tenta buscar por query do roomCode no Firestore
@@ -378,7 +416,7 @@ export async function fetchRoomFast(cleanCode: string): Promise<DuelRoom | null>
       new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
     ]);
     if (qSnap && !qSnap.empty) {
-      return qSnap.docs[0].data() as DuelRoom;
+      return normalizeRoomData(qSnap.docs[0].data() as DuelRoom);
     }
   } catch (err) {
     console.warn('[duelService] Erro na query de fallback Firestore:', err);
@@ -648,15 +686,23 @@ export async function joinRoom(
         questionStartTime: Date.now(),
       });
 
-      const updatedRoom: DuelRoom = {
+      const updatedRoom: DuelRoom = normalizeRoomData({
         ...roomData,
         ...matchedPayload,
-      };
+        questions: (roomData?.questions && Array.isArray(roomData.questions) && roomData.questions.length > 0)
+          ? roomData.questions
+          : getRandomQuestions({ category: (roomData?.category as any) || 'misto', count: 5, modeKey: 'duel' }),
+      })!;
+
+      const rtdbPayload = sanitizeForRTDB({
+        ...matchedPayload,
+        questions: updatedRoom.questions,
+      });
 
       // Atualiza o nó duels/${cleanCode} no Realtime Database e Firestore com timeout individual
       const updateRtdbTask = new Promise<void>((resolve) => {
         const timer = setTimeout(() => resolve(), 3000);
-        rtdbUpdate(rtdbRef(rtdb, `duels/${cleanCode}`), matchedPayload)
+        rtdbUpdate(rtdbRef(rtdb, `duels/${cleanCode}`), rtdbPayload)
           .then(() => {
             clearTimeout(timer);
             resolve();
@@ -762,8 +808,9 @@ export function listenToRoom(
             onUpdate(null);
             return;
           }
-          const data = snapshot.val() as DuelRoom;
-          onUpdate(data);
+          const rawData = snapshot.val();
+          const normalizedData = normalizeRoomData(rawData);
+          onUpdate(normalizedData);
         } catch (parseError) {
           console.error('[duelService] Erro ao processar snapshot RTDB:', parseError);
         }
