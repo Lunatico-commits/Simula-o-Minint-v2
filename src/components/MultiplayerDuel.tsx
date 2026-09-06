@@ -5,7 +5,7 @@ import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs, limit, serverTimestamp 
 } from 'firebase/firestore';
 import {
-  ref as rtdbRef, set as rtdbSet, update as rtdbUpdate, onValue as rtdbOnValue, remove as rtdbRemove, get as rtdbGet, onDisconnect as rtdbOnDisconnect
+  ref as rtdbRef, set as rtdbSet, update as rtdbUpdate, onValue as rtdbOnValue, off as rtdbOff, remove as rtdbRemove, get as rtdbGet, onDisconnect as rtdbOnDisconnect
 } from 'firebase/database';
 import { QUESTION_BANK } from '../data/questions';
 import { getRandomQuestions } from '../utils/questionSelector';
@@ -400,15 +400,16 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // RTDB Presence Tracker & Heartbeat (Maintains presence without false abandonment triggers)
   useEffect(() => {
-    if (!currentRoom?.id || currentRoom.player2?.isBot || viewState !== 'room') {
+    if (!activeRoomCode || isCurrentRoomBot || viewState !== 'room' || !profile?.uid) {
       setOpponentInactivitySeconds(0);
       return;
     }
 
-    const roomId = currentRoom.id;
-    const isHost = currentRoom.player1.uid === profile.uid;
+    const roomId = activeRoomCode;
+    const activeRoom = currentRoomRef.current;
+    const isHost = activeRoom?.player1?.uid === profile.uid || activeRoom?.hostUid === profile.uid;
     const myKey = isHost ? 'player1' : 'player2';
-    const opponentUid = isHost ? currentRoom.player2?.uid : currentRoom.player1?.uid;
+    const opponentUid = isHost ? (activeRoom?.player2?.uid || activeRoom?.guestUid) : (activeRoom?.player1?.uid || activeRoom?.hostUid);
 
     const presenceRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/isConnected`);
     const lastActiveRef = rtdbRef(rtdb, `duels/${roomId}/${myKey}/lastActive`);
@@ -420,7 +421,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         roomId,
         userUid: profile.uid,
         isHost,
-        status: currentRoom.status as any,
+        status: (activeRoom?.status as any) || 'matched',
         opponentUid,
       });
 
@@ -450,8 +451,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     // Listen to Opponent's RTDB presence & heartbeat
     let oppPresenceUnsub = () => {};
+    let oppPresenceTargetRef: any = null;
     if (opponentUid) {
       const oppPresenceRef = rtdbRef(rtdb, `duels/${roomId}/presence/${opponentUid}`);
+      oppPresenceTargetRef = oppPresenceRef;
       oppPresenceUnsub = rtdbOnValue(oppPresenceRef, (snapshot) => {
         if (snapshot.exists()) {
           const val = snapshot.val();
@@ -464,16 +467,24 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     return () => {
       clearInterval(heartbeatInterval);
-      oppPresenceUnsub();
-      try {
-        rtdbSet(presenceRef, false);
-        rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}/presence/${profile.uid}`), {
-          isConnected: false,
-          lastActive: Date.now(),
-        });
-      } catch (e) {}
+      if (typeof oppPresenceUnsub === 'function') {
+        try { oppPresenceUnsub(); } catch (e) {}
+      }
+      if (oppPresenceTargetRef) {
+        try { rtdbOff(oppPresenceTargetRef); } catch (e) {}
+      }
+      // Apenas marca como desconectado se o usuário realmente saiu da sala
+      if (viewStateRef.current !== 'room') {
+        try {
+          rtdbSet(presenceRef, false);
+          rtdbUpdate(rtdbRef(rtdb, `duels/${roomId}/presence/${profile.uid}`), {
+            isConnected: false,
+            lastActive: Date.now(),
+          });
+        } catch (e) {}
+      }
     };
-  }, [currentRoom?.id, currentRoom?.player2?.isBot, viewState, currentRoom?.status, profile?.uid]);
+  }, [activeRoomCode, isCurrentRoomBot, viewState, profile?.uid]);
 
   // Clean mount & unmount effect (Always start clean and avoid false forfeit on simple unmounts)
   useEffect(() => {
@@ -673,17 +684,23 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   const [isAILoading, setIsAILoading] = useState(false);
   const [modalQuestion, setModalQuestion] = useState<Question | null>(null);
 
-  // Listen for open public rooms in lobby (Firestore Realtime onSnapshot + RTDB onValue + strictly < 2 min active rooms)
+  // Listen for open public rooms in lobby (strictly active only when viewState === 'lobby')
   useEffect(() => {
+    // Se o usuário não está no lobby (está no duelo ou finalizado), NÃO cria nenhum listener!
+    if (viewState !== 'lobby') {
+      return;
+    }
+
     let unsubscribeFirestore = () => {};
     let unsubscribeRtdb = () => {};
+    let duelsRtdbTargetRef: any = null;
     setIsLoadingOpenRooms(true);
 
     try {
       const q = query(
         collection(db, 'duels'),
         where('status', '==', 'waiting'),
-        limit(30)
+        limit(15)
       );
 
       unsubscribeFirestore = onSnapshot(q, (snapshot) => {
@@ -715,6 +732,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
     try {
       const duelsRtdbRef = rtdbRef(rtdb, 'duels');
+      duelsRtdbTargetRef = duelsRtdbRef;
       unsubscribeRtdb = rtdbOnValue(duelsRtdbRef, (snapshot) => {
         if (!snapshot.exists()) {
           return;
@@ -749,11 +767,20 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }, 3000);
 
     return () => {
-      unsubscribeFirestore();
-      unsubscribeRtdb();
+      try {
+        unsubscribeFirestore();
+      } catch (e) {}
+      try {
+        unsubscribeRtdb();
+      } catch (e) {}
+      if (duelsRtdbTargetRef) {
+        try {
+          rtdbOff(duelsRtdbTargetRef);
+        } catch (e) {}
+      }
       clearInterval(sweepInterval);
     };
-  }, [profile?.uid]);
+  }, [viewState, profile?.uid]);
 
   const [processedDuelId, setProcessedDuelId] = useState<string | null>(null);
   const processedTimeoutRef = useRef<string>('');
@@ -841,7 +868,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
   };
 
-  // Real-time Listener for current active room (Online Multiplayer only - RTDB + Firestore)
+  // Real-time Listener for current active room (Online Multiplayer only - RTDB)
   // Strictly keyed by activeRoomCode with single navigation flag to eliminate flicker & loop
   useEffect(() => {
     if (!activeRoomCode) return;
@@ -853,14 +880,19 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         activeRoomCode,
         (roomData) => {
           if (!roomData) {
-            // Room deleted or not found
+            // Se o duelo estiver em preparação ou ativo, NUNCA resetar a sala por causa de snapshot nulo transitório
+            if (matchPhase === 'preparing' || matchPhase === 'playing' || viewStateRef.current === 'finished') {
+              console.warn('[MultiplayerDuel] Snapshot nulo ignorado durante duelo ativo para prevenir kickback.');
+              return;
+            }
+
             const activeRoom = currentRoomRef.current;
             const currentProfile = profileRef.current;
             if (viewStateRef.current === 'room' && activeRoom) {
               const isHost = activeRoom.hostUid ? (activeRoom.hostUid === currentProfile?.uid) : (activeRoom.player1?.uid === currentProfile?.uid);
               if (!isHost) {
                 // If match was active, award forfeit victory to the player who stayed
-                if (activeRoom.status === 'active' && activeRoom.player2) {
+                if ((activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'playing') && activeRoom.player2) {
                   handleForfeitVictory(activeRoom, currentProfile.uid, isHost ? activeRoom.player1.uid : activeRoom.player2.uid, 'opponent_left');
                 } else {
                   setIsRoomClosedModalOpen(true);
@@ -875,13 +907,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
           if (roomData.status === 'abandoned' || roomData.status === 'cancelled') {
             setShowVsOverlay(false);
-            setMatchPhase('waiting');
             stopAllCombatSounds();
             const activeRoom = currentRoomRef.current;
             const currentProfile = profileRef.current;
             if (viewStateRef.current === 'room' && activeRoom) {
               const isHost = roomData.hostUid ? (roomData.hostUid === currentProfile?.uid) : (roomData.player1?.uid === currentProfile?.uid);
-              const isRoomMatchActive = activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'in_progress';
+              const isRoomMatchActive = activeRoom.status === 'active' || activeRoom.status === 'matched' || activeRoom.status === 'playing' || activeRoom.status === 'in_progress';
               if (isRoomMatchActive && roomData.player2) {
                 const remainingWinnerUid = isHost ? roomData.player1.uid : (roomData.player2?.uid || currentProfile?.uid);
                 const leaverUid = isHost ? roomData.player2?.uid : roomData.player1.uid;
@@ -898,7 +929,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
             return;
           }
 
-          // Confirmação Rigorosa de AMBOS os jogadores no nó do Firebase (Requisito 3)
+          // Confirmação Rigorosa de AMBOS os jogadores no nó do Firebase
           const isHostConfirmed = Boolean(roomData.player1 && roomData.player1.uid);
           const isGuestConfirmed = Boolean(
             (roomData.player2 && (roomData.player2.uid || roomData.player2.isBot)) ||
@@ -907,12 +938,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           );
           const isBothPlayersConfirmedInDb = isHostConfirmed && isGuestConfirmed && (
             roomData.status === 'matched' ||
+            roomData.status === 'playing' ||
             roomData.status === 'in_progress' ||
             roomData.status === 'active'
           );
 
           // Se um dos jogadores sair durante a preparação, cancela a contagem e áudios pendentes
-          if (hasNavigatedRef.current && (showVsOverlay || matchPhase === 'preparing') && !isGuestConfirmed) {
+          // Apenas se ainda estiver na fase de preparação ('preparing')
+          if (hasNavigatedRef.current && showVsOverlay && matchPhase === 'preparing' && !isGuestConfirmed) {
             setShowVsOverlay(false);
             setMatchPhase('waiting');
             stopAllCombatSounds();
@@ -958,18 +991,18 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           setCurrentRoom(roomData);
         },
         (error) => {
-          console.error('[MultiplayerDuel] Erro no listener em tempo real da sala:', error);
+          console.warn('[MultiplayerDuel] Erro no listener da sala:', error);
         }
       );
-    } catch (listenerErr) {
-      console.error('[MultiplayerDuel] Exceção ao registrar listener da sala:', listenerErr);
+    } catch (e) {
+      console.warn('Erro ao configurar listener de sala:', e);
     }
 
     return () => {
-      try {
-        unsubscribe();
-      } catch (unsubErr) {
-        console.error('[MultiplayerDuel] Erro ao desinscrever listener:', unsubErr);
+      if (typeof unsubscribe === 'function') {
+        try {
+          unsubscribe();
+        } catch (e) {}
       }
     };
   }, [activeRoomCode]);
@@ -1206,7 +1239,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Synchronized Question Timer with Rigid 0s Timeout Advancement
   useEffect(() => {
-    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
+    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'playing' || currentRoom.status === 'in_progress');
     // Não executa o cronómetro de perguntas enquanto estiver na fase de preparação ('preparing') do VS
     if (viewState !== 'room' || !isRoomPlayable || matchPhase === 'preparing') return;
 
@@ -1263,7 +1296,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Bot Auto Answer Simulation (100% Local - No Firestore)
   useEffect(() => {
-    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
+    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'playing' || currentRoom.status === 'in_progress');
     if (viewState !== 'room' || !isRoomPlayable) return;
     const p2 = currentRoom.player2;
     if (!p2 || !p2.isBot) return;
@@ -2601,8 +2634,8 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       {/* ROOM & GAMEPLAY VIEW */}
       {viewState === 'room' && currentRoom && (
         <div className="space-y-4 animate-fadeIn">
-          {/* ENHANCED REAL-TIME WAITING ROOM SCREEN */}
-          {currentRoom.status === 'waiting' && !currentRoom.player2 && (
+          {/* ENHANCED REAL-TIME WAITING ROOM SCREEN - Apenas visível enquanto aguarda pareamento inicial */}
+          {matchPhase === 'waiting' && !hasNavigatedRef.current && currentRoom.status === 'waiting' && !currentRoom.player2 && (
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
@@ -2863,7 +2896,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           )}
 
           {/* ACTIVE DUEL ARENA SCREEN */}
-          {(currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress' || !!currentRoom.player2) && currentRoom.status !== 'finished' && currentRoom.status !== 'cancelled' && currentRoom.status !== 'abandoned' && (
+          {(matchPhase === 'preparing' || matchPhase === 'playing' || currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'playing' || currentRoom.status === 'in_progress' || !!currentRoom.player2) && currentRoom.status !== 'finished' && currentRoom.status !== 'cancelled' && currentRoom.status !== 'abandoned' && (
             <DuelArena
               currentRoom={currentRoom}
               profile={profile}
@@ -3290,10 +3323,10 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
                 onClick={() => {
                   clearDuelSessionAndReturnToLobby();
                 }}
-                className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold uppercase tracking-wider border border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="w-full py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-[0.98] text-slate-200 text-xs font-bold uppercase tracking-wider border border-slate-700/80 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
               >
-                <RotateCcw size={16} />
-                <span>LOBBY DE DUELOS</span>
+                <LogOut size={16} className="text-amber-400" />
+                <span>SAIR DO DUELO / VOLTAR AO MENU</span>
               </button>
             </div>
           </div>
@@ -3700,6 +3733,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
           stopAllCombatSounds();
           setShowVsOverlay(false);
           setMatchPhase('playing');
+          // Garantir que a sala se mantenha ativa no Firebase com status: 'playing'
+          if (activeRoomCode) {
+            const activeRoom = currentRoomRef.current;
+            const isHost = activeRoom?.player1?.uid === profileRef.current?.uid || activeRoom?.hostUid === profileRef.current?.uid;
+            if (isHost) {
+              rtdbUpdate(rtdbRef(rtdb, `duels/${activeRoomCode}`), {
+                status: 'playing',
+                questionStartTime: Date.now(),
+              }).catch(() => {});
+            }
+          }
         }}
       />
 

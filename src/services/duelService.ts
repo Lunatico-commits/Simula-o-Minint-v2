@@ -748,11 +748,10 @@ export function listenToRoom(
 
   let unsubscribed = false;
   let unsubscribeRtdb: (() => void) | null = null;
-  let unsubscribeFirestore: (() => void) | null = null;
-
   const targetRtdbRef = rtdbRef(rtdb, `duels/${cleanCode}`);
 
-  // 1. Escuta em tempo real no Realtime Database: duels/${cleanCode}
+  // 1. Escuta em tempo real estrita e eficiente no Realtime Database: duels/${cleanCode}
+  // (Elimina o onSnapshot contínuo do Firestore para zerar consumo de cotas de leituras diárias)
   try {
     unsubscribeRtdb = rtdbOnValue(
       targetRtdbRef,
@@ -779,30 +778,7 @@ export function listenToRoom(
     if (onError) onError(e);
   }
 
-  // 2. Escuta auxiliar no Firestore para redundância
-  try {
-    const docRef = doc(db, 'duels', cleanCode);
-    unsubscribeFirestore = onSnapshot(
-      docRef,
-      (docSnap) => {
-        if (unsubscribed) return;
-        try {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as DuelRoom;
-            onUpdate(data);
-          }
-        } catch (fsParseErr) {
-          console.error('[duelService] Erro ao processar snapshot Firestore:', fsParseErr);
-        }
-      },
-      (fsError) => {
-        console.error(`[duelService] Erro no listener Firestore duels/${cleanCode}:`, fsError);
-      }
-    );
-  } catch (fsInitErr) {
-    console.error('[duelService] Falha ao configurar listener Firestore da sala:', fsInitErr);
-  }
-
+  // Retorno obrigatório de limpeza com destruição do escutador via off(roomRef)
   return () => {
     unsubscribed = true;
     if (typeof unsubscribeRtdb === 'function') {
@@ -815,14 +791,7 @@ export function listenToRoom(
     try {
       rtdbOff(targetRtdbRef);
     } catch (err) {
-      // Ignorar se já cancelado
-    }
-    if (typeof unsubscribeFirestore === 'function') {
-      try {
-        unsubscribeFirestore();
-      } catch (err) {
-        console.error('[duelService] Erro ao desinscrever Firestore listener:', err);
-      }
+      // Ignorar se já desvinculado
     }
   };
 }
