@@ -1,8 +1,19 @@
 import React from 'react';
 import { MultiplayerDuel, normalizeRoomCode } from './MultiplayerDuel';
-import { createRoom, joinRoom, listenToRoom, submitDuelAnswer, normalizeRoomData } from '../services/duelService';
+import { WaitingRoomModal } from './WaitingRoomModal';
+import { createRoom, joinRoom, listenToRoom, submitDuelAnswer, normalizeRoomData, cleanRoomCode } from '../services/duelService';
 
-export { createRoom, joinRoom, listenToRoom, submitDuelAnswer, normalizeRoomData, MultiplayerDuel, normalizeRoomCode };
+export { 
+  createRoom, 
+  joinRoom, 
+  listenToRoom, 
+  submitDuelAnswer, 
+  normalizeRoomData, 
+  cleanRoomCode,
+  MultiplayerDuel, 
+  WaitingRoomModal,
+  normalizeRoomCode 
+};
 export const DuelsView = MultiplayerDuel;
 export default DuelsView;
 

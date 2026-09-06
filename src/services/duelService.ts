@@ -91,15 +91,22 @@ export function sanitizeForRTDB<T>(obj: T): T {
 }
 
 /**
- * Padroniza o código de sala limpando espaços e convertendo para MAIÚSCULAS
+ * Padroniza o código de sala limpando espaços e convertendo para MAIÚSCULAS ('code.trim().toUpperCase()')
+ * Garante que TANTO o Anfitrião (na criação/escuta) quanto o Convidado (ao entrar) usem
+ * rigorosamente a mesma chave de caminho no Firebase: ref(rtdb, `duels/${cleanCode}`).
  */
 export function cleanRoomCode(code?: string | null): string {
   if (!code) return '';
-  return code
-    .trim()
-    .toUpperCase()
+  const formatted = String(code).trim().toUpperCase();
+  const withoutPrefix = formatted
     .replace(/^(INVITE_|SALA:|CODE:|DUEL:)/i, '')
     .replace(/\s+/g, '');
+
+  const noHyphen = withoutPrefix.replace(/-/g, '');
+  if (noHyphen.startsWith('MNT') && noHyphen.length > 3) {
+    return `MNT-${noHyphen.slice(3)}`;
+  }
+  return withoutPrefix;
 }
 
 /**
@@ -782,13 +789,13 @@ export async function joinRoom(
  */
 export function listenToRoom(
   roomIdOrCode: string,
-  onUpdate: (room: DuelRoom | null) => void,
+  onUpdate: (room: DuelRoom | null, rawSnapshot?: any) => void,
   onError?: (error: any) => void
 ): () => void {
   const cleanCode = cleanRoomCode(roomIdOrCode);
   if (!cleanCode) {
     console.error('[duelService] Código de sala inválido para escutador');
-    onUpdate(null);
+    onUpdate(null, null);
     return () => {};
   }
 
@@ -805,12 +812,12 @@ export function listenToRoom(
         if (unsubscribed) return;
         try {
           if (!snapshot.exists()) {
-            onUpdate(null);
+            onUpdate(null, null);
             return;
           }
           const rawData = snapshot.val();
           const normalizedData = normalizeRoomData(rawData);
-          onUpdate(normalizedData);
+          onUpdate(normalizedData, rawData);
         } catch (parseError) {
           console.error('[duelService] Erro ao processar snapshot RTDB:', parseError);
         }
