@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserProfile, DuelRoom, DuelPlayer, MININTBranch, Question, QuestionCategory, AIExplanationResponse, normalizeCategory, DuelHistoryEntry } from '../types';
-import { db, rtdb } from '../lib/firebase';
+import { db, rtdb, auth } from '../lib/firebase';
 import { 
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, getDocs, limit, serverTimestamp 
 } from 'firebase/firestore';
@@ -8,7 +8,7 @@ import {
   ref as rtdbRef, set as rtdbSet, update as rtdbUpdate, onValue as rtdbOnValue, off as rtdbOff, remove as rtdbRemove, get as rtdbGet, onDisconnect as rtdbOnDisconnect
 } from 'firebase/database';
 import { QUESTION_BANK } from '../data/questions';
-import { getRandomQuestions } from '../utils/questionSelector';
+import { getRandomQuestions, shuffleQuestionOptions } from '../utils/questionSelector';
 import { MININT_BRANCHES, getAvatarOption } from '../data/branches';
 import { ReactiveAvatar } from './ReactiveAvatar';
 import { UserAvatar } from './UserAvatar';
@@ -1471,27 +1471,59 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     setLoading(true);
     setErrorMessage('');
     try {
+      // 1. Geração e Padronização do Código da Sala
       const rawCode = generateRoomCode();
-      const cleanCode = cleanRoomCode(rawCode) || normalizeRoomCode(rawCode);
-      const roomCode = cleanCode; // ex: "MNT-3XDV"
+      const roomCode = formatCode(rawCode); // ex: "MNT-3XDV"
 
-      const duelQuestions = getRandomQuestions({
-        category: selectedCategory,
-        count: 5,
-        modeKey: 'duel',
-      });
+      // 2. Verificação e Fallback do Utilizador Atual ('currentUser')
+      let currentUser: any = null;
+      try {
+        currentUser = auth?.currentUser || null;
+      } catch (_) {}
+
+      const hostUid = currentUser?.uid || profile?.uid || `guest_${Date.now()}`;
+      const hostName = (
+        currentUser?.displayName || 
+        currentUser?.email?.split('@')[0] || 
+        profile?.displayName || 
+        profile?.name || 
+        'Candidato MININT'
+      ).toString().trim();
+
+      // 3. Proteção no Carregamento de Perguntas com Fallback Local
+      let duelQuestions: Question[] = [];
+      try {
+        duelQuestions = getRandomQuestions({
+          category: selectedCategory,
+          count: 5,
+          modeKey: 'duel',
+        });
+      } catch (qErr) {
+        console.warn('[MultiplayerDuel] Erro ao carregar perguntas dinâmicas, usando fallback:', qErr);
+      }
+
+      if (!duelQuestions || !Array.isArray(duelQuestions) || duelQuestions.length === 0) {
+        try {
+          duelQuestions = QUESTION_BANK.slice(0, 5).map(shuffleQuestionOptions);
+        } catch (_) {}
+      }
 
       const isRelampago = selectedMode === 'relampago';
       const timePerQuestion = isRelampago ? 30 : 20;
 
-      const player1Data = buildSafePlayer(profile);
+      const player1Data = buildSafePlayer({
+        ...(profile || {}),
+        uid: hostUid,
+        displayName: hostName,
+      });
 
       const newRoom: DuelRoom = {
         id: roomCode,
         code: roomCode,
         roomCode: roomCode,
-        hostId: profile?.uid || 'anon',
-        hostUid: profile?.uid || 'anon',
+        hostId: hostUid,
+        hostUid: hostUid,
+        hostName: hostName,
         status: 'waiting',
         category: selectedCategory || 'Geral',
         mode: selectedMode || 'classico',
@@ -1503,20 +1535,20 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         createdAt: Date.now(),
       };
 
-      // 1. Grava no Realtime Database com timeout estrito de 5 segundos
+      // 4. Gravação Directa no Firebase RTDB e Abertura da Modal
       const createResult = await createRoomService({
         roomCode,
         roomData: newRoom,
-        profile,
+        profile: { ...(profile || {}), uid: hostUid, displayName: hostName },
       });
 
       if (!createResult.success || !createResult.room) {
-        throw new Error(createResult.errorMessage || 'Falha ao criar sala. Verifique a conexão.');
+        throw new Error(createResult.errorMessage || 'Erro ao criar sala. Verifique a conexão.');
       }
 
       const activeRoom = createResult.room;
 
-      // 2. Redirecionamento Imediato para a Sala de Espera (SALA DE ESPERA 1V1)
+      // 5. Atualização de estado e abertura INSTANTÂNEA da Sala de Espera
       setActiveRoomCode(roomCode);
       setActiveRoom(activeRoom);
       setShowWaitingModal(true);
@@ -1524,21 +1556,19 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       setMatchPhase('waiting');
       hasNavigatedRef.current = false;
       setOpenRooms((prev) => [
-        ...(prev || []).filter((r) => r.id !== roomCode && r.roomCode !== roomCode),
+        ...(prev || []).filter((r) => r && r.id !== roomCode && r.roomCode !== roomCode),
         activeRoom
       ]);
 
-      // 3. Notificação e convites em background
+      // 6. Notificação e convites em segundo plano
       sendDuelInvitationNotification(profile, roomCode);
     } catch (error: any) {
       console.error('[MultiplayerDuel] Erro ao criar sala:', error);
-      const exactMsg = error?.message?.includes('conexão') || error?.message?.includes('timeout') || error?.message?.includes('Falha ao criar sala')
-        ? 'Falha ao criar sala. Verifique a conexão.'
-        : (error?.message || 'Falha ao criar sala. Verifique a conexão.');
+      const exactMsg = 'Erro ao criar sala. Verifique a conexão.';
       setErrorMessage(exactMsg);
       showToast(exactMsg, true);
     } finally {
-      // 4. Garantia absoluta de desbloqueio do botão isCreating e loading
+      // 7. Garantia rigorosa no finally: redefinir SEMPRE isCreating(false) para restaurar "CRIAR SALA ONLINE"
       setIsCreating(false);
       setLoading(false);
     }
@@ -2355,10 +2385,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               <button
                 onClick={handleCreateRoom}
                 disabled={isCreating || isJoining || loading}
-                className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider"
+                className="w-full py-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer uppercase tracking-wider disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Swords size={16} />
-                <span>{isCreating ? 'A Criar...' : 'CRIAR SALA ONLINE'}</span>
+                {isCreating ? (
+                  <Loader2 size={16} className="animate-spin text-slate-950" />
+                ) : (
+                  <Swords size={16} />
+                )}
+                <span>{isCreating ? 'A CRIAR...' : 'CRIAR SALA ONLINE'}</span>
               </button>
 
               <button

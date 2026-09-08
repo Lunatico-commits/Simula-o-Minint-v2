@@ -21,8 +21,9 @@ import {
   limit
 } from 'firebase/firestore';
 import { db, rtdb, auth } from '../lib/firebase';
-import { DuelRoom, DuelPlayer } from '../types';
-import { getRandomQuestions } from '../utils/questionSelector';
+import { DuelRoom, DuelPlayer, Question } from '../types';
+import { getRandomQuestions, shuffleQuestionOptions } from '../utils/questionSelector';
+import { QUESTION_BANK } from '../data/questions';
 
 /** Maximum room age in milliseconds for open lobby rooms (2 minutes) */
 export const MAX_OPEN_ROOM_AGE_MS = 2 * 60 * 1000;
@@ -245,77 +246,179 @@ export interface CreateRoomResult {
  *   createdAt: Date.now()
  * }
  */
-export async function createRoom({
-  roomCode,
-  roomData,
-  profile,
-}: {
-  roomCode: string;
-  roomData: DuelRoom;
-  profile?: any;
-}): Promise<CreateRoomResult> {
-  const cleanCode = formatCode(roomCode || roomData.roomCode || roomData.code || roomData.id);
-  if (!cleanCode) {
-    return {
-      success: false,
-      errorMessage: 'Código de sala inválido.',
-    };
-  }
-
-  const currentUser = auth.currentUser;
-  const hostUid = currentUser?.uid || profile?.uid || roomData.hostUid || roomData.hostId || 'anon';
-  const hostName = (currentUser?.displayName || profile?.displayName || profile?.name || roomData.hostName || 'Anfitrião').toString().trim();
-
-  const questions = (roomData.questions && Array.isArray(roomData.questions) && roomData.questions.length > 0)
-    ? roomData.questions
-    : getRandomQuestions({ category: (roomData.category as any) || 'misto', count: 5, modeKey: 'duel' });
-
-  const now = Date.now();
-
-  const roomToSave: DuelRoom = {
-    ...roomData,
-    id: cleanCode,
-    code: cleanCode,
-    roomCode: cleanCode,
-    hostId: hostUid,
-    hostUid: hostUid,
-    hostName: hostName,
-    status: 'waiting',
-    questions,
-    currentQuestionIndex: 0,
-    questionStartTime: null,
-    timePerQuestion: roomData.timePerQuestion || (roomData.mode === 'relampago' ? 30 : 20),
-    player1: roomData.player1 || {
-      uid: hostUid,
-      name: hostName,
-      displayName: hostName,
-      branch: profile?.branch || 'PNA',
-      avatarId: profile?.avatarId || 'policia',
-      province: profile?.province || 'Luanda',
-      score: 0,
-      currentQuestionIndex: 0,
-      answers: {},
-      isReady: true,
-      isConnected: true,
-      lastActive: now,
-    },
-    player2: undefined,
-    createdAt: now,
-  };
-
-  // Garante os campos obrigatórios gravados exatamente no nó RTDB
-  const rtdbPayload = sanitizeForRTDB({
-    ...roomToSave,
-    code: cleanCode,
-    hostUid,
-    hostName,
-    status: 'waiting' as const,
-    questions,
-    createdAt: now,
-  });
-
+export async function createRoom(
+  paramsOrCode: string | { roomCode: string; roomData?: Partial<DuelRoom>; profile?: any },
+  roomDataArg?: Partial<DuelRoom>,
+  profileArg?: any
+): Promise<CreateRoomResult> {
   try {
-    // Gravação EXATA no nó ref(rtdb, `duels/${formatCode(roomCode)}`)
+    let roomCode = '';
+    let roomData: Partial<DuelRoom> = {};
+    let profile: any = null;
+
+    if (typeof paramsOrCode === 'string') {
+      roomCode = paramsOrCode;
+      roomData = roomDataArg || {};
+      profile = profileArg;
+    } else if (paramsOrCode && typeof paramsOrCode === 'object') {
+      roomCode = paramsOrCode.roomCode;
+      roomData = paramsOrCode.roomData || {};
+      profile = paramsOrCode.profile;
+    }
+
+    const cleanCode = formatCode(roomCode || roomData.roomCode || roomData.code || (roomData as any).id);
+    if (!cleanCode) {
+      return {
+        success: false,
+        errorMessage: 'Código de sala inválido.',
+      };
+    }
+
+    // 2. Verificação e Fallback do Utilizador Atual ('currentUser'):
+    // hostUid: currentUser?.uid || `guest_${Date.now()}`
+    // hostName: currentUser?.displayName || currentUser?.email?.split('@')[0] || "Candidato MININT"
+    let currentUser: any = null;
+    try {
+      currentUser = auth?.currentUser || null;
+    } catch (_) {}
+
+    const hostUid = currentUser?.uid || profile?.uid || roomData.hostUid || roomData.hostId || `guest_${Date.now()}`;
+    const hostName = (
+      currentUser?.displayName || 
+      currentUser?.email?.split('@')[0] || 
+      profile?.displayName || 
+      profile?.name || 
+      roomData.hostName || 
+      'Candidato MININT'
+    ).toString().trim();
+
+    // 3. Proteção no Carregamento de Perguntas:
+    // Se a busca falhar ou retornar vazia, utiliza conjunto padrão/fallback local
+    let questions: Question[] = [];
+    try {
+      if (roomData.questions && Array.isArray(roomData.questions) && roomData.questions.length > 0) {
+        questions = roomData.questions;
+      } else {
+        questions = getRandomQuestions({ 
+          category: (roomData.category as any) || 'misto', 
+          count: 5, 
+          modeKey: 'duel' 
+        });
+      }
+    } catch (qErr) {
+      console.warn('[duelService] Erro ao obter perguntas dinâmicas, recorrendo ao banco local:', qErr);
+    }
+
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      try {
+        questions = QUESTION_BANK.slice(0, 5).map(shuffleQuestionOptions);
+      } catch (_) {}
+    }
+
+    if (!questions || questions.length === 0) {
+      questions = [
+        {
+          id: 'fb_1',
+          question: 'Qual é o órgão responsável pela ordem e segurança pública em Angola sob a tutela do MININT?',
+          options: ['Polícia Nacional de Angola (PNA)', 'Exército Nacional', 'Tribunal Supremo', 'Banco Central'],
+          correctIndex: 0,
+          category: 'legislacao_minint',
+          categoryName: 'Legislação do MININT',
+          lawReference: 'Lei Geral do MININT',
+          explanation: 'A Polícia Nacional de Angola (PNA) é o órgão do MININT encarregado de manter a ordem e segurança públicas.',
+          difficulty: 'fácil'
+        },
+        {
+          id: 'fb_2',
+          question: 'O Serviço de Investigação Criminal (SIC) está adstrito a que ministério?',
+          options: ['Ministério da Defesa', 'Ministério do Interior (MININT)', 'Ministério da Justiça', 'Ministério das Finanças'],
+          correctIndex: 1,
+          category: 'legislacao_minint',
+          categoryName: 'Legislação do MININT',
+          lawReference: 'Estatuto Orgânico do SIC',
+          explanation: 'O SIC é um órgão tutelado diretamente pelo Ministério do Interior.',
+          difficulty: 'fácil'
+        },
+        {
+          id: 'fb_3',
+          question: 'O que significa a sigla SME no contexto dos órgãos do MININT?',
+          options: ['Serviço Militar Especial', 'Serviço de Migração e Estrangeiros', 'Sistema Municipal de Emergência', 'Secretaria Ministerial de Estrangeiros'],
+          correctIndex: 1,
+          category: 'legislacao_minint',
+          categoryName: 'Legislação do MININT',
+          lawReference: 'Lei da Migração e Estrangeiros',
+          explanation: 'SME designa o Serviço de Migração e Estrangeiros de Angola.',
+          difficulty: 'fácil'
+        },
+        {
+          id: 'fb_4',
+          question: 'Qual órgão é responsável pela guarda penitenciária em Angola?',
+          options: ['Serviço Penitenciário (SP)', 'Polícia de Trânsito', 'Corpo de Bombeiros', 'SME'],
+          correctIndex: 0,
+          category: 'legislacao_minint',
+          categoryName: 'Legislação do MININT',
+          lawReference: 'Lei Penitenciária',
+          explanation: 'O Serviço Penitenciário (SP) gere os estabelecimentos prisionais do país.',
+          difficulty: 'fácil'
+        },
+        {
+          id: 'fb_5',
+          question: 'Qual órgão do MININT responde por socorro e combate a incêndios?',
+          options: ['Serviço de Proteção Civil e Bombeiros (SPCB)', 'SIC', 'SME', 'PNA'],
+          correctIndex: 0,
+          category: 'legislacao_minint',
+          categoryName: 'Legislação do MININT',
+          lawReference: 'Estatuto do SPCB',
+          explanation: 'O SPCB é responsável pela prevenção e socorro a incêndios e desastres.',
+          difficulty: 'fácil'
+        }
+      ];
+    }
+
+    const now = Date.now();
+
+    const roomToSave: DuelRoom = {
+      ...(roomData as any),
+      id: cleanCode,
+      code: cleanCode,
+      roomCode: cleanCode,
+      hostId: hostUid,
+      hostUid: hostUid,
+      hostName: hostName,
+      status: 'waiting',
+      questions,
+      currentQuestionIndex: 0,
+      questionStartTime: null,
+      timePerQuestion: roomData.timePerQuestion || (roomData.mode === 'relampago' ? 30 : 20),
+      player1: roomData.player1 || {
+        uid: hostUid,
+        name: hostName,
+        displayName: hostName,
+        branch: profile?.branch || 'PNA',
+        avatarId: profile?.avatarId || 'policia',
+        province: profile?.province || 'Luanda',
+        score: 0,
+        currentQuestionIndex: 0,
+        answers: {},
+        isReady: true,
+        isConnected: true,
+        lastActive: now,
+      },
+      player2: undefined,
+      createdAt: now,
+    };
+
+    // 4. Gravação Directa no Firebase RTDB: ref(rtdb, `duels/${formatCode(roomCode)}`)
+    const rtdbPayload = sanitizeForRTDB({
+      ...roomToSave,
+      code: cleanCode,
+      hostUid,
+      hostName,
+      status: 'waiting' as const,
+      questions,
+      createdAt: now,
+    });
+
     const targetRoomRef = rtdbRef(rtdb, `duels/${cleanCode}`);
     await rtdbSet(targetRoomRef, rtdbPayload);
 
@@ -327,7 +430,7 @@ export async function createRoom({
       status: 'waiting',
     });
 
-    // Gravação no Firestore em segundo plano para persistência
+    // Gravação no Firestore em segundo plano para persistência (não bloqueante)
     try {
       const roomDocRef = doc(db, 'duels', cleanCode);
       setDoc(roomDocRef, {
@@ -347,7 +450,7 @@ export async function createRoom({
     console.error('[duelService] Falha na criação da sala:', error);
     return {
       success: false,
-      errorMessage: error?.message || 'Falha ao criar sala. Verifique a conexão.',
+      errorMessage: 'Erro ao criar sala. Verifique a conexão.',
     };
   }
 }
