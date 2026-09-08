@@ -20,7 +20,7 @@ import {
   getDocs,
   limit
 } from 'firebase/firestore';
-import { db, rtdb } from '../lib/firebase';
+import { db, rtdb, auth } from '../lib/firebase';
 import { DuelRoom, DuelPlayer } from '../types';
 import { getRandomQuestions } from '../utils/questionSelector';
 
@@ -91,23 +91,26 @@ export function sanitizeForRTDB<T>(obj: T): T {
 }
 
 /**
- * Padroniza o código de sala limpando espaços e convertendo para MAIÚSCULAS ('code.trim().toUpperCase()')
- * Garante que TANTO o Anfitrião (na criação/escuta) quanto o Convidado (ao entrar) usem
- * rigorosamente a mesma chave de caminho no Firebase: ref(rtdb, `duels/${cleanCode}`).
+ * 1. Padronização Obrigatória do Código da Sala (Helper Universal):
+ * Função utilitária única para tratar códigos:
+ * const formatCode = (code: string) => code.trim().toUpperCase();
+ * NUNCA remove o hífen "MNT-" nem altera a string original gerada.
+ * O código gerado (ex: "MNT-LLLW") DEVE ser a chave exata no Realtime Database.
  */
-export function cleanRoomCode(code?: string | null): string {
+export const formatCode = (code?: string | null): string => {
   if (!code) return '';
-  const formatted = String(code).trim().toUpperCase();
-  const withoutPrefix = formatted
-    .replace(/^(INVITE_|SALA:|CODE:|DUEL:)/i, '')
-    .replace(/\s+/g, '');
-
-  const noHyphen = withoutPrefix.replace(/-/g, '');
-  if (noHyphen.startsWith('MNT') && noHyphen.length > 3) {
-    return `MNT-${noHyphen.slice(3)}`;
+  const trimmed = code.toString().trim().toUpperCase().replace(/\s+/g, '');
+  if (!trimmed.startsWith('MNT-') && trimmed.startsWith('MNT')) {
+    return `MNT-${trimmed.slice(3)}`;
   }
-  return withoutPrefix;
-}
+  // Se o usuário digitou apenas os 4 caracteres finais sem o prefixo (ex: "LLLW")
+  if (!trimmed.startsWith('MNT-') && trimmed.length === 4) {
+    return `MNT-${trimmed}`;
+  }
+  return trimmed;
+};
+
+export const cleanRoomCode = formatCode;
 
 /**
  * Configure Firebase Realtime Database onDisconnect triggers for automatic cleanup
@@ -229,8 +232,18 @@ export interface CreateRoomResult {
 }
 
 /**
- * Cria uma sala de duelo com timeout de conexão de 5 segundos,
- * gravando hostUid, questions e status: 'waiting' no nó duels/${cleanCode}.
+ * 2. Escrita Uniforme no 'createRoom' ('duelService.ts'):
+ * Ao criar a sala, grava os dados EXATAMENTE no nó:
+ * ref(rtdb, `duels/${formatCode(roomCode)}`)
+ * Garante que o nó contenha:
+ * {
+ *   code: formatCode(roomCode),
+ *   hostUid: currentUser.uid,
+ *   hostName: currentUser.displayName,
+ *   status: "waiting",
+ *   questions: [...],
+ *   createdAt: Date.now()
+ * }
  */
 export async function createRoom({
   roomCode,
@@ -241,7 +254,7 @@ export async function createRoom({
   roomData: DuelRoom;
   profile?: any;
 }): Promise<CreateRoomResult> {
-  const cleanCode = cleanRoomCode(roomCode || roomData.roomCode || roomData.code || roomData.id);
+  const cleanCode = formatCode(roomCode || roomData.roomCode || roomData.code || roomData.id);
   if (!cleanCode) {
     return {
       success: false,
@@ -249,8 +262,15 @@ export async function createRoom({
     };
   }
 
-  const hostUid = profile?.uid || roomData.hostUid || roomData.hostId || 'anon';
-  const hostName = (profile?.displayName || profile?.name || roomData.hostName || 'Anfitrião').toString().trim();
+  const currentUser = auth.currentUser;
+  const hostUid = currentUser?.uid || profile?.uid || roomData.hostUid || roomData.hostId || 'anon';
+  const hostName = (currentUser?.displayName || profile?.displayName || profile?.name || roomData.hostName || 'Anfitrião').toString().trim();
+
+  const questions = (roomData.questions && Array.isArray(roomData.questions) && roomData.questions.length > 0)
+    ? roomData.questions
+    : getRandomQuestions({ category: (roomData.category as any) || 'misto', count: 5, modeKey: 'duel' });
+
+  const now = Date.now();
 
   const roomToSave: DuelRoom = {
     ...roomData,
@@ -261,7 +281,7 @@ export async function createRoom({
     hostUid: hostUid,
     hostName: hostName,
     status: 'waiting',
-    questions: roomData.questions || [],
+    questions,
     currentQuestionIndex: 0,
     questionStartTime: null,
     timePerQuestion: roomData.timePerQuestion || (roomData.mode === 'relampago' ? 30 : 20),
@@ -277,64 +297,46 @@ export async function createRoom({
       answers: {},
       isReady: true,
       isConnected: true,
-      lastActive: Date.now(),
+      lastActive: now,
     },
     player2: undefined,
-    createdAt: Date.now(),
+    createdAt: now,
   };
 
+  // Garante os campos obrigatórios gravados exatamente no nó RTDB
+  const rtdbPayload = sanitizeForRTDB({
+    ...roomToSave,
+    code: cleanCode,
+    hostUid,
+    hostName,
+    status: 'waiting' as const,
+    questions,
+    createdAt: now,
+  });
+
   try {
-    let timeoutId: any;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error('Falha ao criar sala. Verifique a conexão.'));
-      }, 5000);
+    // Gravação EXATA no nó ref(rtdb, `duels/${formatCode(roomCode)}`)
+    const targetRoomRef = rtdbRef(rtdb, `duels/${cleanCode}`);
+    await rtdbSet(targetRoomRef, rtdbPayload);
+
+    // Configura desconexão automática do anfitrião
+    setupRoomOnDisconnect({
+      roomId: cleanCode,
+      userUid: hostUid,
+      isHost: true,
+      status: 'waiting',
     });
 
-    // 1. Gravação garantida no Firestore
-    const fsTask = (async () => {
-      try {
-        const roomRef = doc(db, 'duels', cleanCode);
-        const fsData: Record<string, any> = {
-          ...roomToSave,
-          createdAt: Date.now(),
-          player2: null,
-        };
-        await setDoc(roomRef, fsData, { merge: true });
-        return true;
-      } catch (fsErr) {
-        console.warn('[duelService] Aviso ao persistir sala no Firestore:', fsErr);
-        return false;
-      }
-    })();
-
-    // 2. Gravação em tempo real no RTDB + setup onDisconnect
-    const rtdbTask = (async () => {
-      try {
-        await saveRoomToRTDB(cleanCode, roomToSave);
-        setupRoomOnDisconnect({
-          roomId: cleanCode,
-          userUid: hostUid,
-          isHost: true,
-          status: 'waiting',
-        });
-        return true;
-      } catch {
-        return false;
-      }
-    })();
-
-    const successResult = await Promise.race([
-      fsTask.then((ok) => (ok ? true : new Promise<never>(() => {}))),
-      rtdbTask.then((ok) => (ok ? true : new Promise<never>(() => {}))),
-      Promise.all([fsTask, rtdbTask]).then(([fsOk, rtdbOk]) => fsOk || rtdbOk),
-      timeoutPromise,
-    ]);
-
-    if (timeoutId) clearTimeout(timeoutId);
-
-    if (!successResult) {
-      throw new Error('Falha ao criar sala. Verifique a conexão.');
+    // Gravação no Firestore em segundo plano para persistência
+    try {
+      const roomDocRef = doc(db, 'duels', cleanCode);
+      setDoc(roomDocRef, {
+        ...roomToSave,
+        createdAt: now,
+        player2: null,
+      }, { merge: true }).catch(() => {});
+    } catch (fsErr) {
+      console.warn('[duelService] Aviso ao persistir sala no Firestore:', fsErr);
     }
 
     return {
@@ -579,13 +581,12 @@ export function filterValidLobbyRooms(rooms: DuelRoom[], currentUserId?: string 
 }
 
 /**
- * 2. Função joinRoom Otimizada com Timeout Razoável (15-20s):
- * - Limpa o código: const cleanCode = code.trim().toUpperCase()
- * - Obtém snapshot de duels/${cleanCode} usando get(ref(rtdb, `duels/${cleanCode}`))
- * - Se a sala existir e status === "waiting", faz update imediato:
- *   update(ref(rtdb, `duels/${cleanCode}`), { status: "matched", guest: guestData })
- * - Se a sala NÃO existir ou não responder, retorna erro tratado:
- *   "Sala não encontrada. Verifique o código inserido."
+ * 3. Leitura Uniforme no 'joinRoom' ('duelService.ts'):
+ * Ao procurar a sala com o código digitado pelo Convidado (ex: "MNT-LLLW"):
+ * 1. Obtenha o código formatado: 'const cleanCode = formatCode(inputCode)'.
+ * 2. Verifique o nó exato: 'get(ref(rtdb, `duels/${cleanCode}`))'.
+ * 3. Se 'snapshot.exists()' for verdadeiro e 'status === "waiting"', atualize o nó com 'status: "matched"' e os dados do 'guest'.
+ * 4. Se não existir, retorne o erro apropriado: "Sala não encontrada. Verifique o código inserido."
  */
 export async function joinRoom(
   roomIdOrCode: string,
@@ -598,9 +599,8 @@ export async function joinRoom(
   docId?: string;
   errorMessage?: string;
 }> {
-  // 1. Formatar o código: const cleanCode = code.trim().toUpperCase()
-  const rawCode = (roomIdOrCode || '').toString();
-  const cleanCode = cleanRoomCode(rawCode).trim().toUpperCase();
+  // 1. Obtenha o código formatado: const cleanCode = formatCode(inputCode)
+  const cleanCode = formatCode(roomIdOrCode);
   if (!cleanCode) {
     return {
       success: false,
@@ -629,11 +629,12 @@ export async function joinRoom(
     errorMessage?: string;
   }> => {
     try {
-      const userUid = playerProfile?.uid || playerProfile?.id || 'anon';
-      const guestName = (playerProfile?.displayName || playerProfile?.name || playerProfile?.nome || 'Candidato MININT').toString().trim();
+      const currentUser = auth.currentUser;
+      const userUid = currentUser?.uid || playerProfile?.uid || playerProfile?.id || 'anon';
+      const guestName = (currentUser?.displayName || playerProfile?.displayName || playerProfile?.name || playerProfile?.nome || 'Candidato MININT').toString().trim();
       const guestPhoto = playerProfile?.photoURL || playerProfile?.avatar || '';
 
-      // 2. Obter o snapshot do nó 'duels/${cleanCode}' usando 'get(ref(rtdb, `duels/${cleanCode}`))'
+      // 2. Verifique o nó exato: get(ref(rtdb, `duels/${cleanCode}`))
       const roomRef = rtdbRef(rtdb, `duels/${cleanCode}`);
       let snap = await rtdbGet(roomRef).catch((rtdbErr) => {
         console.warn(`[duelService] Aviso ao ler RTDB duels/${cleanCode}:`, rtdbErr);
@@ -642,7 +643,7 @@ export async function joinRoom(
 
       let roomData = snap && snap.exists() ? snap.val() : null;
 
-      // Fallback de resiliência caso o RTDB ainda esteja sincronizando com o servidor
+      // Fallback de contingência caso o RTDB ainda esteja sincronizando com o Firestore
       if (!roomData) {
         try {
           const fsDoc = await getDoc(doc(db, 'duels', cleanCode));
@@ -654,7 +655,7 @@ export async function joinRoom(
         }
       }
 
-      // 4. Se a sala NÃO existir, lance o erro tratado: "Sala não encontrada. Verifique o código inserido."
+      // 4. Se não existir, retorne o erro apropriado: "Sala não encontrada. Verifique o código inserido."
       if (!roomData) {
         return {
           success: false,
@@ -711,8 +712,7 @@ export async function joinRoom(
         province: playerProfile?.province || 'Luanda',
       };
 
-      // 3. Se a sala existir e 'status === "waiting"', faça o update imediato:
-      // update(ref(rtdb, `duels/${cleanCode}`), { status: "matched", guest: guestData })
+      // 3. Se 'snapshot.exists()' for verdadeiro e 'status === "waiting"', atualize o nó com 'status: "matched"' e os dados do 'guest'.
       const matchedPayload = sanitizeForRTDB({
         status: 'matched' as const,
         guestUid: userUid,
@@ -785,6 +785,69 @@ export async function joinRoom(
       errorMessage: 'Sala não encontrada. Verifique o código inserido.',
     };
   }
+}
+
+/**
+ * 4. Atualização da Lista "Salas Abertas em Tempo Real":
+ * Escuta 'ref(rtdb, "duels")' para listar automaticamente todas as salas ativas com
+ * 'status === "waiting"' e 'hostUid !== currentUser.uid', permitindo entrada direta com 1 clique.
+ */
+export function listenToOpenRooms(
+  currentUserId: string | null | undefined,
+  callback: (rooms: DuelRoom[]) => void
+): () => void {
+  const duelsRtdbRef = rtdbRef(rtdb, 'duels');
+  const unsubscribe = rtdbOnValue(duelsRtdbRef, (snapshot) => {
+    if (!snapshot.exists()) {
+      callback([]);
+      return;
+    }
+    const rtdbVal = snapshot.val();
+    if (!rtdbVal || typeof rtdbVal !== 'object') {
+      callback([]);
+      return;
+    }
+
+    const rtdbRooms: DuelRoom[] = [];
+    Object.entries(rtdbVal).forEach(([key, val]: [string, any]) => {
+      if (
+        val &&
+        val.status === 'waiting' &&
+        !val.player2 &&
+        (!currentUserId || (val.hostUid !== currentUserId && val.hostId !== currentUserId && val.player1?.uid !== currentUserId))
+      ) {
+        const cleanKey = formatCode(val.code || val.roomCode || key);
+        const hostName = (val.hostName || val.player1?.displayName || val.player1?.name || 'Candidato').toString().trim();
+        rtdbRooms.push({
+          ...val,
+          id: cleanKey,
+          code: cleanKey,
+          roomCode: cleanKey,
+          hostUid: val.hostUid,
+          hostName,
+          player1: val.player1 || {
+            uid: val.hostUid,
+            displayName: hostName,
+            name: hostName,
+            branch: val.player1?.branch || 'PNA',
+            avatarId: val.player1?.avatarId || 'policia',
+            province: val.player1?.province || 'Luanda',
+          },
+        });
+      }
+    });
+
+    callback(filterValidLobbyRooms(rtdbRooms, currentUserId));
+  }, (error) => {
+    console.warn('[duelService] Erro ao escutar salas no RTDB:', error);
+    callback([]);
+  });
+
+  return () => {
+    try {
+      unsubscribe();
+    } catch {}
+  };
 }
 
 /**

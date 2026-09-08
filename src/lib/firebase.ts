@@ -20,8 +20,15 @@ import {
 } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-// Initialize Firebase App
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Explicit databaseURL ensuring direct connectivity to 'us-central1' Realtime Database server
+const rtdbDatabaseURL = (firebaseConfig as any).databaseURL || 
+  `https://${firebaseConfig.projectId}-default-rtdb.firebaseio.com`;
+
+// Initialize Firebase App with explicit databaseURL
+const app = !getApps().length ? initializeApp({
+  ...firebaseConfig,
+  databaseURL: rtdbDatabaseURL
+}) : getApp();
 
 // Export Firestore with persistent local cache and designated database ID
 export const db = (() => {

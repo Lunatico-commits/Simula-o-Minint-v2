@@ -49,6 +49,8 @@ import {
   filterValidLobbyRooms,
   cleanupGhostRoom,
   cleanRoomCode,
+  formatCode,
+  listenToOpenRooms,
   saveRoomToRTDB,
   createRoom as createRoomService,
   listenToRoom,
@@ -60,25 +62,11 @@ import {
 } from '../services/duelService';
 
 /**
- * Normalizes user-entered room codes (e.g., 'mnt 8421', 'mnt-8421', '8421', 'MNT8421')
- * into the standardized 'MNT-XXXX' format.
+ * Normalizes user-entered room codes into the standardized 'MNT-XXXX' format.
+ * Universal helper alias to ensure 100% uniformity.
  */
-export function normalizeRoomCode(input?: string | null): string {
-  if (!input) return '';
-  // Remove any 'invite_' prefix (case-insensitive) if present
-  const sanitized = input.trim().replace(/^invite_/i, '');
-  // Convert to UPPERCASE, trim, and strip all internal spaces
-  const cleaned = sanitized.toUpperCase().trim().replace(/\s+/g, '');
-  if (!cleaned) return '';
-  
-  // Strip hyphen to check prefix (e.g., 'MNT-GWRM' or 'MNTGWRM' or 'MNT - GWRM')
-  const noHyphen = cleaned.replace(/-/g, '');
-  if (noHyphen.startsWith('MNT')) {
-    const rest = noHyphen.slice(3);
-    return rest ? `MNT-${rest}` : 'MNT-';
-  }
-  return `MNT-${noHyphen}`;
-}
+export const normalizeRoomCode = formatCode;
+export { formatCode };
 
 const buildSafePlayer = (userProfile: any, overrides?: Partial<DuelPlayer>): DuelPlayer => {
   const rawPlayer: DuelPlayer = {
@@ -764,35 +752,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
     }
 
     try {
-      const duelsRtdbRef = rtdbRef(rtdb, 'duels');
-      duelsRtdbTargetRef = duelsRtdbRef;
-      unsubscribeRtdb = rtdbOnValue(duelsRtdbRef, (snapshot) => {
-        if (!snapshot.exists()) {
-          return;
-        }
-        const rtdbVal = snapshot.val();
-        if (rtdbVal && typeof rtdbVal === 'object') {
-          const rtdbRooms: DuelRoom[] = [];
-          Object.entries(rtdbVal).forEach(([key, val]: [string, any]) => {
-            if (val && val.status === 'waiting' && !val.player2) {
-              const safeP1 = buildSafePlayer(val.player1 || {});
-              if (safeP1.isConnected !== false) {
-                rtdbRooms.push({
-                  ...val,
-                  id: key,
-                  code: val.code || val.roomCode || key,
-                  roomCode: val.roomCode || val.code || key,
-                  player1: safeP1,
-                });
-              }
-            }
-          });
-          if (rtdbRooms.length > 0) {
-            setOpenRooms(filterValidLobbyRooms(rtdbRooms, profile?.uid));
-          }
-        }
+      unsubscribeRtdb = listenToOpenRooms(profile?.uid, (rooms) => {
+        setOpenRooms(rooms);
+        setIsLoadingOpenRooms(false);
       });
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Erro ao configurar escuta de salas no RTDB:', e);
+    }
 
     // Periodic sweep: clean up any rooms older than 2 minutes in real time without refresh
     const sweepInterval = setInterval(() => {
@@ -926,6 +892,13 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
           const activeRoom = currentRoomRef.current;
           const currentProfile = profileRef.current;
+
+          // Prevenção de encerramento falso durante criação inicial ou na sala de espera:
+          if (activeRoom && (Date.now() - (activeRoom.createdAt || 0) < 15000 || showWaitingModal || matchPhase === 'waiting')) {
+            console.warn('[MultiplayerDuel] Aguardando sincronização da sala de espera no RTDB...');
+            return;
+          }
+
           if (viewStateRef.current === 'room' && activeRoom) {
             const isHost = activeRoom.hostUid ? (activeRoom.hostUid === currentProfile?.uid) : (activeRoom.player1?.uid === currentProfile?.uid);
             if (!isHost) {
@@ -1544,6 +1517,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       const activeRoom = createResult.room;
 
       // 2. Redirecionamento Imediato para a Sala de Espera (SALA DE ESPERA 1V1)
+      setActiveRoomCode(roomCode);
       setActiveRoom(activeRoom);
       setShowWaitingModal(true);
       setCurrentView('room');
@@ -1582,11 +1556,14 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       return;
     }
 
-    // 1. Remova qualquer prefixo como "invite_" ou "sala:" da consulta
-    const sanitizedInput = rawInput.trim().replace(/^(invite_|sala:|code:|duel:)/i, '');
-    // 2. Trate o texto digitado aplicando: const cleanCode = input.trim().toUpperCase().replace(/\s+/g, '')
-    const cleanCode = sanitizedInput.trim().toUpperCase().replace(/\s+/g, '');
-    const normalizedCode = normalizeRoomCode(cleanCode);
+    // 1. Padronização Obrigatória do Código da Sala via Helper Universal:
+    const cleanCode = formatCode(rawInput);
+    if (!cleanCode) {
+      const msg = 'Código de sala inválido.';
+      setErrorMessage(msg);
+      showToast(msg, true);
+      return;
+    }
 
     setIsJoining(true);
     setLoading(true);
@@ -1600,7 +1577,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         const unavailableMsg = result.errorMessage || 'Sala não encontrada. Verifique o código inserido.';
         setErrorMessage(unavailableMsg);
         showToast(unavailableMsg, true);
-        setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== cleanCode && r.roomCode !== cleanCode && r.roomCode !== normalizedCode));
+        setOpenRooms((prev) => (prev || []).filter((r) => r && r.id !== cleanCode && r.roomCode !== cleanCode));
         return;
       }
 
@@ -2164,6 +2141,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       }
 
       setOpenRooms((prev) => [...(prev || []), newRoom]);
+      setActiveRoomCode(roomCode);
       setActiveRoom(newRoom);
       setShowWaitingModal(true);
       setCurrentView('room');
