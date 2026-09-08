@@ -9,7 +9,8 @@ import {
   normalizeRoomData, 
   cleanRoomCode,
   formatCode,
-  listenToOpenRooms
+  listenToOpenRooms,
+  createAIRoom
 } from '../services/duelService';
 
 export { 
@@ -21,6 +22,7 @@ export {
   cleanRoomCode,
   formatCode,
   listenToOpenRooms,
+  createAIRoom,
   MultiplayerDuel, 
   WaitingRoomModal,
   normalizeRoomCode 

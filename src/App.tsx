@@ -426,7 +426,15 @@ export default function App() {
           let userSnap = null;
 
           try {
-            userSnap = await getDoc(userRef);
+            const timeoutFetch = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3500));
+            const fetchedSnap = await Promise.race([getDoc(userRef), timeoutFetch]);
+            if (fetchedSnap) {
+              userSnap = fetchedSnap;
+            } else {
+              try {
+                userSnap = await getDocFromCache(userRef);
+              } catch (_) {}
+            }
           } catch (fetchErr: any) {
             console.warn('Servidor do Firestore offline ou inacessível, tentando cache local:', fetchErr?.message || fetchErr);
             try {

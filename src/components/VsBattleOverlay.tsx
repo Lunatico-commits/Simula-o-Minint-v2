@@ -37,6 +37,8 @@ export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hasCompletedRef = useRef<boolean>(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   // Interrompe e destrói imediatamente qualquer som do cronómetro
   const stopAndDestroyAudio = useCallback(() => {
@@ -58,8 +60,10 @@ export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
     }
 
     stopAndDestroyAudio();
-    onComplete();
-  }, [onComplete, stopAndDestroyAudio]);
+    if (onCompleteRef.current) {
+      onCompleteRef.current();
+    }
+  }, [stopAndDestroyAudio]);
 
   useEffect(() => {
     // Se a tela não estiver aberta ou se um dos jogadores tiver saído durante a preparação
@@ -74,17 +78,23 @@ export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
       return;
     }
 
+    // Se o cronómetro já estiver a correr, não reinicie para evitar congelamento no 3
+    if (intervalRef.current) {
+      return;
+    }
+
     hasCompletedRef.current = false;
     setCountdown(durationSeconds);
 
     // Inicializa o som de início de combate
-    playRoundStartSound();
+    try {
+      playRoundStartSound();
+    } catch (_) {}
 
     // Inicia a contagem regressiva apenas com ambos os jogadores confirmados
     intervalRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          // Quando chega a 0: para e destrói o som IMEDIATAMENTE e faz a transição no mesmo milissegundo
           if (intervalRef.current) {
             clearInterval(intervalRef.current);
             intervalRef.current = null;
@@ -95,7 +105,9 @@ export const VsBattleOverlay: React.FC<VsBattleOverlayProps> = ({
         }
 
         // Toca o som do cronómetro da contagem
-        playTickSound(prev - 1);
+        try {
+          playTickSound(prev - 1);
+        } catch (_) {}
         return prev - 1;
       });
     }, 1000);

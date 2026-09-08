@@ -53,6 +53,9 @@ import {
   listenToOpenRooms,
   saveRoomToRTDB,
   createRoom as createRoomService,
+  createAIRoom,
+  getQuestionsWithTimeout,
+  MININT_CONTINGENCY_QUESTIONS,
   listenToRoom,
   submitDuelAnswer,
   updateDuelRoomNode,
@@ -874,7 +877,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
   // - Atualize os dados da sala ativa com o snapshot retornado (setActiveRoom(fullRoomData))
   // - Mude a vista principal para 'arena' (setCurrentView('arena')) em AMBOS os dispositivos
   useEffect(() => {
-    if (!activeRoomCode) return;
+    if (!activeRoomCode || isCurrentRoomBot) return;
     const cleanCode = cleanRoomCode(activeRoomCode).trim().toUpperCase();
     if (!cleanCode) return;
 
@@ -1399,70 +1402,32 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Create Bot Room (Instant Practice Mode - 100% Local / Offline First)
   const handleCreateBotRoom = () => {
-    setLoading(true);
+    setIsCreating(false);
+    setLoading(false);
     setErrorMessage('');
     try {
-      const code = generateRoomCode();
-      const roomId = `duel_bot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-      const botProvinces = ['Huambo', 'Benguela', 'Cabinda', 'Huíla', 'Malanje', 'Namibe', 'Uíge'];
-      const botBranches: MININTBranch[] = ['PNA', 'SIC', 'SME', 'SP', 'SPCB'];
-      const botNames = [
-        'Sub-Insp. Nelson', 'Agente Carla', 'Chefe Mateus', 'Sub-Chef. Ndongala',
-        'Insp. Esperança', 'Agente Kapapelo', 'Sub-Insp. Nimi'
-      ];
-
-      const randomBotProvince = botProvinces[Math.floor(Math.random() * botProvinces.length)];
-      const randomBotBranch = botBranches[Math.floor(Math.random() * botBranches.length)];
-      const randomBotName = botNames[Math.floor(Math.random() * botNames.length)];
-
-      const duelQuestions = getRandomQuestions({
-        category: selectedCategory,
-        count: 5,
-        modeKey: 'duel',
-      });
-
-      const isRelampago = selectedMode === 'relampago';
-      const timePerQuestion = isRelampago ? 30 : 20;
-
-      const botPlayer: DuelPlayer = {
-        uid: `bot_${Date.now()}`,
-        displayName: randomBotName,
-        branch: randomBotBranch,
-        avatarId: 'pna_agent',
-        province: randomBotProvince,
-        isBot: true,
-        score: 0,
-        currentQuestionIndex: 0,
-        answers: {},
-        isReady: true,
-        isConnected: true,
-      };
-
-      const newRoom: DuelRoom = {
-        id: roomId,
-        roomCode: code,
-        hostUid: profile?.uid || 'anon',
-        status: 'active',
+      const aiResult = createAIRoom({
         category: selectedCategory,
         mode: selectedMode,
-        questions: duelQuestions,
-        currentQuestionIndex: 0,
-        questionStartTime: Date.now(),
-        timePerQuestion,
-        player1: buildSafePlayer(profile),
-        player2: botPlayer,
-        createdAt: Date.now(),
-      };
+        profile,
+      });
 
-      // 100% Local initialization - NO FIRESTORE CALL AT ALL
+      const newRoom = aiResult.room;
+
+      // 100% Local initialization - NO FIRESTORE/RTDB CALLS OR LISTENERS
+      setActiveRoomCode('');
+      setShowWaitingModal(false);
+      setShowVsOverlay(false);
+      hasNavigatedRef.current = true;
       setCurrentRoom(newRoom);
-      setShowVsOverlay(true);
+      setMatchPhase('preparing');
+      setCurrentView('arena');
       setViewState('room');
     } catch (error: any) {
-      console.error('Erro ao criar duelo com bot:', error);
-      setErrorMessage('Não foi possível iniciar o duelo. Tente novamente.');
+      console.error('[MultiplayerDuel] Erro ao criar duelo com bot:', error);
+      setErrorMessage('Não foi possível iniciar o treino com IA. Tente novamente.');
     } finally {
+      setIsCreating(false);
       setLoading(false);
     }
   };
@@ -1490,22 +1455,17 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         'Candidato MININT'
       ).toString().trim();
 
-      // 3. Proteção no Carregamento de Perguntas com Fallback Local
+      // 3. Proteção no Carregamento de Perguntas com Fallback Local (tempo limite de 3s)
       let duelQuestions: Question[] = [];
       try {
-        duelQuestions = getRandomQuestions({
-          category: selectedCategory,
-          count: 5,
-          modeKey: 'duel',
-        });
+        duelQuestions = await getQuestionsWithTimeout(selectedCategory, 3000, 5);
       } catch (qErr) {
         console.warn('[MultiplayerDuel] Erro ao carregar perguntas dinâmicas, usando fallback:', qErr);
+        duelQuestions = MININT_CONTINGENCY_QUESTIONS.slice(0, 5);
       }
 
       if (!duelQuestions || !Array.isArray(duelQuestions) || duelQuestions.length === 0) {
-        try {
-          duelQuestions = QUESTION_BANK.slice(0, 5).map(shuffleQuestionOptions);
-        } catch (_) {}
+        duelQuestions = MININT_CONTINGENCY_QUESTIONS.slice(0, 5);
       }
 
       const isRelampago = selectedMode === 'relampago';
@@ -1535,18 +1495,21 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
         createdAt: Date.now(),
       };
 
-      // 4. Gravação Directa no Firebase RTDB e Abertura da Modal
-      const createResult = await createRoomService({
+      // 4. Gravação Directa no Firebase RTDB com timeout de segurança de 3.2s
+      const createPromise = createRoomService({
         roomCode,
         roomData: newRoom,
         profile: { ...(profile || {}), uid: hostUid, displayName: hostName },
       });
 
-      if (!createResult.success || !createResult.room) {
-        throw new Error(createResult.errorMessage || 'Erro ao criar sala. Verifique a conexão.');
-      }
+      const timeoutPromise = new Promise<{ success: boolean; room: DuelRoom }>((resolve) => {
+        setTimeout(() => {
+          resolve({ success: true, room: newRoom });
+        }, 3200);
+      });
 
-      const activeRoom = createResult.room;
+      const createResult = await Promise.race([createPromise, timeoutPromise]);
+      const activeRoom = createResult.room || newRoom;
 
       // 5. Atualização de estado e abertura INSTANTÂNEA da Sala de Espera
       setActiveRoomCode(roomCode);
@@ -1635,7 +1598,12 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
 
   // Answer Question
   const handleAnswerQuestion = async (chosenOptionIndex: number) => {
-    const isRoomPlayable = currentRoom && (currentRoom.status === 'active' || currentRoom.status === 'matched' || currentRoom.status === 'in_progress');
+    const isRoomPlayable = currentRoom && (
+      currentRoom.status === 'active' || 
+      currentRoom.status === 'matched' || 
+      currentRoom.status === 'in_progress' || 
+      currentRoom.status === 'playing'
+    );
     if (!isRoomPlayable) return;
 
     const isHost = currentRoom.player1.uid === profile.uid;
@@ -2208,17 +2176,23 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
       isReady: true,
       isBot: true,
       isConnected: true,
+      lastActive: Date.now(),
     };
     const updated: DuelRoom = {
       ...currentRoom,
       player2: botPlayer,
-      status: 'active',
+      status: 'playing',
       questionStartTime: Date.now(),
     };
+    setActiveRoomCode('');
     setShowWaitingModal(false);
+    setShowVsOverlay(false);
+    hasNavigatedRef.current = true;
     setActiveRoom(updated);
+    setCurrentRoom(updated);
     setCurrentView('arena');
     setMatchPhase('preparing');
+    setViewState('room');
   };
 
   const isHost = currentRoom?.player1?.uid ? (currentRoom.player1.uid === profile?.uid) : (currentRoom?.hostUid === profile?.uid);
@@ -2992,6 +2966,7 @@ export const MultiplayerDuel: React.FC<MultiplayerDuelProps> = ({
               opponentInactivitySeconds={opponentInactivitySeconds}
               onForcedTimeout={handleForcedQuestionTimeout}
               matchPhase={matchPhase}
+              onPhaseChange={(phase) => setMatchPhase(phase)}
             />
           )}
         </div>

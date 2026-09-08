@@ -4,6 +4,7 @@ import {
   persistentLocalCache, 
   persistentMultipleTabManager, 
   getFirestore,
+  setLogLevel,
   doc,
   getDocFromServer
 } from 'firebase/firestore';
@@ -30,6 +31,11 @@ const app = !getApps().length ? initializeApp({
   databaseURL: rtdbDatabaseURL
 }) : getApp();
 
+// Configure Firestore logging to error only to avoid logging benign offline fallback notices
+try {
+  setLogLevel('error');
+} catch (_) {}
+
 // Export Firestore with persistent local cache and designated database ID
 export const db = (() => {
   try {
@@ -37,7 +43,7 @@ export const db = (() => {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       }),
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
     };
     if (firebaseConfig.firestoreDatabaseId) {
       return initializeFirestore(app, firestoreSettings, firebaseConfig.firestoreDatabaseId);
@@ -57,14 +63,17 @@ export const auth = getAuth(app);
 export async function testConnection() {
   try {
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('connection timeout')), 4000)
+      setTimeout(() => reject(new Error('connection timeout')), 3000)
     );
     await Promise.race([
       getDocFromServer(doc(db, 'test', 'connection')),
       timeoutPromise
     ]);
   } catch (error) {
-    // Firestore works seamlessly in persistent offline cache mode
+    // Gracefully handled: Firestore operates seamlessly in persistent cache mode if offline
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      // offline mode operational
+    }
   }
 }
 testConnection();

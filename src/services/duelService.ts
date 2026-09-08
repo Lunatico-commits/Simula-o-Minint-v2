@@ -226,6 +226,123 @@ export async function saveRoomToRTDB(code: string, roomData: DuelRoom): Promise<
   }
 }
 
+export const MININT_CONTINGENCY_QUESTIONS: Question[] = [
+  {
+    id: 'fb_1',
+    question: 'Qual é o órgão responsável pela ordem e segurança pública em Angola sob a tutela do MININT?',
+    options: ['Polícia Nacional de Angola (PNA)', 'Exército Nacional', 'Tribunal Supremo', 'Banco Central'],
+    correctIndex: 0,
+    category: 'legislacao_minint',
+    categoryName: 'Legislação do MININT',
+    lawReference: 'Lei Geral do MININT',
+    explanation: 'A Polícia Nacional de Angola (PNA) é o órgão do MININT encarregado de manter a ordem e segurança públicas.',
+    difficulty: 'fácil'
+  },
+  {
+    id: 'fb_2',
+    question: 'O Serviço de Investigação Criminal (SIC) está adstrito a que ministério?',
+    options: ['Ministério da Defesa', 'Ministério do Interior (MININT)', 'Ministério da Justiça', 'Ministério das Finanças'],
+    correctIndex: 1,
+    category: 'legislacao_minint',
+    categoryName: 'Legislação do MININT',
+    lawReference: 'Estatuto Orgânico do SIC',
+    explanation: 'O SIC é um órgão tutelado diretamente pelo Ministério do Interior.',
+    difficulty: 'fácil'
+  },
+  {
+    id: 'fb_3',
+    question: 'O que significa a sigla SME no contexto dos órgãos do MININT?',
+    options: ['Serviço Militar Especial', 'Serviço de Migração e Estrangeiros', 'Sistema Municipal de Emergência', 'Secretaria Ministerial de Estrangeiros'],
+    correctIndex: 1,
+    category: 'legislacao_minint',
+    categoryName: 'Legislação do MININT',
+    lawReference: 'Lei da Migração e Estrangeiros',
+    explanation: 'SME designa o Serviço de Migração e Estrangeiros de Angola.',
+    difficulty: 'fácil'
+  },
+  {
+    id: 'fb_4',
+    question: 'Qual órgão é responsável pela guarda penitenciária em Angola?',
+    options: ['Serviço Penitenciário (SP)', 'Polícia de Trânsito', 'Corpo de Bombeiros', 'SME'],
+    correctIndex: 0,
+    category: 'legislacao_minint',
+    categoryName: 'Legislação do MININT',
+    lawReference: 'Lei Penitenciária',
+    explanation: 'O Serviço Penitenciário (SP) gere os estabelecimentos prisionais do país.',
+    difficulty: 'fácil'
+  },
+  {
+    id: 'fb_5',
+    question: 'Qual órgão do MININT responde por socorro e combate a incêndios?',
+    options: ['Serviço de Proteção Civil e Bombeiros (SPCB)', 'SIC', 'SME', 'PNA'],
+    correctIndex: 0,
+    category: 'legislacao_minint',
+    categoryName: 'Legislação do MININT',
+    lawReference: 'Estatuto do SPCB',
+    explanation: 'O SPCB é responsável pela prevenção e socorro a incêndios e desastres.',
+    difficulty: 'fácil'
+  }
+];
+
+/**
+ * Busca perguntas protegida por tempo limite estrito de 3 segundos com fallback local imediato
+ */
+export async function getQuestionsWithTimeout(
+  category?: any,
+  timeoutMs = 3000,
+  count = 5
+): Promise<Question[]> {
+  const getFallback = (): Question[] => {
+    try {
+      const fromSelector = getRandomQuestions({
+        category: category || 'misto',
+        count,
+        modeKey: 'duel',
+      });
+      if (fromSelector && Array.isArray(fromSelector) && fromSelector.length >= count) {
+        return fromSelector;
+      }
+    } catch (_) {}
+
+    try {
+      if (QUESTION_BANK && QUESTION_BANK.length >= count) {
+        return QUESTION_BANK.slice(0, count).map(shuffleQuestionOptions);
+      }
+    } catch (_) {}
+
+    return MININT_CONTINGENCY_QUESTIONS.slice(0, count);
+  };
+
+  try {
+    const fetchPromise = new Promise<Question[]>((resolve) => {
+      try {
+        const qList = getRandomQuestions({
+          category: category || 'misto',
+          count,
+          modeKey: 'duel',
+        });
+        if (qList && Array.isArray(qList) && qList.length > 0) {
+          resolve(qList);
+        } else {
+          resolve(getFallback());
+        }
+      } catch (err) {
+        resolve(getFallback());
+      }
+    });
+
+    const timeoutPromise = new Promise<Question[]>((resolve) => {
+      setTimeout(() => {
+        resolve(getFallback());
+      }, timeoutMs);
+    });
+
+    return await Promise.race([fetchPromise, timeoutPromise]);
+  } catch (_) {
+    return getFallback();
+  }
+}
+
 export interface CreateRoomResult {
   success: boolean;
   room?: DuelRoom;
@@ -293,86 +410,21 @@ export async function createRoom(
     ).toString().trim();
 
     // 3. Proteção no Carregamento de Perguntas:
-    // Se a busca falhar ou retornar vazia, utiliza conjunto padrão/fallback local
+    // Envolve a busca de perguntas do banco de dados num mecanismo com tempo limite (3s) e fallback local
     let questions: Question[] = [];
     try {
       if (roomData.questions && Array.isArray(roomData.questions) && roomData.questions.length > 0) {
         questions = roomData.questions;
       } else {
-        questions = getRandomQuestions({ 
-          category: (roomData.category as any) || 'misto', 
-          count: 5, 
-          modeKey: 'duel' 
-        });
+        questions = await getQuestionsWithTimeout((roomData.category as any) || 'misto', 3000, 5);
       }
     } catch (qErr) {
       console.warn('[duelService] Erro ao obter perguntas dinâmicas, recorrendo ao banco local:', qErr);
+      questions = MININT_CONTINGENCY_QUESTIONS.slice(0, 5);
     }
 
     if (!questions || !Array.isArray(questions) || questions.length === 0) {
-      try {
-        questions = QUESTION_BANK.slice(0, 5).map(shuffleQuestionOptions);
-      } catch (_) {}
-    }
-
-    if (!questions || questions.length === 0) {
-      questions = [
-        {
-          id: 'fb_1',
-          question: 'Qual é o órgão responsável pela ordem e segurança pública em Angola sob a tutela do MININT?',
-          options: ['Polícia Nacional de Angola (PNA)', 'Exército Nacional', 'Tribunal Supremo', 'Banco Central'],
-          correctIndex: 0,
-          category: 'legislacao_minint',
-          categoryName: 'Legislação do MININT',
-          lawReference: 'Lei Geral do MININT',
-          explanation: 'A Polícia Nacional de Angola (PNA) é o órgão do MININT encarregado de manter a ordem e segurança públicas.',
-          difficulty: 'fácil'
-        },
-        {
-          id: 'fb_2',
-          question: 'O Serviço de Investigação Criminal (SIC) está adstrito a que ministério?',
-          options: ['Ministério da Defesa', 'Ministério do Interior (MININT)', 'Ministério da Justiça', 'Ministério das Finanças'],
-          correctIndex: 1,
-          category: 'legislacao_minint',
-          categoryName: 'Legislação do MININT',
-          lawReference: 'Estatuto Orgânico do SIC',
-          explanation: 'O SIC é um órgão tutelado diretamente pelo Ministério do Interior.',
-          difficulty: 'fácil'
-        },
-        {
-          id: 'fb_3',
-          question: 'O que significa a sigla SME no contexto dos órgãos do MININT?',
-          options: ['Serviço Militar Especial', 'Serviço de Migração e Estrangeiros', 'Sistema Municipal de Emergência', 'Secretaria Ministerial de Estrangeiros'],
-          correctIndex: 1,
-          category: 'legislacao_minint',
-          categoryName: 'Legislação do MININT',
-          lawReference: 'Lei da Migração e Estrangeiros',
-          explanation: 'SME designa o Serviço de Migração e Estrangeiros de Angola.',
-          difficulty: 'fácil'
-        },
-        {
-          id: 'fb_4',
-          question: 'Qual órgão é responsável pela guarda penitenciária em Angola?',
-          options: ['Serviço Penitenciário (SP)', 'Polícia de Trânsito', 'Corpo de Bombeiros', 'SME'],
-          correctIndex: 0,
-          category: 'legislacao_minint',
-          categoryName: 'Legislação do MININT',
-          lawReference: 'Lei Penitenciária',
-          explanation: 'O Serviço Penitenciário (SP) gere os estabelecimentos prisionais do país.',
-          difficulty: 'fácil'
-        },
-        {
-          id: 'fb_5',
-          question: 'Qual órgão do MININT responde por socorro e combate a incêndios?',
-          options: ['Serviço de Proteção Civil e Bombeiros (SPCB)', 'SIC', 'SME', 'PNA'],
-          correctIndex: 0,
-          category: 'legislacao_minint',
-          categoryName: 'Legislação do MININT',
-          lawReference: 'Estatuto do SPCB',
-          explanation: 'O SPCB é responsável pela prevenção e socorro a incêndios e desastres.',
-          difficulty: 'fácil'
-        }
-      ];
+      questions = MININT_CONTINGENCY_QUESTIONS.slice(0, 5);
     }
 
     const now = Date.now();
@@ -420,7 +472,13 @@ export async function createRoom(
     });
 
     const targetRoomRef = rtdbRef(rtdb, `duels/${cleanCode}`);
-    await rtdbSet(targetRoomRef, rtdbPayload);
+    try {
+      const writePromise = rtdbSet(targetRoomRef, rtdbPayload);
+      const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+      await Promise.race([writePromise, timeoutPromise]);
+    } catch (rtdbErr) {
+      console.warn('[duelService] Aviso ao gravar sala no RTDB (contingência offline ativa):', rtdbErr);
+    }
 
     // Configura desconexão automática do anfitrião
     setupRoomOnDisconnect({
@@ -1120,4 +1178,107 @@ export async function updateDuelRoomNode(roomIdOrCode: string, payload: Partial<
     console.error('[duelService] Erro em updateDuelRoomNode:', err);
   }
 }
+
+/**
+ * Cria instantaneamente uma sala de treino com Candidato IA (100% Local / Offline First)
+ * Não depende de Firebase RTDB nem espera por confirmação de rede.
+ * Status: 'playing' imediato.
+ */
+export function createAIRoom({
+  category = 'misto',
+  mode = 'padrao',
+  profile,
+}: {
+  category?: any;
+  mode?: 'padrao' | 'relampago';
+  profile?: any;
+}): { success: boolean; room: DuelRoom } {
+  const code = formatCode(`MNT-${Math.random().toString(36).substring(2, 6).toUpperCase()}`);
+  const roomId = `duel_bot_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const botProvinces = ['Huambo', 'Benguela', 'Cabinda', 'Huíla', 'Malanje', 'Namibe', 'Uíge'];
+  const botBranches = ['PNA', 'SIC', 'SME', 'SP', 'SPCB'] as const;
+  const botNames = [
+    'Sub-Insp. Nelson', 'Agente Carla', 'Chefe Mateus', 'Sub-Chef. Ndongala',
+    'Insp. Esperança', 'Agente Kapapelo', 'Sub-Insp. Nimi'
+  ];
+
+  const randomBotProvince = botProvinces[Math.floor(Math.random() * botProvinces.length)];
+  const randomBotBranch = botBranches[Math.floor(Math.random() * botBranches.length)];
+  const randomBotName = botNames[Math.floor(Math.random() * botNames.length)];
+
+  let duelQuestions: Question[] = [];
+  try {
+    duelQuestions = getRandomQuestions({
+      category: category || 'misto',
+      count: 5,
+      modeKey: 'duel',
+    });
+  } catch (_) {}
+
+  if (!duelQuestions || !Array.isArray(duelQuestions) || duelQuestions.length === 0) {
+    try {
+      duelQuestions = QUESTION_BANK.slice(0, 5).map(shuffleQuestionOptions);
+    } catch (_) {}
+  }
+  if (!duelQuestions || duelQuestions.length === 0) {
+    duelQuestions = MININT_CONTINGENCY_QUESTIONS.slice(0, 5);
+  }
+
+  const timePerQuestion = mode === 'relampago' ? 30 : 20;
+  const now = Date.now();
+  const hostUid = profile?.uid || 'anon';
+  const hostName = profile?.displayName || profile?.name || 'Candidato MININT';
+
+  const botPlayer: DuelPlayer = {
+    uid: `bot_${Date.now()}`,
+    displayName: randomBotName,
+    branch: randomBotBranch,
+    avatarId: 'pna_agent',
+    province: randomBotProvince,
+    isBot: true,
+    score: 0,
+    currentQuestionIndex: 0,
+    answers: {},
+    isReady: true,
+    isConnected: true,
+    lastActive: now,
+  };
+
+  const room: DuelRoom = {
+    id: roomId,
+    code,
+    roomCode: code,
+    hostId: hostUid,
+    hostUid,
+    hostName,
+    status: 'playing',
+    category,
+    mode,
+    questions: duelQuestions,
+    currentQuestionIndex: 0,
+    questionStartTime: now,
+    timePerQuestion,
+    player1: {
+      uid: hostUid,
+      name: hostName,
+      displayName: hostName,
+      branch: profile?.branch || 'PNA',
+      avatarId: profile?.avatarId || 'policia',
+      province: profile?.province || 'Luanda',
+      score: 0,
+      currentQuestionIndex: 0,
+      answers: {},
+      isReady: true,
+      isConnected: true,
+      lastActive: now,
+    },
+    player2: botPlayer,
+    createdAt: now,
+    answers: {},
+  };
+
+  return { success: true, room };
+}
+
 

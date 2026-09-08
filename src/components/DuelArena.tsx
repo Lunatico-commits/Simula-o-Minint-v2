@@ -28,6 +28,7 @@ import { getRandomQuestions } from '../utils/questionSelector';
 import { 
   playTickSound, 
   playRelampagoTickSound,
+  playRoundStartSound,
   stopAllCombatSounds
 } from '../utils/audio';
 
@@ -45,6 +46,7 @@ interface DuelArenaProps {
   opponentInactivitySeconds: number;
   onForcedTimeout: (room: DuelRoom, qIndex: number) => void;
   matchPhase?: 'waiting' | 'preparing' | 'playing' | 'finished';
+  onPhaseChange?: (phase: 'playing') => void;
 }
 
 export const CircularTimerRing: React.FC<{
@@ -136,11 +138,66 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
   opponentInactivitySeconds,
   onForcedTimeout,
   matchPhase = 'playing',
+  onPhaseChange,
 }) => {
   const isHost = currentRoom.player1.uid === profile.uid;
   const myPlayer = isHost ? currentRoom.player1 : currentRoom.player2;
   const opponent = isHost ? currentRoom.player2 : currentRoom.player1;
   const qIndex = currentRoom.currentQuestionIndex || 0;
+
+  // 3. Contador Local Independente em 'DuelArena.tsx' (Fim do congelamento no "3")
+  const hasFinishedPrepRef = useRef<boolean>(false);
+  const [internalPhase, setInternalPhase] = useState<'preparing' | 'playing'>(() => {
+    return 'preparing';
+  });
+  const [prepCountdown, setPrepCountdown] = useState<number>(3);
+  const prepIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const onPhaseChangeRef = useRef(onPhaseChange);
+  onPhaseChangeRef.current = onPhaseChange;
+
+  // useEffect ESTRITAMENTE LOCAL para contagem 3 -> 2 -> 1 -> 0 sem qualquer dependência de rede
+  useEffect(() => {
+    if (hasFinishedPrepRef.current || internalPhase !== 'preparing') {
+      if (prepIntervalRef.current) {
+        clearInterval(prepIntervalRef.current);
+        prepIntervalRef.current = null;
+      }
+      return;
+    }
+
+    setPrepCountdown(3);
+    try {
+      playRoundStartSound();
+    } catch (_) {}
+
+    prepIntervalRef.current = setInterval(() => {
+      setPrepCountdown((prev) => {
+        if (prev <= 1) {
+          if (prepIntervalRef.current) {
+            clearInterval(prepIntervalRef.current);
+            prepIntervalRef.current = null;
+          }
+          hasFinishedPrepRef.current = true;
+          setInternalPhase('playing');
+          if (onPhaseChangeRef.current) {
+            onPhaseChangeRef.current('playing');
+          }
+          return 0;
+        }
+        try {
+          playTickSound(prev - 1);
+        } catch (_) {}
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (prepIntervalRef.current) {
+        clearInterval(prepIntervalRef.current);
+        prepIntervalRef.current = null;
+      }
+    };
+  }, [internalPhase]);
 
   // Normalização e extração garantida da lista de perguntas pré-carregadas
   const questionsList = useMemo(() => {
@@ -241,8 +298,8 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
 
   useEffect(() => {
     // Não inicia o temporizador se ambos os jogadores não estiverem carregados,
-    // se não houver questionStartTime, ou se estiver na fase de preparação ('preparing')
-    if (!isBothPlayersLoaded || !currentRoom.questionStartTime || matchPhase === 'preparing') {
+    // ou se ainda estiver na fase de preparação ('preparing')
+    if (!isBothPlayersLoaded || internalPhase === 'preparing') {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current);
         timerIntervalRef.current = null;
@@ -251,13 +308,14 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
     }
 
     const timeLimit = currentRoom.timePerQuestion || (currentRoom.mode === 'relampago' ? 30 : 20);
-    const currentQIdx = currentRoom.currentQuestionIndex;
+    const currentQIdx = currentRoom.currentQuestionIndex || 0;
 
     timerIntervalRef.current = setInterval(() => {
       const room = currentRoomRef.current;
-      if (!room || !room.questionStartTime) return;
+      if (!room) return;
       const now = Date.now();
-      const elapsed = (now - room.questionStartTime) / 1000;
+      const startTime = room.questionStartTime || (room as any).createdAt || now;
+      const elapsed = (now - startTime) / 1000;
       const remaining = Math.max(0, Math.ceil(timeLimit - elapsed));
       setQuestionTimer(remaining);
 
@@ -294,6 +352,7 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
     };
   }, [
     isBothPlayersLoaded,
+    internalPhase,
     matchPhase,
     currentRoom.questionStartTime,
     currentRoom.currentQuestionIndex,
@@ -350,6 +409,101 @@ export const DuelArena: React.FC<DuelArenaProps> = ({
 
   return (
     <div className="space-y-3 relative animate-fadeIn">
+      {/* 3. TELA DE VS E CONTADOR DE PREPARAÇÃO LOCAL ("A PREPARAR COMBATE...") */}
+      <AnimatePresence>
+        {internalPhase === 'preparing' && (
+          <motion.div
+            key="arena-prep-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="fixed inset-0 z-[10001] flex flex-col items-center justify-between p-4 sm:p-6 bg-slate-950/95 backdrop-blur-xl select-none text-white"
+          >
+            {/* Ambient Lighting & Tactical Background */}
+            <div className="absolute inset-0 pointer-events-none overflow-hidden">
+              <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 rounded-full blur-[100px]" />
+              <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-amber-500/20 rounded-full blur-[100px]" />
+            </div>
+
+            {/* Top Tactical Header */}
+            <div className="relative z-10 w-full max-w-md flex items-center justify-between pt-2">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-400 text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                  <Swords size={14} className="text-amber-400 animate-pulse" />
+                  <span>Duelo MININT 1v1</span>
+                </span>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {currentRoom.mode === 'relampago' ? '⚡ RELÂMPAGO' : '🛡️ CLÁSSICO'}
+                </span>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono text-xs font-bold border border-slate-700">
+                {currentRoom.category || 'Geral'}
+              </span>
+            </div>
+
+            {/* Middle Face-off Avatars */}
+            <div className="relative z-10 w-full max-w-md my-auto flex items-center justify-around gap-4 py-8">
+              {/* My Player */}
+              <div className="flex flex-col items-center text-center space-y-2">
+                <div className="relative p-1.5 rounded-3xl bg-gradient-to-b from-blue-500/40 to-slate-900 border-2 border-blue-400 shadow-[0_0_25px_rgba(59,130,246,0.4)]">
+                  <UserAvatar user={myPlayer || profile} size="xl" showBranchBadge={true} showLevelBadge={true} />
+                </div>
+                <p className="font-black text-sm text-slate-100 max-w-[120px] truncate">{myPlayer?.displayName || 'Você'}</p>
+                <span className="text-[10px] text-blue-400 font-semibold uppercase">{myPlayer?.branch || 'PNA'} • {myPlayer?.province || 'Luanda'}</span>
+              </div>
+
+              {/* Center VS Indicator */}
+              <div className="flex flex-col items-center">
+                <div className="w-12 h-12 rounded-full bg-slate-900 border-2 border-amber-500/60 flex items-center justify-center font-black text-amber-400 text-sm shadow-[0_0_20px_rgba(245,158,11,0.5)]">
+                  VS
+                </div>
+              </div>
+
+              {/* Opponent Player */}
+              <div className="flex flex-col items-center text-center space-y-2">
+                <div className="relative p-1.5 rounded-3xl bg-gradient-to-b from-amber-500/40 to-slate-900 border-2 border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.4)]">
+                  <UserAvatar user={opponent} size="xl" showBranchBadge={true} showLevelBadge={true} />
+                </div>
+                <p className="font-black text-sm text-slate-100 max-w-[120px] truncate">{opponent?.displayName || 'Adversário'}</p>
+                <span className="text-[10px] text-amber-400 font-semibold uppercase">{opponent?.branch || 'SIC'} • {opponent?.province || 'Benguela'}</span>
+              </div>
+            </div>
+
+            {/* Bottom Countdown Section: "A PREPARAR COMBATE..." */}
+            <div className="relative z-10 w-full max-w-md flex flex-col items-center gap-3 pb-6 text-center">
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-black text-3xl flex items-center justify-center shadow-lg shadow-amber-500/40 font-mono">
+                  {prepCountdown > 0 ? prepCountdown : '⚡'}
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-black uppercase text-amber-400 tracking-wider">
+                    {prepCountdown > 0 ? 'A preparar combate...' : 'Combate Iniciado!'}
+                  </div>
+                  <div className="text-xs font-semibold text-slate-400">
+                    Responda rápido para acumular pontos de combo!
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPrepCountdown(0);
+                  setInternalPhase('playing');
+                  if (onPhaseChangeRef.current) {
+                    onPhaseChangeRef.current('playing');
+                  }
+                }}
+                className="text-xs font-black uppercase tracking-widest text-slate-400 hover:text-white transition-colors cursor-pointer py-1.5 px-5 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-slate-700 active:scale-95"
+              >
+                Começar Já →
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Floating Score Particles Animation */}
       <AnimatePresence>
         {floatingParticles.map((pt) => (
